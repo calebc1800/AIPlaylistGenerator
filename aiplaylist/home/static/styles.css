@@ -1,4 +1,5 @@
 body {
     background-image: url("coolBackground.jpg");
-    background-size: contain;
+    background-size: cover;
+    color: white;
 }
