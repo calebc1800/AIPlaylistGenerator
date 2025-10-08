@@ -365,5 +365,253 @@ class SpotifyIntegrationTests(TestCase):
         self.assertIn('spotify_refresh_token', self.client.session)
         self.assertIn('spotify_user_id', self.client.session)
 
-
+class SpotifyDashboardViewTests(TestCase):
+    """Tests for the Spotify dashboard view"""
+    
+    def setUp(self):
+        self.client = Client()
+        self.dashboard_url = reverse('spotify_auth:dashboard')
+    
+    def test_dashboard_redirects_without_token(self):
+        """Test that dashboard redirects to login if not authenticated"""
+        response = self.client.get(self.dashboard_url)
+        
+        # Should redirect to login
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('spotify_auth:login'))
+    
+    @patch('spotify_auth.views.spotipy.Spotify')
+    def test_dashboard_with_valid_token(self, mock_spotify):
+        """Test dashboard displays user data with valid token"""
+        # Set up session with access token
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+        
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        # Mock user profile
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'display_name': 'Test User',
+            'email': 'test@example.com',
+            'followers': {'total': 42},
+            'external_urls': {'spotify': 'https://open.spotify.com/user/test_user_id'}
+        }
+        
+        # Mock recently played
+        mock_sp_instance.current_user_recently_played.return_value = {
+            'items': [
+                {
+                    'track': {
+                        'name': 'Test Song',
+                        'artists': [{'name': 'Test Artist'}],
+                        'album': {
+                            'name': 'Test Album',
+                            'images': [{'url': 'https://example.com/image.jpg'}]
+                        }
+                    },
+                    'played_at': '2024-01-01T12:00:00Z'
+                }
+            ]
+        }
+        
+        # Make request
+        response = self.client.get(self.dashboard_url)
+        
+        # Should render successfully
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'spotify_auth/dashboard.html')
+        
+        # Check context data
+        self.assertEqual(response.context['username'], 'Test User')
+        self.assertEqual(response.context['user_id'], 'test_user_id')
+        self.assertEqual(response.context['email'], 'test@example.com')
+        self.assertEqual(response.context['followers'], 42)
+        self.assertIsNotNone(response.context['last_song'])
+        self.assertEqual(response.context['last_song']['name'], 'Test Song')
+        self.assertEqual(response.context['last_song']['artist'], 'Test Artist')
+    
+    @patch('spotify_auth.views.spotipy.Spotify')
+    def test_dashboard_without_display_name(self, mock_spotify):
+        """Test dashboard uses user ID when display name is not available"""
+        # Set up session with access token
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+        
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        # Mock user profile without display_name
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'email': 'test@example.com',
+            'followers': {'total': 0}
+        }
+        
+        # Mock empty recently played
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+        
+        # Make request
+        response = self.client.get(self.dashboard_url)
+        
+        # Should use user ID as username
+        self.assertEqual(response.context['username'], 'test_user_id')
+    
+    @patch('spotify_auth.views.spotipy.Spotify')
+    def test_dashboard_with_no_recent_tracks(self, mock_spotify):
+        """Test dashboard handles no recent listening history"""
+        # Set up session with access token
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+        
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        # Mock user profile
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+        
+        # Mock empty recently played
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+        
+        # Make request
+        response = self.client.get(self.dashboard_url)
+        
+        # Should handle empty history gracefully
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context['last_song'])
+    
+    @patch('spotify_auth.views.spotipy.Spotify')
+    def test_dashboard_with_expired_token(self, mock_spotify):
+        """Test dashboard redirects to login when token is expired"""
+        # Set up session with access token
+        session = self.client.session
+        session['spotify_access_token'] = 'expired_token'
+        session.save()
+        
+        # Mock Spotify API to raise 401 error
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        # Create a SpotifyException with 401 status
+        from spotipy.exceptions import SpotifyException
+        mock_sp_instance.current_user.side_effect = SpotifyException(
+            http_status=401,
+            code=-1,
+            msg='The access token expired'
+        )
+        
+        # Make request
+        response = self.client.get(self.dashboard_url)
+        
+        # Should redirect to login
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('spotify_auth:login'))
+    
+    @patch('spotify_auth.views.spotipy.Spotify')
+    def test_dashboard_with_api_error(self, mock_spotify):
+        """Test dashboard handles Spotify API errors gracefully"""
+        # Set up session with access token
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+        
+        # Mock Spotify API to raise error
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        from spotipy.exceptions import SpotifyException
+        mock_sp_instance.current_user.side_effect = SpotifyException(
+            http_status=500,
+            code=-1,
+            msg='Internal Server Error'
+        )
+        
+        # Make request
+        response = self.client.get(self.dashboard_url)
+        
+        # Should render with error message
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('error', response.context)
+        self.assertIn('Error fetching Spotify data', response.context['error'])
+    
+    @patch('spotify_auth.views.spotipy.Spotify')
+    def test_dashboard_with_multiple_artists(self, mock_spotify):
+        """Test dashboard properly formats songs with multiple artists"""
+        # Set up session with access token
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+        
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        # Mock user profile
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+        
+        # Mock recently played with multiple artists
+        mock_sp_instance.current_user_recently_played.return_value = {
+            'items': [
+                {
+                    'track': {
+                        'name': 'Collaboration Song',
+                        'artists': [
+                            {'name': 'Artist One'},
+                            {'name': 'Artist Two'},
+                            {'name': 'Artist Three'}
+                        ],
+                        'album': {
+                            'name': 'Test Album',
+                            'images': [{'url': 'https://example.com/image.jpg'}]
+                        }
+                    },
+                    'played_at': '2024-01-01T12:00:00Z'
+                }
+            ]
+        }
+        
+        # Make request
+        response = self.client.get(self.dashboard_url)
+        
+        # Should format multiple artists correctly
+        self.assertEqual(response.context['last_song']['artist'], 'Artist One, Artist Two, Artist Three')
+    
+    @patch('spotify_auth.views.spotipy.Spotify')
+    def test_dashboard_creates_spotify_client_with_token(self, mock_spotify):
+        """Test that Spotify client is created with the correct token"""
+        # Set up session with access token
+        session = self.client.session
+        session['spotify_access_token'] = 'my_test_token'
+        session.save()
+        
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user',
+            'followers': {'total': 0}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+        
+        # Make request
+        self.client.get(self.dashboard_url)
+        
+        # Verify Spotify client was created with correct token
+        mock_spotify.assert_called_once_with(auth='my_test_token')
 # Run tests with: python3 manage.py test spotify_auth.tests
