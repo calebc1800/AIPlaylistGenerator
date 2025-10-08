@@ -1,10 +1,12 @@
 import secrets
 import requests
+import spotipy
 from urllib.parse import urlencode
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.http import JsonResponse
 from django.conf import settings
 from django.views import View
+from spotipy.oauth2 import SpotifyOAuth
 
 
 class SpotifyLoginView(View):
@@ -21,7 +23,7 @@ class SpotifyLoginView(View):
             'response_type': 'code',
             'redirect_uri': settings.SPOTIFY_REDIRECT_URI,
             'state': state,
-            'scope': 'user-read-email user-read-private',  # Add scopes as needed
+            'scope': 'user-read-email user-read-private user-read-recently-played',  # Add scopes as needed
         }
         
         auth_url = f"https://accounts.spotify.com/authorize?{urlencode(params)}"
@@ -118,3 +120,65 @@ class SpotifyRefreshTokenView(View):
         request.session['spotify_expires_in'] = token_data.get('expires_in')
         
         return JsonResponse({'message': 'Token refreshed successfully'})
+
+        # Add this new view class at the end of the file
+class SpotifyDashboardView(View):
+    """Display user's Spotify data"""
+    
+    def get(self, request):
+        # Check if user has access token
+        access_token = request.session.get('spotify_access_token')
+        
+        if not access_token:
+            # Redirect to login if not authenticated
+            return redirect('spotify_auth:login')
+        
+        # Create Spotify client
+        sp = spotipy.Spotify(auth=access_token)
+        
+        try:
+            # Get current user profile
+            user_profile = sp.current_user()
+            
+            # Get recently played tracks
+            recently_played = sp.current_user_recently_played(limit=1)
+            
+            # Extract data
+            username = user_profile.get('display_name') or user_profile.get('id')
+            user_id = user_profile.get('id')
+            email = user_profile.get('email')
+            followers = user_profile.get('followers', {}).get('total', 0)
+            
+            # Get last played song
+            last_song = None
+            if recently_played and recently_played.get('items'):
+                track = recently_played['items'][0]['track']
+                last_song = {
+                    'name': track['name'],
+                    'artist': ', '.join([artist['name'] for artist in track['artists']]),
+                    'album': track['album']['name'],
+                    'image': track['album']['images'][0]['url'] if track['album']['images'] else None,
+                    'played_at': recently_played['items'][0]['played_at']
+                }
+            
+            context = {
+                'username': username,
+                'user_id': user_id,
+                'email': email,
+                'followers': followers,
+                'last_song': last_song,
+                'profile_url': user_profile.get('external_urls', {}).get('spotify'),
+            }
+            
+            return render(request, 'spotify_auth/dashboard.html', context)
+            
+        except spotipy.exceptions.SpotifyException as e:
+            # Token might be expired, redirect to login
+            if e.http_status == 401:
+                return redirect('spotify_auth:login')
+            
+            # Other error
+            context = {
+                'error': f'Error fetching Spotify data: {str(e)}'
+            }
+            return render(request, 'spotify_auth/dashboard.html', context)
