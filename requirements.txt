@@ -1,0 +1,4 @@
+django
+dotenv
+django-extensions Werkzeug pyOpenSSL
+requests python-dotenv
