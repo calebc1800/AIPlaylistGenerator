@@ -1,10 +1,9 @@
-from django.urls import path, include
 from django.contrib import admin
-from . import views
-
+from django.urls import path, include
+from home import views as home_views  # Add this import
 
 urlpatterns = [
-    path('', views.index, name='index'),
     path('admin/', admin.site.urls),
+    path('', home_views.index, name='home'),  # Add this line for the homepage
     path('spotify/', include('spotify_auth.urls')),
 ]
