@@ -3,6 +3,13 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# SSL Certificates
+*.key
+*.crt
+*.pem
+*.cer
+*.p12
+*.pfx
 # C extensions
 *.so
 
@@ -143,8 +150,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-*.env
-.env.local
 
 # Spyder project settings
 .spyderproject
@@ -207,4 +212,3 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-*.env
