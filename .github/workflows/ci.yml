@@ -24,12 +24,34 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install openai requests
+      - name: Ensure OPENAI_API_KEY is present for same-repo PRs
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "ERROR: OPENAI_API_KEY secret is missing — aborting AI review."
+            exit 1
+          fi
+
+      - name: Run AI Code Review
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          echo "🧠 Running AI Code Review..."
+          python .github/scripts/ai_review.py
+
+      - name: Skip AI Review for forked PRs
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "AI review skipped: this pull request originates from a fork and repository secrets are not available."
 
       - name: Run AI Code Review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          echo "🧠 Running AI Code Review..."
+          echo "Running AI Code Review..."
           python .github/scripts/ai_review.py
 
   tests:
