@@ -19,7 +19,7 @@
         }
 
         .container {
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
         }
 
@@ -35,12 +35,14 @@
             color: #1DB954;
             font-size: 2.5rem;
             margin-bottom: 10px;
+            text-align: center;
         }
 
         .subtitle {
             color: #666;
             font-size: 1.1rem;
             margin-bottom: 30px;
+            text-align: center;
         }
 
         .user-info {
@@ -65,8 +67,16 @@
             color: #666;
         }
 
-        /* Last Played Track & Create Playlist unified styles */
-        .card h2 {
+        .last-song, .create-playlist, .explore-playlists {
+            background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 20px;
+        }
+
+        .last-song h2,
+        .create-playlist h2,
+        .explore-playlists h2 {
             color: #333;
             font-size: 1.5rem;
             margin-bottom: 20px;
@@ -76,75 +86,36 @@
             display: flex;
             gap: 20px;
             align-items: center;
-            margin-top: 15px;
         }
 
         .album-art {
-            width: 100px;
-            height: 100px;
+            width: 120px;
+            height: 120px;
             border-radius: 10px;
             object-fit: cover;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
 
-        .song-details .song-name {
-            font-size: 1.2rem;
+        .song-details {
+            flex: 1;
+        }
+
+        .song-name {
+            font-size: 1.3rem;
             font-weight: 600;
             color: #333;
             margin-bottom: 8px;
         }
 
-        .song-details .song-artist {
-            font-size: 1rem;
+        .song-artist {
+            font-size: 1.1rem;
             color: #666;
             margin-bottom: 5px;
         }
 
-        .song-details .song-album {
-            font-size: 0.9rem;
+        .song-album {
+            font-size: 0.95rem;
             color: #999;
-        }
-
-        .no-data {
-            text-align: center;
-            color: #999;
-            padding: 30px 0;
-            font-style: italic;
-        }
-
-        /* Create Playlist Form */
-        .playlist-form input[type="text"] {
-            width: 100%;
-            padding: 12px 15px;
-            border-radius: 15px;
-            border: 1px solid #ccc;
-            font-size: 1rem;
-            margin-bottom: 15px;
-        }
-
-        .playlist-form button {
-            background: #1DB954;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 50px;
-            font-weight: 600;
-            border: none;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .playlist-form button:hover {
-            background: #1ed760;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3);
-        }
-
-        .error {
-            background: #fee;
-            color: #c33;
-            padding: 20px;
-            border-radius: 10px;
-            border: 1px solid #fcc;
         }
 
         .spotify-link {
@@ -165,95 +136,157 @@
             box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3);
         }
 
-        .nav-links {
-            text-align: center;
+        .playlist-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 20px;
             margin-top: 20px;
         }
 
-        .nav-link {
-            color: white;
-            text-decoration: none;
-            padding: 10px 20px;
-            border-radius: 50px;
-            background: rgba(255, 255, 255, 0.2);
-            transition: all 0.3s ease;
-            display: inline-block;
-            margin: 0 10px;
+        .playlist-card {
+            background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
         }
 
-        .nav-link:hover {
-            background: rgba(255, 255, 255, 0.3);
+        .playlist-art {
+            width: 100%;
+            border-radius: 10px;
+            margin-bottom: 10px;
         }
+
+        .playlist-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .playlist-card .spotify-link {
+            display: inline-block;
+            background: #1DB954;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .playlist-card .spotify-link:hover {
+            background: #1ed760;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3);
+        }
+
+        .no-data {
+            text-align: center;
+            color: #999;
+            padding: 30px;
+            font-style: italic;
+        }
+
+        form input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border-radius: 15px;
+            border: 1px solid #ccc;
+            font-size: 1rem;
+            margin-bottom: 15px;
+        }
+
+        form button {
+            background: #1DB954;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        form button:hover {
+            background: #1ed760;
+        }
+
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="card">
-            {% if error %}
-                <div class="error">
-                    {{ error }}
-                </div>
-            {% else %}
-                <h1>Welcome, {{ username }}!</h1>
-                <p class="subtitle">Your Spotify Dashboard</p>
+<div class="container">
+    <h1>Welcome, {{ username }}!</h1>
+    <p class="subtitle">Your Spotify Dashboard</p>
 
-                <div class="user-info">
-                    <div class="info-row">
-                        <span class="info-label">User ID:</span>
-                        <span class="info-value">{{ user_id }}</span>
-                    </div>
-                    {% if email %}
-                    <div class="info-row">
-                        <span class="info-label">Email:</span>
-                        <span class="info-value">{{ email }}</span>
-                    </div>
-                    {% endif %}
-                    <div class="info-row">
-                        <span class="info-label">Followers:</span>
-                        <span class="info-value">{{ followers }}</span>
-                    </div>
-                </div>
-
-                {% if profile_url %}
-                <a href="{{ profile_url }}" target="_blank" class="spotify-link">
-                    View on Spotify
-                </a>
-                {% endif %}
-            {% endif %}
+    <div class="user-info">
+        <div class="info-row">
+            <span class="info-label">User ID:</span>
+            <span class="info-value">{{ user_id }}</span>
         </div>
-
-        <!-- Last Played Track Card -->
-        <div class="card">
-            <h2>Last Played Track</h2>
-            {% if last_song %}
-            <div class="song-content">
-                {% if last_song.image %}
-                <img src="{{ last_song.image }}" alt="Album Art" class="album-art">
-                {% endif %}
-                <div class="song-details">
-                    <div class="song-name">{{ last_song.name }}</div>
-                    <div class="song-artist">{{ last_song.artist }}</div>
-                    <div class="song-album">{{ last_song.album }}</div>
-                </div>
-            </div>
-            {% else %}
-            <div class="no-data">No recent listening history found</div>
-            {% endif %}
+        {% if email %}
+        <div class="info-row">
+            <span class="info-label">Email:</span>
+            <span class="info-value">{{ email }}</span>
         </div>
-
-        <!-- Create Playlist Card -->
-        <div class="card">
-            <h2>Create a Playlist</h2>
-            <p class="subtitle">Enter a prompt to generate a playlist based on your mood, genre, or theme.</p>
-            <form class="playlist-form" action="/create_playlist/" method="POST">
-                <input type="text" name="playlist_prompt" placeholder="Type your playlist idea here..." required>
-                <button type="submit">Create Playlist</button>
-            </form>
-        </div>
-
-        <div class="nav-links">
-            <a href="/" class="nav-link">← Back to Home</a>
+        {% endif %}
+        <div class="info-row">
+            <span class="info-label">Followers:</span>
+            <span class="info-value">{{ followers }}</span>
         </div>
     </div>
+
+    {% if profile_url %}
+    <a href="{{ profile_url }}" target="_blank" class="spotify-link">View on Spotify</a>
+    {% endif %}
+
+    <!-- Last Played Track -->
+    <div class="card last-song">
+        <h2>Last Played Track</h2>
+        {% if last_song %}
+        <div class="song-content">
+            {% if last_song.image %}
+            <img src="{{ last_song.image }}" alt="Album Art" class="album-art">
+            {% endif %}
+            <div class="song-details">
+                <div class="song-name">{{ last_song.name }}</div>
+                <div class="song-artist">{{ last_song.artist }}</div>
+                <div class="song-album">{{ last_song.album }}</div>
+            </div>
+        </div>
+        {% else %}
+        <div class="no-data">No recent listening history found</div>
+        {% endif %}
+    </div>
+
+    <!-- Create Playlist -->
+    <div class="card create-playlist">
+        <h2>Create a Playlist</h2>
+        <p class="subtitle">Enter a prompt to generate a playlist based on your mood, genre, or theme.</p>
+        <form action="/create_playlist/" method="POST">
+            <input type="text" name="playlist_prompt" placeholder="Type your playlist idea here..." required>
+            <button type="submit">Create Playlist</button>
+        </form>
+    </div>
+
+    <!-- Explore Playlists -->
+    <div class="card explore-playlists">
+        <h2>Explore Playlists</h2>
+        <p class="subtitle">Discover popular or recommended playlists generated by AI or other users.</p>
+        <div class="playlist-grid">
+            {% if explore_playlists %}
+                {% for playlist in explore_playlists %}
+                <div class="playlist-card">
+                    <img src="{{ playlist.image_url }}" alt="{{ playlist.name }}" class="playlist-art">
+                    <div class="playlist-name">{{ playlist.name }}</div>
+                    <a href="{{ playlist.url }}" target="_blank" class="spotify-link">View on Spotify</a>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-data">No playlists available to explore yet</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
 </body>
 </html>
