@@ -8,9 +8,8 @@ from django.contrib.auth.models import User
 
 
 def get_spotify_access_token():
-    """
-    Get Spotify API access token using Client Credentials flow
-    """
+    # Get Spotify API access token using Client Credentials flow
+
     auth_url = settings.SPOTIFY_AUTH_URL
 
     data = {
@@ -28,9 +27,8 @@ def get_spotify_access_token():
 
 
 def fetch_spotify_playlists(query='', limit=10):
-    """
-    Fetch playlists from Spotify API
-    """
+    # Fetch playlists from Spotify API
+
     try:
         token = get_spotify_access_token()
 
@@ -57,9 +55,8 @@ def fetch_spotify_playlists(query='', limit=10):
 
 
 def import_spotify_playlist(playlist_data):
-    """
-    Import a Spotify playlist into the database
-    """
+    # Import a Spotify playlist into the database
+
     try:
         # Get or create the default user (or the playlist owner)
         user, _ = User.objects.get_or_create(
@@ -144,7 +141,7 @@ def home(request):
         'playlists': playlists,
     }
 
-    return render(request, 'index.html', context)
+    return render(request, 'home/index.html', context)
 
 
 def search(request):
@@ -178,7 +175,7 @@ def search(request):
         'results_count': len(playlists) if isinstance(playlists, list) else playlists.count(),
     }
 
-    return render(request, 'search.html', context)
+    return render(request, 'home/search.html', context)
 
 
 def login(request):
@@ -199,4 +196,4 @@ def profile(request, user_id):
         'playlists': playlists,
     }
 
-    return render(request, 'profile.html', context)
+    return render(request, 'home/profile.html', context)

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends 'home/base.html' %}
 
 {% block content %}
 <div class="profile-page">
@@ -6,7 +6,7 @@
     
     <div class="playlists-grid">
         {% for playlist in playlists %}
-            <!-- Use same playlist card as index.html -->
+
         {% empty %}
             <p>No playlists yet.</p>
         {% endfor %}
