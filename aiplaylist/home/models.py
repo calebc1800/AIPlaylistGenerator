@@ -1,11 +1,5 @@
 from django.db import models
-
-class User(models.Model):
-    name = models.CharField(max_length=100)
-    biography = models.TextField()
-
-    def __str__(self):
-        return self.name + ' ' + self.biography[:20] + '...'
+from django.contrib.auth.models import User
 
 
 class Playlist(models.Model):
@@ -16,9 +10,13 @@ class Playlist(models.Model):
     cover_image = models.URLField(blank=True)
     spotify_id = models.CharField(max_length=255, unique=True, blank=True)
     spotify_uri = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
+
+    class Meta:
+        ordering = ['-likes']
 
 
 class Song(models.Model):

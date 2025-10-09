@@ -11,7 +11,7 @@ def get_spotify_access_token():
     """
     Get Spotify API access token using Client Credentials flow
     """
-    auth_url = "https://accounts.spotify.com/api/token"
+    auth_url = settings.SPOTIFY_AUTH_URL
 
     data = {
         'grant_type': 'client_credentials',
@@ -67,16 +67,21 @@ def import_spotify_playlist(playlist_data):
             defaults={'first_name': 'Spotify', 'last_name': 'Importer'}
         )
 
+        # Extract cover image safely
+        cover_image = ''
+        if playlist_data.get('images') and len(playlist_data['images']) > 0:
+            cover_image = playlist_data['images'][0].get('url', '')
+
         # Create or update the playlist
         playlist, created = Playlist.objects.get_or_create(
             spotify_id=playlist_data['id'],
             defaults={
-                'name': playlist_data['name'],
+                'name': playlist_data.get('name', 'Untitled Playlist'),
                 'description': playlist_data.get('description', ''),
                 'creator': user,
-                'likes': playlist_data.get('followers', {}).get('total', 0),
-                'cover_image': playlist_data['images'][0]['url'] if playlist_data.get('images') else '',
-                'spotify_uri': playlist_data['uri'],
+                'likes': playlist_data.get('followers', {}).get('total', 0) if playlist_data.get('followers') else 0,
+                'cover_image': cover_image,
+                'spotify_uri': playlist_data.get('uri', ''),
             }
         )
 
@@ -123,9 +128,8 @@ def fetch_and_add_spotify_songs(playlist, tracks_url, limit=5):
 
 
 def home(request):
-    """
-    Display playlists from database, or fetch from Spotify if empty
-    """
+    # Display playlists from database, or fetch from Spotify if empty
+
     playlists = Playlist.objects.all().order_by('-likes')
 
     # If no playlists exist, fetch from Spotify
@@ -144,9 +148,8 @@ def home(request):
 
 
 def search(request):
-    """
-    Search view for finding playlists
-    """
+    # Search view for finding playlists
+
     query = request.GET.get('q', '')
     playlists = []
 
@@ -179,7 +182,21 @@ def search(request):
 
 
 def login(request):
-    return redirect('https://accounts.spotify.com/en/login')
+    return redirect(settings.SPOTIFY_LOGIN_URL)
 
 def logout(request):
     pass
+
+
+def profile(request, user_id):
+    # Display a user's profile and their playlists
+
+    user = User.objects.get(id=user_id)
+    playlists = Playlist.objects.filter(creator=user).order_by('-likes')
+
+    context = {
+        'profile_user': user,
+        'playlists': playlists,
+    }
+
+    return render(request, 'profile.html', context)
