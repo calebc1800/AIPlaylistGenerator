@@ -65,14 +65,8 @@
             color: #666;
         }
 
-        .last-song {
-            background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
-            border-radius: 15px;
-            padding: 25px;
-            margin-top: 20px;
-        }
-
-        .last-song h2 {
+        /* Last Played Track & Create Playlist unified styles */
+        .card h2 {
             color: #333;
             font-size: 1.5rem;
             margin-bottom: 20px;
@@ -82,36 +76,67 @@
             display: flex;
             gap: 20px;
             align-items: center;
+            margin-top: 15px;
         }
 
         .album-art {
-            width: 120px;
-            height: 120px;
+            width: 100px;
+            height: 100px;
             border-radius: 10px;
             object-fit: cover;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
 
-        .song-details {
-            flex: 1;
-        }
-
-        .song-name {
-            font-size: 1.3rem;
+        .song-details .song-name {
+            font-size: 1.2rem;
             font-weight: 600;
             color: #333;
             margin-bottom: 8px;
         }
 
-        .song-artist {
-            font-size: 1.1rem;
+        .song-details .song-artist {
+            font-size: 1rem;
             color: #666;
             margin-bottom: 5px;
         }
 
-        .song-album {
-            font-size: 0.95rem;
+        .song-details .song-album {
+            font-size: 0.9rem;
             color: #999;
+        }
+
+        .no-data {
+            text-align: center;
+            color: #999;
+            padding: 30px 0;
+            font-style: italic;
+        }
+
+        /* Create Playlist Form */
+        .playlist-form input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border-radius: 15px;
+            border: 1px solid #ccc;
+            font-size: 1rem;
+            margin-bottom: 15px;
+        }
+
+        .playlist-form button {
+            background: #1DB954;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .playlist-form button:hover {
+            background: #1ed760;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3);
         }
 
         .error {
@@ -120,13 +145,6 @@
             padding: 20px;
             border-radius: 10px;
             border: 1px solid #fcc;
-        }
-
-        .no-data {
-            text-align: center;
-            color: #999;
-            padding: 30px;
-            font-style: italic;
         }
 
         .spotify-link {
@@ -201,28 +219,36 @@
                     View on Spotify
                 </a>
                 {% endif %}
-
-                {% if last_song %}
-                <div class="last-song">
-                    <h2>Last Played Track</h2>
-                    <div class="song-content">
-                        {% if last_song.image %}
-                        <img src="{{ last_song.image }}" alt="Album Art" class="album-art">
-                        {% endif %}
-                        <div class="song-details">
-                            <div class="song-name">{{ last_song.name }}</div>
-                            <div class="song-artist">{{ last_song.artist }}</div>
-                            <div class="song-album">{{ last_song.album }}</div>
-                        </div>
-                    </div>
-                </div>
-                {% else %}
-                <div class="last-song">
-                    <h2>Last Played Track</h2>
-                    <div class="no-data">No recent listening history found</div>
-                </div>
-                {% endif %}
             {% endif %}
+        </div>
+
+        <!-- Last Played Track Card -->
+        <div class="card">
+            <h2>Last Played Track</h2>
+            {% if last_song %}
+            <div class="song-content">
+                {% if last_song.image %}
+                <img src="{{ last_song.image }}" alt="Album Art" class="album-art">
+                {% endif %}
+                <div class="song-details">
+                    <div class="song-name">{{ last_song.name }}</div>
+                    <div class="song-artist">{{ last_song.artist }}</div>
+                    <div class="song-album">{{ last_song.album }}</div>
+                </div>
+            </div>
+            {% else %}
+            <div class="no-data">No recent listening history found</div>
+            {% endif %}
+        </div>
+
+        <!-- Create Playlist Card -->
+        <div class="card">
+            <h2>Create a Playlist</h2>
+            <p class="subtitle">Enter a prompt to generate a playlist based on your mood, genre, or theme.</p>
+            <form class="playlist-form" action="/create_playlist/" method="POST">
+                <input type="text" name="playlist_prompt" placeholder="Type your playlist idea here..." required>
+                <button type="submit">Create Playlist</button>
+            </form>
         </div>
 
         <div class="nav-links">

@@ -12,7 +12,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #18ae4dff 0%, rgba(0, 0, 0, 1) 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -29,8 +29,8 @@
         }
 
         h1 {
-            color: #667eea;
-            font-size: 2.5rem;
+            color: #1DB954;
+            font-sirgba(0, 0, 0, 1)m;
             margin-bottom: 30px;
             text-align: center;
             letter-spacing: 2px;
@@ -109,7 +109,7 @@
     <div class="auth-section">
         <h2>Get Started</h2>
         <p>Connect your Spotify account to start generating AI-powered playlists</p>
-        <a href="/spotify/login/" class="spotify-button">
+        <a href="{% url 'spotify_auth:login' %}" class="spotify-button">
         Login with Spotify
         <img src="https://upload.wikimedia.org/wikipedia/commons/8/84/Spotify_icon.svg" alt="Spotify Logo" class="spotify-icon" >
         </a>

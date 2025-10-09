@@ -76,10 +76,7 @@ class SpotifyCallbackView(View):
         # Optional: Get user profile data
         user_profile = self.get_user_profile(token_data.get('access_token'))
         
-        return JsonResponse({
-            'message': 'Successfully authenticated with Spotify',
-            'user': user_profile
-        })
+        return redirect('spotify_auth:dashboard')
     
     def get_user_profile(self, access_token):
         """Fetch the user's Spotify profile"""
@@ -126,30 +123,20 @@ class SpotifyDashboardView(View):
     """Display user's Spotify data"""
     
     def get(self, request):
-        # Check if user has access token
         access_token = request.session.get('spotify_access_token')
-        
         if not access_token:
-            # Redirect to login if not authenticated
             return redirect('spotify_auth:login')
         
-        # Create Spotify client
         sp = spotipy.Spotify(auth=access_token)
-        
         try:
-            # Get current user profile
             user_profile = sp.current_user()
-            
-            # Get recently played tracks
             recently_played = sp.current_user_recently_played(limit=1)
             
-            # Extract data
             username = user_profile.get('display_name') or user_profile.get('id')
             user_id = user_profile.get('id')
             email = user_profile.get('email')
             followers = user_profile.get('followers', {}).get('total', 0)
             
-            # Get last played song
             last_song = None
             if recently_played and recently_played.get('items'):
                 track = recently_played['items'][0]['track']
@@ -169,16 +156,9 @@ class SpotifyDashboardView(View):
                 'last_song': last_song,
                 'profile_url': user_profile.get('external_urls', {}).get('spotify'),
             }
-            
             return render(request, 'spotify_auth/dashboard.html', context)
-            
+        
         except spotipy.exceptions.SpotifyException as e:
-            # Token might be expired, redirect to login
             if e.http_status == 401:
                 return redirect('spotify_auth:login')
-            
-            # Other error
-            context = {
-                'error': f'Error fetching Spotify data: {str(e)}'
-            }
-            return render(request, 'spotify_auth/dashboard.html', context)
+            return render(request, 'spotify_auth/dashboard.html', {'error': f'Error fetching Spotify data: {str(e)}'})
