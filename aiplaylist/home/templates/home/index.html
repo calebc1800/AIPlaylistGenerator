@@ -1,5 +1,36 @@
 {% extends 'home/base.html' %}
 
+<style>
+      .spotify-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 12px;
+          background: #1DB954;
+          color: white;
+          padding: 15px 35px;
+          border-radius: 50px;
+          text-decoration: none;
+          font-weight: 600;
+          font-size: 1.1rem;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3);
+      }
+
+      .spotify-button:hover {
+          background: #1ed760;
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(29, 185, 84, 0.4);
+      }
+
+      .spotify-button:active {
+          transform: translateY(0);
+      }
+
+      .spotify-icon {
+          width: 30px;
+          height: 30px;  
+</style>
+  
 {% block content %}
 <div class="playlist-explorer">
   <header class="header">
@@ -10,7 +41,12 @@
           <span class="user-greeting">{{ user.username }}</span>
           <a href="{% url 'logout' %}" class="btn btn-secondary">Logout</a>
         {% else %}
-          <a href="{% url 'login' %}" class="btn btn-primary">Login</a>
+          <h2>Get Started</h2>
+          <p>Connect your Spotify account to start generating AI-powered playlists</p>
+          <a href="{% url 'spotify_auth:login' %}" class="spotify-button">
+            Login with Spotify
+            <img src="https://upload.wikimedia.org/wikipedia/commons/8/84/Spotify_icon.svg" alt="Spotify Logo" class="spotify-icon" >
+        </a>
         {% endif %}
       </div>
     </div>

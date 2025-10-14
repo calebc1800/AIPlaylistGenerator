@@ -6,6 +6,8 @@ from django.conf import settings
 from .models import Playlist, Song
 from django.contrib.auth.models import User
 
+def index(request):
+    return render(request, 'home/index.html')
 
 def get_spotify_access_token():
     # Get Spotify API access token using Client Credentials flow
