@@ -181,7 +181,7 @@ def search(request):
 
 
 def login(request):
-    return redirect(settings.SPOTIFY_LOGIN_URL)
+    return redirect('/spotify/login')
 
 def logout(request):
     pass
