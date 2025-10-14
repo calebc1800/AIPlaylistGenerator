@@ -212,3 +212,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+/aiplaylist/static/
+/aiplaylist/staticfiles/
