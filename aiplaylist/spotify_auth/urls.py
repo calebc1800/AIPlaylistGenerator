@@ -12,5 +12,5 @@ urlpatterns = [
     path('login/', SpotifyLoginView.as_view(), name='login'),
     path('callback/', SpotifyCallbackView.as_view(), name='callback'),
     path('refresh/', SpotifyRefreshTokenView.as_view(), name='refresh'),
-    path('dashboard/', SpotifyDashboardView.as_view(), name='dashboard'),  # Add this line
+    path('dashboard/', SpotifyDashboardView.as_view(), name='dashboard'),
 ]
