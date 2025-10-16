@@ -97,7 +97,7 @@ jobs:
 
       - name: Run Tests with Coverage
         env:
-          DJANGO_SETTINGS_MODULE: aiplaylistgenerator.settings
+          DJANGO_SETTINGS_MODULE: aiplaylist.settings
         run: |
           echo "🚀 Running tests..."
           if command -v pytest &> /dev/null; then
