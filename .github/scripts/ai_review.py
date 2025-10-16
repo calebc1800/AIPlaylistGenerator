@@ -3,6 +3,9 @@ import subprocess
 import sys
 from pathlib import Path
 from openai import OpenAI
+from github import Github
+import json
+import requests
 
 # Try to load environment variables from a .env file at the repository root.
 # Prefer python-dotenv if installed, otherwise fall back to a simple parser.
@@ -50,23 +53,69 @@ except Exception as e:
     print(f"Failed to initialize OpenAI client: {e}")
     sys.exit(1)
 
-# Get changed files in this PR
-try:
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "origin/main...HEAD"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=True
-    )
-    changed_files = [f for f in result.stdout.splitlines() if f.endswith(".py")]
-except subprocess.CalledProcessError as e:
-    print(f"Git command failed: {e}")
-    print(f"stderr: {e.stderr}")
-    changed_files = []
-except Exception as e:
-    print(f"Could not get diff: {e}")
-    changed_files = []
+# Get GitHub environment variables
+github_token = os.environ.get("GITHUB_TOKEN")
+pr_number = os.environ.get("PR_NUMBER")
+repository_name = os.environ.get("REPOSITORY_NAME")
+base_sha = os.environ.get("BASE_SHA")
+head_sha = os.environ.get("HEAD_SHA")
+
+print(f"Repository: {repository_name}")
+print(f"PR Number: {pr_number}")
+print(f"Base SHA: {base_sha}")
+print(f"Head SHA: {head_sha}")
+
+# Get changed files in this PR using improved git commands
+changed_files = []
+
+# Try multiple approaches to get the diff
+git_commands = [
+    # First try: use the SHAs provided by GitHub
+    ["git", "diff", "--name-only", f"{base_sha}...{head_sha}"] if base_sha and head_sha else None,
+    # Second try: fetch and use origin/main
+    ["git", "fetch", "origin", "main"],
+    ["git", "diff", "--name-only", "origin/main...HEAD"],
+    # Third try: use merge-base approach
+    ["git", "diff", "--name-only", "$(git merge-base origin/main HEAD)", "HEAD"],
+    # Fourth try: just get recent changes
+    ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
+]
+
+for i, cmd in enumerate(git_commands):
+    if cmd is None:
+        continue
+
+    try:
+        print(f"Trying git command {i+1}: {' '.join(cmd)}")
+
+        if i == 1:  # This is the fetch command
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+            continue  # Just fetch, don't process output
+
+        if "$(git merge-base" in ' '.join(cmd):
+            # Handle the merge-base command specially
+            merge_base_result = subprocess.run(
+                ["git", "merge-base", "origin/main", "HEAD"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
+            )
+            merge_base = merge_base_result.stdout.strip()
+            actual_cmd = ["git", "diff", "--name-only", merge_base, "HEAD"]
+            result = subprocess.run(actual_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        else:
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+
+        changed_files = [f for f in result.stdout.splitlines() if f.endswith(".py")]
+        if changed_files:
+            print(f"Successfully got {len(changed_files)} Python files using command {i+1}")
+            break
+
+    except subprocess.CalledProcessError as e:
+        print(f"Git command {i+1} failed: {e}")
+        print(f"stderr: {e.stderr}")
+        continue
+    except Exception as e:
+        print(f"Unexpected error with git command {i+1}: {e}")
+        continue
 
 if not changed_files:
     print("No Python files changed. Skipping AI review.")
@@ -125,30 +174,35 @@ prompt = f"""
 You are a senior Django developer reviewing a Pull Request.
 Please identify potential issues, anti-patterns, security risks, and suggest best practices.
 Only focus on Django, Python, and API code style.
-Provide concise, actionable feedback.
+Provide concise, actionable feedback in a clear, professional format.
+
+Files changed: {', '.join(changed_files)}
 
 Code:
 {combined_code}
 """
 
-# Use a more stable model
-model_name = os.environ.get("OPENAI_MODEL", "gpt-5")
+# Use a configurable model
+model_name = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
 
+ai_review_content = ""
 try:
     response = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": "You are an expert code reviewer for Django projects. Provide constructive, specific feedback."},
+            {"role": "system", "content": "You are an expert code reviewer for Django projects. Provide constructive, specific feedback with clear recommendations."},
             {"role": "user", "content": prompt}
         ],
-        max_tokens=1000,
+        max_tokens=1500,
         temperature=0.1  # Lower temperature for more consistent reviews
     )
+
+    ai_review_content = response.choices[0].message.content
 
     print("\n" + "="*50)
     print("AI Code Review Summary:")
     print("="*50)
-    print(response.choices[0].message.content)
+    print(ai_review_content)
     print("="*50)
 
 except Exception as e:
@@ -163,12 +217,65 @@ except Exception as e:
                     {"role": "system", "content": "You are an expert code reviewer for Django projects."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=800
+                max_tokens=1200
             )
+            ai_review_content = response.choices[0].message.content
             print("\nAI Code Review Summary (Fallback):")
-            print(response.choices[0].message.content)
+            print(ai_review_content)
         except Exception as fallback_error:
             print(f"Fallback also failed: {fallback_error}")
-            sys.exit(1)
+            ai_review_content = "AI review failed due to API issues. Please check the logs for details."
     else:
-        sys.exit(1)
+        ai_review_content = "AI review failed due to API issues. Please check the logs for details."
+
+# Post the AI review as a GitHub PR comment
+if github_token and pr_number and repository_name and ai_review_content:
+    try:
+        print("\nPosting AI review as GitHub PR comment...")
+
+        # Initialize GitHub client
+        g = Github(github_token)
+        repo = g.get_repo(repository_name)
+        pr = repo.get_pull(int(pr_number))
+
+        # Format the comment
+        comment_body = f"""## 🤖 AI Code Review
+
+**Files reviewed:** {', '.join(changed_files)}
+
+{ai_review_content}
+
+---
+*This review was automatically generated by AI. Please use it as guidance alongside human code review.*
+"""
+
+        # Check if there's already an AI review comment to update instead of creating new ones
+        existing_comment = None
+        for comment in pr.get_issue_comments():
+            if comment.body.startswith("## 🤖 AI Code Review"):
+                existing_comment = comment
+                break
+
+        if existing_comment:
+            existing_comment.edit(comment_body)
+            print(f"Updated existing AI review comment: {existing_comment.html_url}")
+        else:
+            new_comment = pr.create_issue_comment(comment_body)
+            print(f"Posted new AI review comment: {new_comment.html_url}")
+
+    except Exception as e:
+        print(f"Failed to post GitHub comment: {e}")
+        print("AI review completed but could not be posted as PR comment.")
+
+else:
+    print("GitHub PR comment not posted - missing required environment variables or content.")
+    if not github_token:
+        print("Missing GITHUB_TOKEN")
+    if not pr_number:
+        print("Missing PR_NUMBER")
+    if not repository_name:
+        print("Missing REPOSITORY_NAME")
+    if not ai_review_content:
+        print("No AI review content generated")
+
+print("\n✅ AI Code Review completed successfully!")
