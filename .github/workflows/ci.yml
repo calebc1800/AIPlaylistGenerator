@@ -100,7 +100,7 @@ jobs:
           DJANGO_SETTINGS_MODULE: aiplaylist.settings
         run: |
           echo "🚀 Setting up Python path and running tests with coverage..."
-          export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}"
+          export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}/src"
           echo "PYTHONPATH set to: $PYTHONPATH"
           python -c "import aiplaylist; print('✅ Django project imported successfully')"
           pytest --cov=aiplaylist --cov-report=term-missing -v
