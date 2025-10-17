@@ -4,7 +4,6 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.conf import settings
 from unittest.mock import patch, Mock
-import spotipy
 import json
 
 
@@ -134,9 +133,9 @@ class SpotifyCallbackViewTests(TestCase):
             'state': 'test_state'
         })
         
-        # Should redirect to home
+        # Should redirect to dashboard
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, reverse('home'))
+        self.assertEqual(response.url, reverse('spotify_auth:dashboard'))
         
         # Tokens should be stored in session
         self.assertEqual(self.client.session['spotify_access_token'], 'test_access_token')
@@ -321,8 +320,8 @@ class SpotifyIntegrationTests(TestCase):
         self.client = Client()
     
     @patch('spotify_auth.views.requests.post')
-    @patch('spotify_auth.views.requests.get')
-    def test_complete_oauth_flow(self, mock_get, mock_post):
+    @patch('spotify_auth.views.spotipy.Spotify')
+    def test_complete_oauth_flow(self, mock_spotify, mock_post):
         """Test the complete OAuth flow from login to callback"""
         # Step 1: Initiate login
         login_response = self.client.get(reverse('spotify_auth:login'))
@@ -342,15 +341,14 @@ class SpotifyIntegrationTests(TestCase):
         }
         mock_post.return_value = mock_token_response
         
-        # Mock user profile
-        mock_profile_response = Mock()
-        mock_profile_response.status_code = 200
-        mock_profile_response.json.return_value = {
+        # Mock Spotify API for user profile (via spotipy)
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        mock_sp_instance.current_user.return_value = {
             'id': 'test_user',
             'display_name': 'Test User',
             'email': 'test@example.com'
         }
-        mock_get.return_value = mock_profile_response
         
         # Step 3: Complete callback
         callback_response = self.client.get(reverse('spotify_auth:callback'), {
@@ -358,13 +356,14 @@ class SpotifyIntegrationTests(TestCase):
             'state': state
         })
         
-        # Should redirect to home
+        # Should redirect to dashboard
         self.assertEqual(callback_response.status_code, 302)
         
         # Session should contain tokens
         self.assertIn('spotify_access_token', self.client.session)
         self.assertIn('spotify_refresh_token', self.client.session)
         self.assertIn('spotify_user_id', self.client.session)
+
 
 class SpotifyDashboardViewTests(TestCase):
     """Tests for the Spotify dashboard view"""
@@ -615,4 +614,6 @@ class SpotifyDashboardViewTests(TestCase):
         
         # Verify Spotify client was created with correct token
         mock_spotify.assert_called_once_with(auth='my_test_token')
-# Run tests with: python3 manage.py test spotify_auth.tests
+
+
+# Run tests with: python manage.py test spotify_auth.tests
