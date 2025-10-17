@@ -4,6 +4,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.conf import settings
 from unittest.mock import patch, Mock
+import spotipy
 import json
 
 
