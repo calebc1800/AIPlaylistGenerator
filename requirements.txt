@@ -9,6 +9,7 @@ backoff==1.11.1
 certifi==2025.10.5
 cffi==2.0.0
 charset-normalizer==3.4.3
+coverage==7.11.0
 cryptography==46.0.3
 distro==1.9.0
 Django==5.2.7
@@ -36,6 +37,7 @@ Pygments==2.19.2
 PyJWT==2.10.1
 PyNaCl==1.6.0
 pytest==8.4.2
+pytest-cov==7.0.0
 python-dotenv==1.1.1
 redis==6.4.0
 requests==2.32.5
