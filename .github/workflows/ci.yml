@@ -97,12 +97,12 @@ jobs:
 
       - name: Run Tests with Coverage
         env:
-          DJANGO_SETTINGS_MODULE: aiplaylist.settings
+          DJANGO_SETTINGS_MODULE: src.aiplaylist.settings
         run: |
           echo "🚀 Running tests..."
           if command -v pytest &> /dev/null; then
             pytest --cov=. --cov-report term-missing
           else
             echo "pytest not available, running Django tests directly"
-            python manage.py test
+            python src/manage.py test
           fi
