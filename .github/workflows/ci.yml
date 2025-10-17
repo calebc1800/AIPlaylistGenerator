@@ -97,11 +97,13 @@ jobs:
 
       - name: Run Tests with Coverage
         env:
-          DJANGO_SETTINGS_MODULE: src.aiplaylist.settings
+          DJANGO_SETTINGS_MODULE: aiplaylist.settings
         run: |
-          echo "🚀 Running tests..."
-          if command -v pytest &> /dev/null; then
-            pytest --cov=. --cov-report term-missing
+          echo "🚀 Setting up Python path and running tests with coverage..."
+          export PYTHONPATH="${PYTHONPATH}:${{ steps.detect_project.outputs.project_path }}"
+          echo "PYTHONPATH set to: $PYTHONPATH"
+          python -c "import aiplaylist; print('✅ Django project imported successfully')"
+          pytest --cov=aiplaylist --cov-report=term-missing -v
           else
             echo "pytest not available, running Django tests directly"
             python src/manage.py test
