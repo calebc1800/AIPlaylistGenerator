@@ -1,0 +1,113 @@
+name: Django CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ai_code_review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openai requests python-dotenv PyGithub
+      
+      - name: Check if AI review script exists
+        id: check_script
+        run: |
+          if [ -f ".github/scripts/ai_review.py" ]; then
+            echo "script_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "script_exists=false" >> $GITHUB_OUTPUT
+            echo "AI review script not found at .github/scripts/ai_review.py"
+          fi
+      
+      - name: Ensure OPENAI_API_KEY is present for same-repo PRs
+        if: github.event.pull_request.head.repo.full_name == github.repository && steps.check_script.outputs.script_exists == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "ERROR: OPENAI_API_KEY secret is missing — aborting AI review."
+            exit 1
+          fi
+      
+      - name: Run AI Code Review
+        if: github.event.pull_request.head.repo.full_name == github.repository && steps.check_script.outputs.script_exists == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY_NAME: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "🧠 Running AI Code Review..."
+          python .github/scripts/ai_review.py
+      
+      - name: Skip AI Review for forked PRs
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "AI review skipped: this pull request originates from a fork and repository secrets are not available."
+      
+      - name: Skip AI Review - script not found
+        if: steps.check_script.outputs.script_exists == 'false'
+        run: |
+          echo "AI review skipped: .github/scripts/ai_review.py not found."
+
+  tests:
+    name: Run Django Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+          else
+            echo "requirements.txt not found, installing basic test dependencies"
+            pip install django pytest pytest-cov pytest-django
+          fi
+      
+      - name: Run Tests with Coverage
+        env:
+          DJANGO_SETTINGS_MODULE: aiplaylist.settings
+        run: |
+          echo "🚀 Setting up Python path and running tests with coverage..."
+          export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}/src"
+          echo "PYTHONPATH set to: $PYTHONPATH"
+          python -c "import aiplaylist; print('✅ Django project imported successfully')"
+          
+          if command -v pytest &> /dev/null; then
+            pytest --cov=. --cov-report=term-missing -v
+          else
+            echo "pytest not available, running Django tests directly"
+            python src/manage.py test
+          fi
+          

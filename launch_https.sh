@@ -2,7 +2,7 @@
 
 pip install -r requirements.txt
 
-cd aiplaylist || exit
+cd src || exit
 
 python manage.py collectstatic
 python manage.py makemigrations
