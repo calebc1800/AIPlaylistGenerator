@@ -103,7 +103,7 @@ jobs:
           export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}/src"
           echo "PYTHONPATH set to: $PYTHONPATH"
           python -c "import aiplaylist; print('✅ Django project imported successfully')"
-          pytest --cov=aiplaylist --cov-report=term-missing -v
+          pytest --cov=src --cov-report=term-missing -v
           else
             echo "pytest not available, running Django tests directly"
             python src/manage.py test
