@@ -76,16 +76,13 @@ class SpotifyCallbackView(View):
         # Optional: Get user profile data
         user_profile = self.get_user_profile(token_data.get('access_token'))
         
-        return redirect('spotify_auth:dashboard')
-    
-    def get_user_profile(self, access_token):
-        """Fetch the user's Spotify profile"""
-        headers = {'Authorization': f'Bearer {access_token}'}
-        response = requests.get('https://api.spotify.com/v1/me', headers=headers)
+        # Store user info in session
+        if user_profile:
+            request.session['spotify_user_id'] = user_profile.get('id')
+            request.session['spotify_display_name'] = user_profile.get('display_name')
         
-        if response.status_code == 200:
-            return response.json()
-        return None
+        # CHANGED: Redirect to dashboard instead of returning JSON
+        return redirect('spotify_auth:dashboard')
 
 
 class SpotifyRefreshTokenView(View):
