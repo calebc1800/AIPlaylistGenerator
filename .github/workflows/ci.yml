@@ -97,7 +97,7 @@ jobs:
 
       - name: Run Tests with Coverage
         env:
-          DJANGO_SETTINGS_MODULE: aiplaylist.settings
+          DJANGO_SETTINGS_MODULE: src.aiplaylist.settings
         run: |
           echo "🚀 Setting up Python path and running tests with coverage..."
           export PYTHONPATH="${PYTHONPATH}:${{ steps.detect_project.outputs.project_path }}"
