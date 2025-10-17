@@ -8,6 +8,7 @@ even when there are import path issues.
 import os
 import sys
 import django
+from django.conf import settings
 from pathlib import Path
 
 # Add project root to Python path
@@ -50,7 +51,7 @@ def setup_django():
     return False
 
 # Setup Django when conftest is loaded
-if not django.conf.settings.configured:
+if not settings.configured:
     if not setup_django():
         print("⚠️  Warning: Could not configure Django for aiplaylist project. Tests may fail.")
         print("💡 Make sure 'aiplaylist' module is importable and has proper __init__.py files")
