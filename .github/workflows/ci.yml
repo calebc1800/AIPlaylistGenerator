@@ -18,18 +18,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch full history to get branch refs (needed for diff with origin/main)
-
+          fetch-depth: 0
+      
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install openai requests python-dotenv PyGithub
-
+      
       - name: Check if AI review script exists
         id: check_script
         run: |
@@ -39,7 +39,7 @@ jobs:
             echo "script_exists=false" >> $GITHUB_OUTPUT
             echo "AI review script not found at .github/scripts/ai_review.py"
           fi
-
+      
       - name: Ensure OPENAI_API_KEY is present for same-repo PRs
         if: github.event.pull_request.head.repo.full_name == github.repository && steps.check_script.outputs.script_exists == 'true'
         env:
@@ -49,7 +49,7 @@ jobs:
             echo "ERROR: OPENAI_API_KEY secret is missing — aborting AI review."
             exit 1
           fi
-
+      
       - name: Run AI Code Review
         if: github.event.pull_request.head.repo.full_name == github.repository && steps.check_script.outputs.script_exists == 'true'
         env:
@@ -62,12 +62,12 @@ jobs:
         run: |
           echo "🧠 Running AI Code Review..."
           python .github/scripts/ai_review.py
-
+      
       - name: Skip AI Review for forked PRs
         if: github.event.pull_request.head.repo.full_name != github.repository
         run: |
           echo "AI review skipped: this pull request originates from a fork and repository secrets are not available."
-
+      
       - name: Skip AI Review - script not found
         if: steps.check_script.outputs.script_exists == 'false'
         run: |
@@ -79,12 +79,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+      
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -94,7 +94,7 @@ jobs:
             echo "requirements.txt not found, installing basic test dependencies"
             pip install django pytest pytest-cov pytest-django
           fi
-
+      
       - name: Run Tests with Coverage
         env:
           DJANGO_SETTINGS_MODULE: aiplaylist.settings
@@ -103,8 +103,11 @@ jobs:
           export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}/src"
           echo "PYTHONPATH set to: $PYTHONPATH"
           python -c "import aiplaylist; print('✅ Django project imported successfully')"
-          pytest --cov=. --cov-report=term-missing -v
+          
+          if command -v pytest &> /dev/null; then
+            pytest --cov=. --cov-report=term-missing -v
           else
             echo "pytest not available, running Django tests directly"
             python src/manage.py test
           fi
+          
