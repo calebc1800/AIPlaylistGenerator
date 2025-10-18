@@ -1,10 +1,9 @@
-from django.contrib import admin
-from django.urls import path, include
-from . import views
+from django.urls import path
+from .views import HomeView, SearchView, ProfileView, LogoutView
 
 urlpatterns = [
-    path('', views.home, name='home'),
-    path('search/', views.search, name='search'),
-    path('profile/<int:user_id>/', views.profile, name='profile'),
-    path('accounts/logout/', views.logout, name='logout'),
+    path('', HomeView.as_view(), name='home'),
+    path('search/', SearchView.as_view(), name='search'),
+    path('profile/<int:user_id>/', ProfileView.as_view(), name='profile'),
+    path('accounts/logout/', LogoutView.as_view(), name='logout'),
 ]
