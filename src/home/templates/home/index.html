@@ -3,7 +3,7 @@
 <div class="playlist-explorer">
   <header class="header">
     <div class="header-content">
-      <h1>Main Page / Playlist Explorer</h1>
+      <h1>Playlist Explorer</h1>
       <div class="auth-buttons">
         {% if user.is_authenticated %}
           <span class="user-greeting">{{ user.username }}</span>
@@ -26,57 +26,9 @@
 
       <div class="playlists-grid">
         {% for playlist in playlists %}
-          <div class="playlist-card">
-            <!-- Top: Image + Info -->
-            <div class="playlist-top">
-              <div class="playlist-cover">
-                {% if playlist.cover_image %}
-                  <img src="{{ playlist.cover_image }}" alt="{{ playlist.name }}">
-                {% else %}
-                  <div class="placeholder-cover">Cover Art</div>
-                {% endif %}
-              </div>
-
-              <div class="playlist-info">
-                <div class="playlist-header">
-                  <div class="info-icon">👤</div>
-                  <span class="creator-profile">{{ playlist.creator.username }}</span>
-                </div>
-
-                <div class="playlist-details">
-                  {% if playlist.total_duration %}
-                    <p class="duration">{{ playlist.total_duration }}</p>
-                  {% endif %}
-                  <p class="likes">{{ playlist.likes }} 👍</p>
-                </div>
-
-                <div class="sample-songs">
-                  {% for song in playlist.sample_songs.all|slice:":3" %}
-                    <p class="song">♪ {{ song.name }}</p>
-                  {% empty %}
-                    <p class="song">No songs available</p>
-                  {% endfor %}
-                </div>
-              </div>
-            </div>
-
-            <!-- Spotify Embed below -->
-            <div class="spotify-embed">
-              {% if playlist.spotify_id %}
-                <iframe
-                  src="https://open.spotify.com/embed/playlist/{{ playlist.spotify_id }}"
-                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                  loading="lazy">
-                </iframe>
-              {% else %}
-                <p class="no-embed">Spotify embed not available</p>
-              {% endif %}
-            </div>
-          </div>
+          {% include "home/partials/playlist_card.html" %}
         {% empty %}
-          <div class="no-playlists">
-            <p>No playlists found. Create one to get started!</p>
-          </div>
+          <p>No playlists found.</p>
         {% endfor %}
       </div>
     </section>
