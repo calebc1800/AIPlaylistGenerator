@@ -13,87 +13,256 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #1DB954 0%, #191414 100%);
+            background: linear-gradient(135deg, #0d47a1 0%, #42a5f5 100%);
             min-height: 100vh;
-            padding: 40px 20px;
         }
 
-        .container {
-            max-width: 900px;
+        .dashboard-container {
+            max-width: 1200px;
             margin: 0 auto;
+            padding: 20px;
         }
 
-        .card {
+        .header {
             background: white;
             border-radius: 20px;
-            padding: 40px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            margin-bottom: 30px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
         }
 
-        h1 {
-            color: #1DB954;
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            text-align: center;
+        .header h1 {
+            color: #0288D1;
+            font-size: 2rem;
+            margin-bottom: 5px;
         }
 
-        .subtitle {
+        .header .subtitle {
             color: #666;
-            font-size: 1.1rem;
-            margin-bottom: 30px;
-            text-align: center;
+            font-size: 0.9rem;
         }
 
-        .user-info {
-            display: grid;
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-
-        .info-row {
+        .tabs {
+            background: white;
+            border-radius: 20px 20px 0 0;
             display: flex;
-            padding: 12px 0;
-            border-bottom: 1px solid #eee;
+            gap: 0;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
         }
 
-        .info-label {
+        .tab {
+            flex: 1;
+            padding: 20px;
+            text-align: center;
+            background: white;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
             font-weight: 600;
-            color: #333;
-            min-width: 120px;
-        }
-
-        .info-value {
             color: #666;
+            transition: all 0.3s ease;
+            position: relative;
         }
 
-        .last-song, .create-playlist, .explore-playlists {
-            background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
-            border-radius: 15px;
-            padding: 25px;
+        .tab:hover {
+            background: #f8f8f8;
+        }
+
+        .tab.active {
+            color: #0288D1;
+            background: #E3F2FD;
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #0288D1;
+        }
+
+        .tab-content {
+            background: white;
+            border-radius: 0 0 20px 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .tab-content h2 {
+            color: #333;
+            font-size: 1.8rem;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #eee;
+        }
+
+        /* Explore Tab Styles */
+        .playlist-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 25px;
             margin-top: 20px;
         }
 
-        .last-song h2,
-        .create-playlist h2,
-        .explore-playlists h2 {
-            color: #333;
-            font-size: 1.5rem;
-            margin-bottom: 20px;
+        .playlist-card {
+            background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
-        .song-content {
+        .playlist-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .playlist-art {
+            width: 100%;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            aspect-ratio: 1;
+            object-fit: cover;
+        }
+
+        .playlist-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .no-data {
+            text-align: center;
+            color: #999;
+            padding: 60px 20px;
+            font-style: italic;
+            font-size: 1.1rem;
+        }
+
+        /* Create Tab Styles */
+        .create-form {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 15px;
+            border-radius: 15px;
+            border: 2px solid #e0e0e0;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #0288D1;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .create-btn {
+            background: #0288D1;
+            color: white;
+            padding: 15px 40px;
+            border-radius: 50px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            display: block;
+            margin: 30px auto 0;
+        }
+
+        .create-btn:hover {
+            background: #0277BD;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(2, 136, 209, 0.4);
+        }
+
+        /* Stats Tab Styles */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        .last-song-card {
+            background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 30px;
             display: flex;
-            gap: 20px;
+            gap: 25px;
             align-items: center;
         }
 
         .album-art {
-            width: 120px;
-            height: 120px;
-            border-radius: 10px;
+            width: 150px;
+            height: 150px;
+            border-radius: 15px;
             object-fit: cover;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
         }
 
         .song-details {
@@ -101,10 +270,10 @@
         }
 
         .song-name {
-            font-size: 1.3rem;
+            font-size: 1.5rem;
             font-weight: 600;
             color: #333;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
 
         .song-artist {
@@ -118,175 +287,270 @@
             color: #999;
         }
 
+        /* Account Tab Styles */
+        .account-section {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .info-card {
+            background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            padding: 15px 0;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #333;
+            min-width: 140px;
+        }
+
+        .info-value {
+            color: #666;
+        }
+
         .spotify-link {
-            display: inline-block;
-            background: #1DB954;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: #0288D1;
             color: white;
-            padding: 12px 24px;
+            padding: 12px 30px;
             border-radius: 50px;
             text-decoration: none;
             font-weight: 600;
-            margin-top: 20px;
             transition: all 0.3s ease;
+            margin-bottom: 20px;
         }
 
         .spotify-link:hover {
-            background: #1ed760;
+            background: #0277BD;
             transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3);
+            box-shadow: 0 6px 20px rgba(2, 136, 209, 0.4);
         }
 
-        .playlist-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-
-        .playlist-card {
-            background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
-            border-radius: 15px;
-            padding: 15px;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        }
-
-        .playlist-art {
-            width: 100%;
-            border-radius: 10px;
-            margin-bottom: 10px;
-        }
-
-        .playlist-name {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 1rem;
-        }
-
-        .playlist-card .spotify-link {
-            display: inline-block;
-            background: #1DB954;
+        .logout-btn {
+            background: #e74c3c;
             color: white;
-            padding: 8px 20px;
-            border-radius: 50px;
-            font-size: 0.9rem;
-            text-decoration: none;
-            transition: all 0.3s ease;
-        }
-
-        .playlist-card .spotify-link:hover {
-            background: #1ed760;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3);
-        }
-
-        .no-data {
-            text-align: center;
-            color: #999;
-            padding: 30px;
-            font-style: italic;
-        }
-
-        form input[type="text"] {
-            width: 100%;
-            padding: 12px 15px;
-            border-radius: 15px;
-            border: 1px solid #ccc;
-            font-size: 1rem;
-            margin-bottom: 15px;
-        }
-
-        form button {
-            background: #1DB954;
-            color: white;
-            padding: 12px 24px;
+            padding: 12px 30px;
             border-radius: 50px;
             font-weight: 600;
             border: none;
             cursor: pointer;
+            font-size: 1rem;
             transition: all 0.3s ease;
         }
 
-        form button:hover {
-            background: #1ed760;
+        .logout-btn:hover {
+            background: #c0392b;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4);
         }
 
+        @media (max-width: 768px) {
+            .tab {
+                padding: 15px 10px;
+                font-size: 0.9rem;
+            }
+
+            .playlist-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 15px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .last-song-card {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .tab-content {
+                padding: 20px;
+            }
+        }
     </style>
 </head>
 <body>
-<div class="container">
-    <h1>Welcome, {{ username }}!</h1>
-    <p class="subtitle">Your Spotify Dashboard</p>
-
-    <div class="user-info">
-        <div class="info-row">
-            <span class="info-label">User ID:</span>
-            <span class="info-value">{{ user_id }}</span>
+    <div class="dashboard-container">
+        <div class="header">
+            <h1>Welcome, {{ username }}!</h1>
+            <p class="subtitle">Your Spotify Dashboard</p>
         </div>
-        {% if email %}
-        <div class="info-row">
-            <span class="info-label">Email:</span>
-            <span class="info-value">{{ email }}</span>
-        </div>
-        {% endif %}
-        <div class="info-row">
-            <span class="info-label">Followers:</span>
-            <span class="info-value">{{ followers }}</span>
-        </div>
-    </div>
 
-    {% if profile_url %}
-    <a href="{{ profile_url }}" target="_blank" class="spotify-link">View on Spotify</a>
-    {% endif %}
+        <div class="tabs">
+            <button class="tab active" data-tab="explore">Explore</button>
+            <button class="tab" data-tab="create">Create</button>
+            <button class="tab" data-tab="stats">Stats</button>
+            <button class="tab" data-tab="account">Account</button>
+        </div>
 
-    <!-- Last Played Track -->
-    <div class="card last-song">
-        <h2>Last Played Track</h2>
-        {% if last_song %}
-        <div class="song-content">
-            {% if last_song.image %}
-            <img src="{{ last_song.image }}" alt="Album Art" class="album-art">
-            {% endif %}
-            <div class="song-details">
-                <div class="song-name">{{ last_song.name }}</div>
-                <div class="song-artist">{{ last_song.artist }}</div>
-                <div class="song-album">{{ last_song.album }}</div>
+        <!-- Explore Tab -->
+        <div class="tab-content active" id="explore">
+            <h2>Explore Playlists</h2>
+            <p style="color: #666; margin-bottom: 30px;">Discover popular or recommended playlists generated by AI or other users.</p>
+            
+            <div class="playlist-grid">
+                {% if explore_playlists %}
+                    {% for playlist in explore_playlists %}
+                    <div class="playlist-card">
+                        <img src="{{ playlist.image_url }}" alt="{{ playlist.name }}" class="playlist-art">
+                        <div class="playlist-name">{{ playlist.name }}</div>
+                        <a href="{{ playlist.url }}" target="_blank" class="spotify-link">View on Spotify</a>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="no-data" style="grid-column: 1 / -1;">No playlists available to explore yet</div>
+                {% endif %}
             </div>
         </div>
-        {% else %}
-        <div class="no-data">No recent listening history found</div>
-        {% endif %}
-    </div>
 
-    <!-- Create Playlist -->
-    <div class="card create-playlist">
-        <h2>Create a Playlist</h2>
-        <p class="subtitle">Enter a prompt to generate a playlist based on your mood, genre, or theme.</p>
-        <form action="/create_playlist/" method="POST">
-            <input type="text" name="playlist_prompt" placeholder="Type your playlist idea here..." required>
-            <button type="submit">Create Playlist</button>
-        </form>
-    </div>
-
-    <!-- Explore Playlists -->
-    <div class="card explore-playlists">
-        <h2>Explore Playlists</h2>
-        <p class="subtitle">Discover popular or recommended playlists generated by AI or other users.</p>
-        <div class="playlist-grid">
-            {% if explore_playlists %}
-                {% for playlist in explore_playlists %}
-                <div class="playlist-card">
-                    <img src="{{ playlist.image_url }}" alt="{{ playlist.name }}" class="playlist-art">
-                    <div class="playlist-name">{{ playlist.name }}</div>
-                    <a href="{{ playlist.url }}" target="_blank" class="spotify-link">View on Spotify</a>
+        <!-- Create Tab -->
+        <div class="tab-content" id="create">
+            <h2>Create a Playlist</h2>
+            <p style="color: #666; text-align: center; margin-bottom: 30px;">Enter a prompt to generate a playlist based on your mood, genre, or theme.</p>
+            
+            <form class="create-form" action="/create_playlist/" method="POST">
+                <div class="form-group">
+                    <label for="playlist_prompt">Playlist Prompt</label>
+                    <textarea 
+                        id="playlist_prompt" 
+                        name="playlist_prompt" 
+                        placeholder="E.g., 'Upbeat indie rock for a road trip' or 'Relaxing jazz for studying'"
+                        required
+                    ></textarea>
                 </div>
-                {% endfor %}
+                
+                <div class="form-group">
+                    <label for="playlist_name">Playlist Name (Optional)</label>
+                    <input 
+                        type="text" 
+                        id="playlist_name" 
+                        name="playlist_name" 
+                        placeholder="Leave empty to auto-generate"
+                    >
+                </div>
+                
+                <button type="submit" class="create-btn">Create Playlist</button>
+            </form>
+        </div>
+
+        <!-- Stats Tab -->
+        <div class="tab-content" id="stats">
+            <h2>Your Music Stats</h2>
+            
+            <div class="stats-grid">
+                <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <div class="stat-value">{{ followers }}</div>
+                    <div class="stat-label">Followers</div>
+                </div>
+                
+                <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Playlists Created</div>
+                </div>
+                
+                <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Songs Added</div>
+                </div>
+            </div>
+
+            <h3 style="color: #333; margin: 40px 0 20px 0; font-size: 1.4rem;">Last Played Track</h3>
+            {% if last_song %}
+            <div class="last-song-card">
+                {% if last_song.image %}
+                <img src="{{ last_song.image }}" alt="Album Art" class="album-art">
+                {% endif %}
+                <div class="song-details">
+                    <div class="song-name">{{ last_song.name }}</div>
+                    <div class="song-artist">{{ last_song.artist }}</div>
+                    <div class="song-album">{{ last_song.album }}</div>
+                </div>
+            </div>
             {% else %}
-                <div class="no-data">No playlists available to explore yet</div>
+            <div class="no-data">No recent listening history found</div>
             {% endif %}
         </div>
+
+        <!-- Account Tab -->
+        <div class="tab-content" id="account">
+            <h2>Account Settings</h2>
+            
+            <div class="account-section">
+                <div class="info-card">
+                    <div class="info-row">
+                        <span class="info-label">Username:</span>
+                        <span class="info-value">{{ username }}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">User ID:</span>
+                        <span class="info-value">{{ user_id }}</span>
+                    </div>
+                    {% if email %}
+                    <div class="info-row">
+                        <span class="info-label">Email:</span>
+                        <span class="info-value">{{ email }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="info-row">
+                        <span class="info-label">Followers:</span>
+                        <span class="info-value">{{ followers }}</span>
+                    </div>
+                </div>
+
+                {% if profile_url %}
+                <a href="{{ profile_url }}" target="_blank" class="spotify-link">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                    </svg>
+                    View on Spotify
+                </a>
+                {% endif %}
+
+                <button class="logout-btn" onclick="if(confirm('Are you sure you want to log out?')) window.location.href='/accounts/logout/'">
+                    Log Out
+                </button>
+            </div>
+        </div>
     </div>
-</div>
+
+    <script>
+        // Tab switching functionality
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remove active class from all tabs and contents
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(content => content.classList.remove('active'));
+
+                // Add active class to clicked tab
+                tab.classList.add('active');
+
+                // Show corresponding content
+                const tabId = tab.getAttribute('data-tab');
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+    </script>
 </body>
 </html>
