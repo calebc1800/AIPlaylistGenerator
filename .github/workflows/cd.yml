@@ -1,0 +1,14 @@
+# pipeline to create docker image and push to docker hub, then deploy to host server
+# all keys will be stored in github repository secrets and will be accessed through this pipeline on github
+# upon successful pull request to main branch and only after successful tests through the ci.yml pipeline
+name: Continuous Deployment
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+    build_and_push:
+    
+        
+
