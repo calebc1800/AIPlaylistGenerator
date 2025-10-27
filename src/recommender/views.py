@@ -1,6 +1,7 @@
 import hashlib
 import logging
-from typing import Dict, List, Optional
+import time
+from typing import Callable, Dict, List, Optional
 
 from django.core.cache import cache
 from django.shortcuts import redirect, render
@@ -21,23 +22,33 @@ def _cache_key(user_identifier: str, prompt: str) -> str:
     return f"recommender:{user_identifier}:{digest}"
 
 
+def _make_logger(debug_steps: List[str]) -> Callable[[str], None]:
+    start = time.perf_counter()
+
+    def _log(message: str) -> None:
+        elapsed = time.perf_counter() - start
+        formatted = f"[{elapsed:0.2f}s] {message}"
+        debug_steps.append(formatted)
+        logger.debug("generate_playlist: %s", formatted)
+
+    return _log
+
+
 @require_POST
 def generate_playlist(request):
     prompt = request.POST.get("prompt", "").strip()
     debug_steps: List[str] = []
+    log = _make_logger(debug_steps)
 
     if not prompt:
-        debug_steps.append("Prompt missing; redirecting to dashboard.")
-        logger.debug("generate_playlist: %s", debug_steps[-1])
+        log("Prompt missing; redirecting to dashboard.")
         return redirect("spotify_auth:dashboard")
 
-    debug_steps.append(f"Prompt received: {prompt}")
-    logger.debug("generate_playlist: %s", debug_steps[-1])
+    log(f"Prompt received: {prompt}")
 
     access_token = request.session.get("spotify_access_token")
     if not access_token:
-        debug_steps.append("Missing Spotify access token; redirecting to login.")
-        logger.debug("generate_playlist: %s", debug_steps[-1])
+        log("Missing Spotify access token; redirecting to login.")
         return redirect("spotify_auth:login")
 
     user_id = "anonymous"
@@ -57,8 +68,7 @@ def generate_playlist(request):
     similar_tracks: List[str] = []
 
     if isinstance(cached_payload, dict):
-        debug_steps.append("Loaded playlist from cache.")
-        logger.debug("generate_playlist: %s", debug_steps[-1])
+        log("Loaded playlist from cache.")
         playlist = cached_payload.get("playlist", [])
         attributes = cached_payload.get("attributes")
         llm_suggestions = cached_payload.get("llm_suggestions", [])
@@ -66,59 +76,63 @@ def generate_playlist(request):
         seed_track_display = cached_payload.get("seed_track_display", [])
         similar_tracks = cached_payload.get("similar_tracks", [])
     elif cached_payload:
-        debug_steps.append("Loaded legacy cached playlist format.")
-        logger.debug("generate_playlist: %s", debug_steps[-1])
+        log("Loaded legacy cached playlist format.")
         playlist = cached_payload
     else:
-        attributes = extract_playlist_attributes(prompt, debug_steps=debug_steps)
-        debug_steps.append(f"Attributes after normalization: {attributes}")
-        logger.debug("generate_playlist: %s", debug_steps[-1])
+        attributes = extract_playlist_attributes(
+            prompt,
+            debug_steps=debug_steps,
+            log_step=log,
+        )
+        log(f"Attributes after normalization: {attributes}")
 
         llm_suggestions = suggest_seed_tracks(
             prompt,
             attributes,
             debug_steps=debug_steps,
+            log_step=log,
         )
         resolved_seed_tracks = resolve_seed_tracks(
             llm_suggestions,
             access_token,
             debug_steps=debug_steps,
+            log_step=log,
         )
 
         if not resolved_seed_tracks:
-            debug_steps.append("No LLM seeds resolved; discovering top tracks from Spotify.")
+            log("No LLM seeds resolved; discovering top tracks from Spotify.")
             resolved_seed_tracks = discover_top_tracks_for_genre(
                 attributes,
                 access_token,
                 debug_steps=debug_steps,
+                log_step=log,
             )
             if resolved_seed_tracks:
                 llm_suggestions = [
                     {"title": track["name"], "artist": track["artists"]}
                     for track in resolved_seed_tracks
                 ]
+
         seed_track_display = [
             f"{track['name']} - {track['artists']}" for track in resolved_seed_tracks
         ]
-        debug_steps.append(f"Resolved seed tracks ({len(seed_track_display)}): {seed_track_display}")
-        logger.debug("generate_playlist: %s", debug_steps[-1])
+        log(f"Resolved seed tracks ({len(seed_track_display)}): {seed_track_display}")
 
         seed_track_ids = [track["id"] for track in resolved_seed_tracks]
         if not seed_track_ids:
-            debug_steps.append("No seed track IDs resolved; skipping Spotify recommendations.")
-            logger.debug("generate_playlist: %s", debug_steps[-1])
-            playlist = []
+            log("No seed track IDs resolved; skipping local recommendation.")
+            playlist = seed_track_display[:]
         else:
             similar_tracks = get_similar_tracks(
                 seed_track_ids,
                 access_token,
                 attributes,
                 debug_steps=debug_steps,
+                log_step=log,
             )
-            debug_steps.append(
-                f"Similar tracks from Spotify ({len(similar_tracks)}): {similar_tracks}"
+            log(
+                f"Similarity engine produced {len(similar_tracks)} tracks."
             )
-            logger.debug("generate_playlist: %s", debug_steps[-1])
 
             combined = seed_track_display + similar_tracks
             playlist = []
@@ -126,8 +140,7 @@ def generate_playlist(request):
                 if song not in playlist:
                     playlist.append(song)
 
-            debug_steps.append(f"Final playlist ({len(playlist)} tracks) compiled from seeds and similar tracks.")
-            logger.debug("generate_playlist: %s", debug_steps[-1])
+            log(f"Final playlist ({len(playlist)} tracks) compiled from seeds and similar tracks.")
 
         payload = {
             "playlist": playlist,
@@ -138,8 +151,7 @@ def generate_playlist(request):
             "similar_tracks": similar_tracks,
         }
         cache.set(cache_key, payload, timeout=60 * 15)
-        debug_steps.append("Playlist cached for 15 minutes.")
-        logger.debug("generate_playlist: %s", debug_steps[-1])
+        log("Playlist cached for 15 minutes.")
 
     context = {
         "playlist": playlist,

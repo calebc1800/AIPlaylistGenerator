@@ -1,8 +1,19 @@
 import json
 import subprocess
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 DEFAULT_ATTRIBUTES = {"mood": "chill", "genre": "pop", "energy": "medium"}
+
+
+def _log(
+    debug_steps: Optional[List[str]],
+    log_step: Optional[Callable[[str], None]],
+    message: str,
+) -> None:
+    if log_step:
+        log_step(message)
+    elif debug_steps is not None:
+        debug_steps.append(message)
 
 
 def query_ollama(prompt: str, model: str = "mistral") -> str:
@@ -17,16 +28,26 @@ def query_ollama(prompt: str, model: str = "mistral") -> str:
     return result.stdout.strip()
 
 
-def extract_playlist_attributes(prompt: str, debug_steps: Optional[List[str]] = None) -> Dict[str, str]:
+def extract_playlist_attributes(
+    prompt: str,
+    debug_steps: Optional[List[str]] = None,
+    log_step: Optional[Callable[[str], None]] = None,
+) -> Dict[str, str]:
     """Pull mood, genre, and energy descriptors from a free-form user prompt."""
     query = (
         "Extract the mood, genre, and energy level from this user playlist request: "
         f"{prompt}. Return JSON."
     )
+    _log(debug_steps, log_step, f"LLM prompt (attribute extraction): {query}")
     response = query_ollama(query)
+    snippet = response if len(response) <= 300 else response[:297] + "..."
+    _log(debug_steps, log_step, f"LLM raw response (attributes): {snippet}")
     if not response:
-        if debug_steps is not None:
-            debug_steps.append("LLM attribute extraction failed; using default attributes.")
+        _log(
+            debug_steps,
+            log_step,
+            "LLM attribute extraction failed; using default attributes.",
+        )
         return DEFAULT_ATTRIBUTES.copy()
 
     try:
@@ -36,14 +57,14 @@ def extract_playlist_attributes(prompt: str, debug_steps: Optional[List[str]] = 
             "genre": parsed.get("genre", DEFAULT_ATTRIBUTES["genre"]),
             "energy": parsed.get("energy", DEFAULT_ATTRIBUTES["energy"]),
         }
-        if debug_steps is not None:
-            debug_steps.append(f"LLM returned attributes: {attributes}")
+        _log(debug_steps, log_step, f"LLM parsed attributes: {attributes}")
         return attributes
     except json.JSONDecodeError:
-        if debug_steps is not None:
-            debug_steps.append(
-                f"Failed to parse LLM attribute response '{response}'; using defaults."
-            )
+        _log(
+            debug_steps,
+            log_step,
+            f"Failed to parse LLM attribute response; using defaults. Response snippet: {snippet}",
+        )
         return DEFAULT_ATTRIBUTES.copy()
 
 
@@ -51,6 +72,7 @@ def suggest_seed_tracks(
     prompt: str,
     attributes: Dict[str, str],
     debug_steps: Optional[List[str]] = None,
+    log_step: Optional[Callable[[str], None]] = None,
     max_suggestions: int = 5,
 ) -> List[Dict[str, str]]:
     """Use the LLM to propose seed tracks as title/artist pairs."""
@@ -62,7 +84,10 @@ def suggest_seed_tracks(
         "\"title\" and \"artist\". Choose well-known songs that fit the mood/genre/"
         "energy and are likely available on Spotify."
     )
+    _log(debug_steps, log_step, f"LLM prompt (seed suggestions): {query}")
     response = query_ollama(query)
+    snippet = response if len(response) <= 400 else response[:397] + "..."
+    _log(debug_steps, log_step, f"LLM raw response (seed suggestions): {snippet}")
     suggestions: List[Dict[str, str]] = []
 
     def _add_suggestion(title: str, artist: str):
@@ -96,12 +121,18 @@ def suggest_seed_tracks(
                     title, artist = line, ""
                 _add_suggestion(title, artist)
 
-    # Fallback suggestions if the model response failed
-    if debug_steps is not None:
-        if suggestions:
-            debug_steps.append(f"LLM seed suggestions: {suggestions[:max_suggestions]}")
-        else:
-            debug_steps.append("LLM seed suggestions unavailable; will rely on Spotify fallback.")
+    if suggestions:
+        _log(
+            debug_steps,
+            log_step,
+            f"LLM parsed seed suggestions: {suggestions[:max_suggestions]}",
+        )
+    else:
+        _log(
+            debug_steps,
+            log_step,
+            "LLM seed suggestions unavailable; will rely on Spotify fallback.",
+        )
 
     return suggestions[:max_suggestions]
 
@@ -110,6 +141,7 @@ def refine_playlist(
     seed_tracks: List[str],
     attributes: Dict[str, str],
     debug_steps: Optional[List[str]] = None,
+    log_step: Optional[Callable[[str], None]] = None,
 ) -> List[str]:
     """Ask the LLM for additional tracks based on the current seed list and attributes."""
     track_list = "\n".join(seed_tracks)
@@ -118,12 +150,16 @@ def refine_playlist(
         "recommend 5 additional widely known songs that are available on Spotify US. "
         "Return each song on a new line and prefer artists that match the requested genre."
     )
-    if debug_steps is not None:
-        debug_steps.append("Querying LLM for refined playlist suggestions.")
+    _log(debug_steps, log_step, f"LLM prompt (playlist refinement): {query}")
     response = query_ollama(query)
+    snippet = response if len(response) <= 400 else response[:397] + "..."
+    _log(debug_steps, log_step, f"LLM raw response (refinement): {snippet}")
     if not response:
-        if debug_steps is not None:
-            debug_steps.append("LLM refinement returned no response; using seed tracks only.")
+        _log(
+            debug_steps,
+            log_step,
+            "LLM refinement returned no response; using seed tracks only.",
+        )
         return seed_tracks
 
     additions = [
@@ -131,6 +167,5 @@ def refine_playlist(
         for line in response.splitlines()
         if line.strip() and line.strip() not in seed_tracks
     ]
-    if debug_steps is not None:
-        debug_steps.append(f"LLM suggested additions: {additions}")
+    _log(debug_steps, log_step, f"LLM suggested additions: {additions}")
     return seed_tracks + additions
