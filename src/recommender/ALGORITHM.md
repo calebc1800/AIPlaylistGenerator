@@ -18,15 +18,14 @@ This module builds Spotify playlists from a free-form user prompt without callin
 2. Targeted track searches (`genre:"pop" year:2015-2025`, `"energetic" pop`, etc.) grow the pool.
 3. Candidates are filtered for market availability, configurable popularity thresholds (per genre), and artist-genre alignment. Non-Latin titles are optionally filtered (disabled by default via `RECOMMENDER_REQUIRE_LATIN`).
 
-## 4. Audio Feature Cache
-1. `_fetch_audio_features()` batches track IDs into `audio_features` calls and stores the result in Django’s cache (TTL 1 hour).
-2. `_fetch_track_years()` retrieves release-year metadata to support temporal diversity.
-3. Seeds and candidates now share a consistent feature vector with weighted dimensions (danceability, energy, valence, tempo, acousticness, instrumentalness, speechiness, loudness). Weights are configurable through `RECOMMENDER_FEATURE_WEIGHTS`.
+## 4. Metadata Collection
+1. For seeds and candidates we retain artist IDs, release years, and popularity so we can score without Spotify’s recommendations or audio-feature endpoints.
+2. Timestamps and raw responses from Spotify searches make it easy to trace how each candidate entered the pool.
 
 ## 5. Local Similarity Scoring
-1. `_compute_centroid()` averages seed vectors to create a weighted “sound profile” and derives the target energy directly from the seed audio features (falling back to mood defaults if unavailable).
-2. `_fetch_track_years()` also gives us the mean seed release year; `_score_track()` encourages temporal diversity by rewarding candidates far from that mean.
-3. `_score_track()` mixes weighted audio distance, energy alignment, temporal bonus, and popularity. Artists are deduplicated so no artist appears more than twice.
+1. Energy preferences come from the prompt (e.g., `high`, `low`) and we bias scores toward newer or older releases accordingly.
+2. The scoring function combines popularity, artist overlap, prompt keyword matches, and temporal diversity (rewarding songs far from the average seed release year).
+3. Artists are deduplicated so no artist appears more than twice.
 
 ## 6. Output & Debug Trail
 1. The ordered debug list is rendered first with per-step timestamps, raw LLM prompts/responses, Spotify endpoints, and any warnings. Errors are bubbled up separately so the UI can warn the user if something failed.
@@ -36,7 +35,6 @@ This module builds Spotify playlists from a free-form user prompt without callin
 ## Configuration Knobs
 - `RECOMMENDER_POPULARITY_THRESHOLD` and `RECOMMENDER_GENRE_POPULARITY_OVERRIDES` control how strict we are about mainstream popularity when filtering candidates.
 - `RECOMMENDER_REQUIRE_LATIN` toggles the optional non-Latin title filter.
-- `RECOMMENDER_FEATURE_WEIGHTS` lets you rebalance the importance of each audio attribute.
 
 These settings enable genre-specific tuning without touching the core algorithm.
 

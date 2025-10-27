@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 import time
 from typing import Callable, Dict, List, Optional
 
@@ -122,6 +123,20 @@ def generate_playlist(request):
         ]
         log(f"Resolved seed tracks ({len(seed_track_display)}): {seed_track_display}")
 
+        seed_artist_ids = {
+            artist_id
+            for track in resolved_seed_tracks
+            for artist_id in (track.get("artist_ids") or [])
+            if artist_id
+        }
+        seed_years = [track.get("year") for track in resolved_seed_tracks if track.get("year")]
+        seed_year_avg = sum(seed_years) / len(seed_years) if seed_years else None
+        prompt_keywords = {
+            kw
+            for kw in re.findall(r"[a-z0-9]+", prompt.lower())
+            if len(kw) > 2
+        }
+
         seed_track_ids = [track["id"] for track in resolved_seed_tracks]
         if not seed_track_ids:
             log("No seed track IDs resolved; skipping local recommendation.")
@@ -129,8 +144,11 @@ def generate_playlist(request):
         else:
             similar_tracks = get_similar_tracks(
                 seed_track_ids,
+                seed_artist_ids,
+                seed_year_avg,
                 access_token,
                 attributes,
+                prompt_keywords,
                 debug_steps=debug_steps,
                 log_step=log,
             )

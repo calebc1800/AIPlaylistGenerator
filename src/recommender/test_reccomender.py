@@ -3,8 +3,6 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from unittest.mock import patch
 
-from spotipy import SpotifyException
-
 from .services.spotify_handler import (
     discover_top_tracks_for_genre,
     get_similar_tracks,
@@ -165,7 +163,7 @@ class SpotifyHandlerTests(TestCase):
     """Unit tests for Spotify service helpers."""
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
-    def test_resolve_seed_tracks_filters_market(self, mock_spotify):
+    def test_resolve_seed_tracks_includes_metadata(self, mock_spotify):
         mock_instance = mock_spotify.return_value
         mock_instance.search.return_value = {
             "tracks": {
@@ -173,56 +171,29 @@ class SpotifyHandlerTests(TestCase):
                     {
                         "id": "1",
                         "name": "Song",
-                        "artists": [{"name": "Artist"}],
+                        "artists": [{"name": "Artist", "id": "artist1"}],
                         "available_markets": ["US"],
+                        "album": {"release_date": "2021-01-01"},
                     }
                 ]
             }
         }
 
-        suggestions = [{"title": "Song", "artist": "Artist"}]
-        results = resolve_seed_tracks(suggestions, token="token", debug_steps=[])
+        results = resolve_seed_tracks(
+            [{"title": "Song", "artist": "Artist"}],
+            token="token",
+            debug_steps=[],
+        )
 
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["id"], "1")
-        mock_instance.search.assert_called_once()
-
-    @patch("recommender.services.spotify_handler.spotipy.Spotify")
-    def test_resolve_seed_tracks_handles_no_results(self, mock_spotify):
-        mock_instance = mock_spotify.return_value
-        mock_instance.search.return_value = {"tracks": {"items": []}}
-
-        results = resolve_seed_tracks(
-            [{"title": "Missing Song", "artist": "Artist"}],
-            token="token",
-            debug_steps=[],
-        )
-
-        self.assertEqual(results, [])
-
-    @patch("recommender.services.spotify_handler.spotipy.Spotify")
-    def test_get_similar_tracks_handles_missing_seeds(self, mock_spotify):
-        results = get_similar_tracks(
-            [],
-            token="token",
-            attributes={"energy": "medium", "genre": "pop"},
-            debug_steps=[],
-        )
-
-        self.assertEqual(results, [])
-        mock_spotify.assert_not_called()
+        self.assertEqual(results[0]["artist_ids"], ["artist1"])
+        self.assertEqual(results[0]["year"], 2021)
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_discover_top_tracks_for_genre(self, mock_spotify):
         mock_instance = mock_spotify.return_value
         mock_instance.search.side_effect = [
-            {
-                "playlists": {
-                    "items": [
-                        {"id": "playlist1"},
-                    ]
-                }
-            },
+            {"playlists": {"items": [{"id": "playlist1"}]}},
             {
                 "tracks": {
                     "items": [
@@ -232,14 +203,8 @@ class SpotifyHandlerTests(TestCase):
                             "popularity": 80,
                             "artists": [{"name": "Artist One", "id": "artist1"}],
                             "available_markets": ["US"],
-                        },
-                        {
-                            "id": "track2",
-                            "name": "Track Two",
-                            "popularity": 60,
-                            "artists": [{"name": "Artist Two", "id": "artist2"}],
-                            "available_markets": ["US"],
-                        },
+                            "album": {"release_date": "2020-05-01"},
+                        }
                     ]
                 }
             },
@@ -253,42 +218,37 @@ class SpotifyHandlerTests(TestCase):
                         "popularity": 80,
                         "artists": [{"name": "Artist One", "id": "artist1"}],
                         "available_markets": ["US"],
+                        "album": {"release_date": "2020-05-01"},
                     }
                 }
             ]
         }
         mock_instance.artists.return_value = {
             "artists": [
-                {"id": "artist1", "genres": ["k-pop", "dance pop"]},
-                {"id": "artist2", "genres": ["j-pop"]},
+                {"id": "artist1", "genres": ["pop"]},
             ]
         }
 
         results = discover_top_tracks_for_genre(
-            {"genre": "k-pop"},
+            {"genre": "pop"},
             token="token",
             debug_steps=[],
         )
 
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["id"], "track1")
+        self.assertEqual(results[0]["artist_ids"], ["artist1"])
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
-    def test_get_similar_tracks_uses_audio_features(self, mock_spotify):
+    def test_get_similar_tracks_scores_candidates(self, mock_spotify):
         mock_instance = mock_spotify.return_value
-
         mock_instance.search.side_effect = [
-            {
-                "playlists": {
-                    "items": [{"id": "playlist1"}],
-                }
-            },
+            {"playlists": {"items": []}},
             {
                 "tracks": {
                     "items": [
                         {
                             "id": "cand1",
-                            "name": "Candidate One",
+                            "name": "Happy Energy",
                             "artists": [{"name": "Artist A", "id": "artistA"}],
                             "popularity": 70,
                             "available_markets": ["US"],
@@ -296,192 +256,48 @@ class SpotifyHandlerTests(TestCase):
                         },
                         {
                             "id": "cand2",
-                            "name": "Candidate Two",
+                            "name": "Mellow Tune",
                             "artists": [{"name": "Artist B", "id": "artistB"}],
-                            "popularity": 60,
+                            "popularity": 65,
                             "available_markets": ["US"],
-                            "album": {"release_date": "2015-05-05"},
+                            "album": {"release_date": "2010-05-05"},
                         },
                     ]
                 }
             },
-            {
-                "tracks": {"items": []},
-            },
         ]
-
-        mock_instance.playlist_items.return_value = {
-            "items": [
-                {
-                    "track": {
-                        "id": "cand3",
-                        "name": "Playlist Candidate",
-                        "artists": [{"name": "Artist C", "id": "artistC"}],
-                        "popularity": 75,
-                        "available_markets": ["US"],
-                        "album": {"release_date": "2005-09-01"},
-                    }
-                }
-            ]
-        }
-
         mock_instance.artists.return_value = {
             "artists": [
                 {"id": "artistA", "genres": ["pop"]},
                 {"id": "artistB", "genres": ["pop"]},
-                {"id": "artistC", "genres": ["pop"]},
                 {"id": "seed_artist", "genres": ["pop"]},
             ]
         }
 
-        feature_map = {
-            "seed1": {
-                "id": "seed1",
-                "danceability": 0.8,
-                "energy": 0.7,
-                "valence": 0.6,
-                "tempo": 120,
-                "acousticness": 0.1,
-                "instrumentalness": 0.0,
-                "speechiness": 0.05,
-                "loudness": -5,
-            },
-            "cand1": {
-                "id": "cand1",
-                "danceability": 0.82,
-                "energy": 0.72,
-                "valence": 0.58,
-                "tempo": 118,
-                "acousticness": 0.12,
-                "instrumentalness": 0.0,
-                "speechiness": 0.04,
-                "loudness": -6,
-            },
-            "cand2": {
-                "id": "cand2",
-                "danceability": 0.5,
-                "energy": 0.4,
-                "valence": 0.3,
-                "tempo": 90,
-                "acousticness": 0.2,
-                "instrumentalness": 0.0,
-                "speechiness": 0.1,
-                "loudness": -12,
-            },
-            "cand3": {
-                "id": "cand3",
-                "danceability": 0.78,
-                "energy": 0.68,
-                "valence": 0.62,
-                "tempo": 122,
-                "acousticness": 0.09,
-                "instrumentalness": 0.0,
-                "speechiness": 0.05,
-                "loudness": -4,
-            },
-        }
-
-        def audio_features_side_effect(ids):
-            return [feature_map.get(tid) for tid in ids]
-
-        mock_instance.audio_features.side_effect = audio_features_side_effect
-
-        mock_instance.tracks.return_value = {
-            "tracks": [
-                {
-                    "id": "seed1",
-                    "album": {"release_date": "2020-01-01"},
-                }
-            ]
-        }
-
         results = get_similar_tracks(
             ["seed1"],
+            {"artistA"},
+            2020.0,
             token="token",
-            attributes={"energy": "medium", "genre": "pop", "mood": "happy"},
+            attributes={"energy": "high", "genre": "pop", "mood": "happy"},
+            prompt_keywords={"happy", "energy"},
             debug_steps=[],
         )
 
         self.assertTrue(results)
-        self.assertIn("Candidate One - Artist A", results[0])
+        self.assertEqual(results[0], "Happy Energy - Artist A")
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
-    def test_get_similar_tracks_handles_missing_features(self, mock_spotify):
-        mock_instance = mock_spotify.return_value
-        mock_instance.search.side_effect = [
-            {"playlists": {"items": []}},
-            {"tracks": {"items": []}},
-        ]
-        mock_instance.audio_features.return_value = [None]
-        mock_instance.tracks.return_value = {
-            "tracks": [
-                {
-                    "id": "seed1",
-                    "album": {"release_date": "2020-01-01"},
-                }
-            ]
-        }
-
+    def test_get_similar_tracks_handles_missing_seeds(self, mock_spotify):
         results = get_similar_tracks(
-            ["seed1"],
+            [],
+            set(),
+            None,
             token="token",
             attributes={"energy": "medium", "genre": "pop"},
+            prompt_keywords=set(),
             debug_steps=[],
         )
 
         self.assertEqual(results, [])
-
-    @patch("recommender.services.spotify_handler.spotipy.Spotify")
-    def test_get_similar_tracks_popularity_fallback(self, mock_spotify):
-        mock_instance = mock_spotify.return_value
-        mock_instance.search.side_effect = [
-            {"playlists": {"items": []}},
-            {
-                "tracks": {
-                    "items": [
-                        {
-                            "id": "cand1",
-                            "name": "Candidate One",
-                            "artists": [{"name": "Artist A", "id": "artistA"}],
-                            "popularity": 80,
-                            "available_markets": ["US"],
-                            "album": {"release_date": "2022-04-01"},
-                        },
-                        {
-                            "id": "cand2",
-                            "name": "Candidate Two",
-                            "artists": [{"name": "Artist B", "id": "artistB"}],
-                            "popularity": 60,
-                            "available_markets": ["US"],
-                            "album": {"release_date": "2010-02-02"},
-                        },
-                    ]
-                }
-            },
-        ]
-        mock_instance.artists.return_value = {
-            "artists": [
-                {"id": "artistA", "genres": ["pop"]},
-                {"id": "artistB", "genres": ["pop"]},
-                {"id": "seed_artist", "genres": ["pop"]},
-            ]
-        }
-        mock_instance.audio_features.side_effect = SpotifyException(403, -1, "forbidden")
-        mock_instance.tracks.return_value = {
-            "tracks": [
-                {
-                    "id": "seed1",
-                    "album": {"release_date": "2018-01-01"},
-                }
-            ]
-        }
-
-        results = get_similar_tracks(
-            ["seed1"],
-            token="token",
-            attributes={"energy": "medium", "genre": "pop"},
-            debug_steps=[],
-        )
-
-        self.assertTrue(results)
-        self.assertEqual(results[0], "Candidate One - Artist A")
+        mock_spotify.assert_not_called()

@@ -2,10 +2,10 @@ import unicodedata
 from typing import Callable, Dict, Iterable, List, Optional, Set
 
 from django.conf import settings
-from django.core.cache import cache
 import spotipy
 from spotipy import SpotifyException
 from spotipy.oauth2 import SpotifyOAuth  # noqa: F401
+
 
 DEFAULT_POPULARITY_THRESHOLD = getattr(settings, "RECOMMENDER_POPULARITY_THRESHOLD", 45)
 GENRE_POPULARITY_OVERRIDES = getattr(
@@ -21,22 +21,6 @@ GENRE_POPULARITY_OVERRIDES = getattr(
         "singer-songwriter": 35,
     },
 )
-DEFAULT_FEATURE_WEIGHTS = {
-    "danceability": 0.15,
-    "energy": 0.2,
-    "valence": 0.2,
-    "tempo": 0.1,
-    "acousticness": 0.1,
-    "instrumentalness": 0.05,
-    "speechiness": 0.05,
-    "loudness": 0.15,
-}
-FEATURE_WEIGHTS = getattr(
-    settings,
-    "RECOMMENDER_FEATURE_WEIGHTS",
-    DEFAULT_FEATURE_WEIGHTS,
-)
-FEATURE_NAMES = list(FEATURE_WEIGHTS.keys())
 
 
 def _log(
@@ -48,17 +32,6 @@ def _log(
         log_step(message)
     elif debug_steps is not None:
         debug_steps.append(message)
-
-
-def _should_filter_non_latin() -> bool:
-    return getattr(settings, "RECOMMENDER_REQUIRE_LATIN", False)
-
-
-def _popularity_threshold_for_genre(normalized_genre: str) -> int:
-    return GENRE_POPULARITY_OVERRIDES.get(
-        normalized_genre,
-        DEFAULT_POPULARITY_THRESHOLD,
-    )
 
 
 def _normalize_genre(raw_genre: str) -> str:
@@ -73,8 +46,8 @@ def _genre_variants(normalized_genre: str) -> Set[str]:
     variants = {normalized_genre, base, compact}
     if normalized_genre.endswith("-music"):
         variants.add(normalized_genre[:-6])
-    if normalized_genre == "r-b":
-        variants.update({"r&b", "rb"})
+    if normalized_genre in {"r-b", "r&b"}:
+        variants.update({"r&b", "rb", "r-b"})
     if normalized_genre == "hip-hop":
         variants.add("hiphop")
     return {v for v in variants if v}
@@ -89,12 +62,20 @@ def _tracks_to_strings(tracks: List[Dict]) -> List[str]:
 
 
 def _filter_by_market(tracks: List[Dict], market: str) -> List[Dict]:
-    filtered = []
+    filtered: List[Dict] = []
     for track in tracks:
         markets = track.get("available_markets")
         if not markets or market in markets:
             filtered.append(track)
     return filtered
+
+
+def _should_filter_non_latin() -> bool:
+    return getattr(settings, "RECOMMENDER_REQUIRE_LATIN", False)
+
+
+def _popularity_threshold_for_genre(normalized_genre: str) -> int:
+    return GENRE_POPULARITY_OVERRIDES.get(normalized_genre, DEFAULT_POPULARITY_THRESHOLD)
 
 
 def _filter_tracks_by_artist_genre(
@@ -111,44 +92,33 @@ def _filter_tracks_by_artist_genre(
 
     genre_aliases = _genre_variants(normalized_genre)
 
-    artist_id_map = {}
+    artist_id_map: Dict[str, List[str]] = {}
     artist_ids: List[str] = []
     for track in tracks:
-        ids = [
-            artist.get("id")
-            for artist in track.get("artists", [])
-            if artist.get("id")
-        ]
+        ids = [artist.get("id") for artist in track.get("artists", []) if artist.get("id")]
         if ids:
             artist_id_map[track["id"]] = ids
-            for artist_id in ids:
-                if artist_id and artist_id not in artist_ids:
-                    artist_ids.append(artist_id)
+            artist_ids.extend(ids)
 
     if not artist_ids:
         return tracks
 
-    artist_details: Dict[str, List[str]] = {}
     try:
-        for chunk_start in range(0, len(artist_ids), 50):
-            chunk = artist_ids[chunk_start : chunk_start + 50]
-            response = sp.artists(chunk)
-            for artist in response.get("artists", []):
-                artist_details[artist["id"]] = artist.get("genres", [])
+        response = sp.artists(list(dict.fromkeys(artist_ids))[:50])
     except SpotifyException as exc:
-        _log(
-            debug_steps,
-            log_step,
-            f"Failed to fetch artist genres: {exc}.",
-        )
+        _log(debug_steps, log_step, f"Failed to fetch artist genres: {exc}.")
         return tracks
 
+    artist_details = {
+        artist.get("id"): artist.get("genres", [])
+        for artist in response.get("artists", [])
+    }
+
     target = normalized_genre.replace("-", "")
+    threshold = popularity_threshold or _popularity_threshold_for_genre(normalized_genre)
     filtered_tracks: List[Dict] = []
+
     for track in tracks:
-        threshold = popularity_threshold
-        if threshold is None:
-            threshold = _popularity_threshold_for_genre(normalized_genre)
         if track.get("popularity", 0) < threshold:
             continue
         matched = False
@@ -157,14 +127,9 @@ def _filter_tracks_by_artist_genre(
             for genre in genres:
                 normalized = genre.lower()
                 canonical = normalized.replace(" ", "").replace("-", "")
-                if (
-                    (target and target in canonical)
-                    or any(
-                        alias == normalized
-                        or alias == canonical
-                        or alias in canonical
-                        for alias in genre_aliases
-                    )
+                if (target and target in canonical) or any(
+                    alias == normalized or alias == canonical or alias in canonical
+                    for alias in genre_aliases
                 ):
                     matched = True
                     break
@@ -188,20 +153,12 @@ def _is_mostly_latin(text: str) -> bool:
     alpha_chars = [c for c in text if c.isalpha()]
     if not alpha_chars:
         return True
-    latin = sum(
-        1
-        for c in alpha_chars
-        if "LATIN" in unicodedata.name(c, "")
-    )
+    latin = sum(1 for c in alpha_chars if "LATIN" in unicodedata.name(c, ""))
     return latin / len(alpha_chars) >= 0.4
 
 
 def _filter_non_latin_tracks(tracks: Iterable[Dict]) -> List[Dict]:
-    filtered: List[Dict] = []
-    for track in tracks:
-        if _is_mostly_latin(track.get("name", "")):
-            filtered.append(track)
-    return filtered
+    return [track for track in tracks if _is_mostly_latin(track.get("name", ""))]
 
 
 def _extract_release_year(track: Dict) -> Optional[int]:
@@ -211,161 +168,6 @@ def _extract_release_year(track: Dict) -> Optional[int]:
         return None
     year_str = date.split("-")[0]
     return int(year_str) if year_str.isdigit() else None
-
-
-AUDIO_FEATURE_CACHE_TTL = 60 * 60  # seconds
-
-
-def _chunked(sequence: List[str], size: int) -> Iterable[List[str]]:
-    for start in range(0, len(sequence), size):
-        yield sequence[start : start + size]
-
-
-def _fetch_audio_features(
-    sp: spotipy.Spotify,
-    track_ids: List[str],
-    *,
-    debug_steps: Optional[List[str]] = None,
-    log_step: Optional[Callable[[str], None]] = None,
-) -> Dict[str, Dict]:
-    features: Dict[str, Dict] = {}
-    ids_to_fetch: List[str] = []
-
-    for track_id in track_ids:
-        cached = cache.get(f"spotify:audio_feature:{track_id}")
-        if cached:
-            features[track_id] = cached
-        else:
-            ids_to_fetch.append(track_id)
-
-    for chunk in _chunked(ids_to_fetch, 100):
-        if chunk:
-            _log(
-                debug_steps,
-                log_step,
-                f"Spotify API → audio_features: ids={','.join(chunk[:5])}{'...' if len(chunk) > 5 else ''}",
-            )
-        try:
-            response = sp.audio_features(chunk)
-        except SpotifyException as exc:
-            _log(
-                debug_steps,
-                log_step,
-                f"Spotify audio_features error: {exc}.",
-            )
-            continue
-
-        for feature in response or []:
-            if not feature or not feature.get("id"):
-                continue
-            features[feature["id"]] = feature
-            cache.set(
-                f"spotify:audio_feature:{feature['id']}",
-                feature,
-                AUDIO_FEATURE_CACHE_TTL,
-            )
-        _log(
-            debug_steps,
-            log_step,
-            f"Cached audio features for chunk of {len(response or [])} tracks.",
-        )
-
-    return features
-
-
-def _fetch_track_years(
-    sp: spotipy.Spotify,
-    track_ids: List[str],
-    *,
-    debug_steps: Optional[List[str]] = None,
-    log_step: Optional[Callable[[str], None]] = None,
-) -> Dict[str, int]:
-    years: Dict[str, int] = {}
-    for chunk in _chunked(track_ids, 50):
-        if not chunk:
-            continue
-        _log(
-            debug_steps,
-            log_step,
-            f"Spotify API → tracks: ids={','.join(chunk[:5])}{'...' if len(chunk) > 5 else ''}",
-        )
-        try:
-            response = sp.tracks(chunk)
-        except SpotifyException as exc:
-            _log(
-                debug_steps,
-                log_step,
-                f"Spotify tracks error: {exc}.",
-            )
-            continue
-        for track in response.get("tracks", []):
-            track_id = track.get("id")
-            year = _extract_release_year(track)
-            if track_id and year:
-                years[track_id] = year
-    return years
-
-
-def _vectorize_audio_feature(feature: Dict) -> Optional[Dict[str, float]]:
-    if not feature:
-        return None
-    tempo = feature.get("tempo") or 0.0
-    loudness = feature.get("loudness") or -60.0
-    return {
-        "danceability": feature.get("danceability", 0.0),
-        "energy": feature.get("energy", 0.0),
-        "valence": feature.get("valence", 0.0),
-        "tempo": min(max(tempo / 200.0, 0.0), 2.0),
-        "acousticness": feature.get("acousticness", 0.0),
-        "instrumentalness": feature.get("instrumentalness", 0.0),
-        "speechiness": feature.get("speechiness", 0.0),
-        "loudness": min(max((loudness + 60.0) / 60.0, 0.0), 1.0),
-    ]
-
-
-def _compute_centroid(features: Iterable[Dict]) -> Optional[Dict[str, float]]:
-    totals = {name: 0.0 for name in FEATURE_WEIGHTS}
-    count = 0
-    for feature in features:
-        vec = _vectorize_audio_feature(feature)
-        if vec is not None:
-            count += 1
-            for name in FEATURE_WEIGHTS:
-                totals[name] += vec.get(name, 0.0)
-    if count == 0:
-        return None
-    return {name: totals[name] / count for name in FEATURE_WEIGHTS}
-
-
-def _score_track(
-    feature: Dict,
-    centroid: Dict[str, float],
-    *,
-    target_energy: float,
-    track: Dict,
-    seed_year_avg: Optional[float] = None,
-) -> Optional[float]:
-    vec = _vectorize_audio_feature(feature)
-    if vec is None or centroid is None:
-        return None
-    diff = 0.0
-    for name, weight in FEATURE_WEIGHTS.items():
-        diff += weight * abs(vec.get(name, 0.0) - centroid.get(name, 0.0))
-    similarity = max(0.0, 1.0 - diff)
-
-    energy_penalty = abs((feature.get("energy") or 0.0) - target_energy)
-    score = similarity - 0.25 * energy_penalty
-
-    popularity = (track.get("popularity", 40) or 0) / 100.0
-    score = (score * 0.7) + (popularity * 0.3)
-
-    candidate_year = _extract_release_year(track)
-    if seed_year_avg is not None and candidate_year is not None:
-        year_diff = abs(candidate_year - seed_year_avg)
-        temporal_bonus = min(max(year_diff - 5, 0.0) / 40.0, 0.15)
-        score += temporal_bonus
-
-    return score
 
 
 def _discover_playlist_seeds(
@@ -379,21 +181,13 @@ def _discover_playlist_seeds(
     track_limit: int = 40,
 ) -> List[Dict]:
     query = f"{normalized_genre.replace('-', ' ')} hits"
-    _log(
-        debug_steps,
-        log_step,
-        f"Spotify API → search playlists: q='{query}', limit={playlist_limit}",
-    )
+    _log(debug_steps, log_step, f"Spotify API → search playlists: q='{query}', limit={playlist_limit}")
     try:
         playlists = sp.search(q=query, type="playlist", limit=playlist_limit)
         playlist_items = playlists.get("playlists", {}).get("items", [])
     except SpotifyException as exc:
+        _log(debug_steps, log_step, f"Spotify playlist search failed: {exc}.")
         playlist_items = []
-        _log(
-            debug_steps,
-            log_step,
-            f"Spotify playlist search failed for genre '{normalized_genre}': {exc}.",
-        )
 
     collected: List[Dict] = []
     seen_ids: Set[str] = set()
@@ -411,19 +205,15 @@ def _discover_playlist_seeds(
         )
         try:
             response = sp.playlist_items(playlist_id, limit=track_limit, market=market)
-            items = response.get("items", [])
         except SpotifyException:
             try:
                 response = sp.playlist_items(playlist_id, limit=track_limit)
-                items = response.get("items", [])
             except SpotifyException:
                 continue
-
+        items = response.get("items", [])
         for entry in items:
             track = entry.get("track")
-            if not track or not track.get("id"):
-                continue
-            if track["id"] in seen_ids:
+            if not track or not track.get("id") or track["id"] in seen_ids:
                 continue
             seen_ids.add(track["id"])
             collected.append(track)
@@ -467,7 +257,6 @@ def discover_top_tracks_for_genre(
     )
     if _should_filter_non_latin():
         playlist_tracks = _filter_non_latin_tracks(playlist_tracks)
-
     playlist_tracks.sort(key=lambda t: t.get("popularity", 0), reverse=True)
 
     def _collect(tracks: List[Dict]) -> List[Dict[str, str]]:
@@ -479,25 +268,23 @@ def discover_top_tracks_for_genre(
             if track["id"] in seen_ids:
                 continue
             seen_ids.add(track["id"])
+            artist_ids = [artist.get("id") for artist in track.get("artists", []) if artist.get("id")]
             selected.append(
                 {
                     "id": track["id"],
                     "name": track["name"],
-                    "artists": ", ".join(
-                        artist["name"] for artist in track.get("artists", [])
-                    ),
+                    "artists": ", ".join(artist.get("name", "") for artist in track.get("artists", [])),
+                    "artist_ids": artist_ids,
+                    "year": _extract_release_year(track),
                 }
             )
         return selected
 
     selected = _collect(playlist_tracks)
-    sample_names = [track["name"] for track in playlist_tracks[:5] if track.get("name")]
+
+    sample_names = [track.get("name") for track in playlist_tracks[:5] if track.get("name")]
     if sample_names:
-        _log(
-            debug_steps,
-            log_step,
-            f"Playlist seed sample: {sample_names}",
-        )
+        _log(debug_steps, log_step, f"Playlist seed sample: {sample_names}")
 
     if len(selected) < seed_limit:
         tracks: List[Dict] = []
@@ -507,15 +294,10 @@ def discover_top_tracks_for_genre(
                 log_step,
                 f"Spotify API → search tracks (genre seed): q='{query}', limit={search_limit}, market={market}",
             )
-            results = sp.search(q=query, type="track", limit=search_limit, market=market)
-            tracks = results.get("tracks", {}).get("items", [])
+            tracks = sp.search(q=query, type="track", limit=search_limit, market=market).get("tracks", {}).get("items", [])
             tracks = _filter_by_market(tracks, market)
         except SpotifyException as exc:
-            _log(
-                debug_steps,
-                log_step,
-                f"Spotify search for genre seeds failed: {exc}.",
-            )
+            _log(debug_steps, log_step, f"Spotify search for genre seeds failed: {exc}.")
 
         if not tracks:
             try:
@@ -524,14 +306,9 @@ def discover_top_tracks_for_genre(
                     log_step,
                     f"Spotify API → search tracks (no market): q='{query}', limit={search_limit}",
                 )
-                results = sp.search(q=query, type="track", limit=search_limit)
-                tracks = results.get("tracks", {}).get("items", [])
+                tracks = sp.search(q=query, type="track", limit=search_limit).get("tracks", {}).get("items", [])
             except SpotifyException as exc:
-                _log(
-                    debug_steps,
-                    log_step,
-                    f"Spotify search without market failed: {exc}.",
-                )
+                _log(debug_steps, log_step, f"Spotify search without market failed: {exc}.")
                 tracks = []
 
         if tracks:
@@ -545,13 +322,9 @@ def discover_top_tracks_for_genre(
             if _should_filter_non_latin():
                 tracks = _filter_non_latin_tracks(tracks)
             tracks.sort(key=lambda t: t.get("popularity", 0), reverse=True)
-            sample_names = [track["name"] for track in tracks[:5] if track.get("name")]
+            sample_names = [track.get("name") for track in tracks[:5] if track.get("name")]
             if sample_names:
-                _log(
-                    debug_steps,
-                    log_step,
-                    f"Search seed sample: {sample_names}",
-                )
+                _log(debug_steps, log_step, f"Search seed sample: {sample_names}")
 
             additional = _collect(tracks)
             for track in additional:
@@ -576,7 +349,6 @@ def resolve_seed_tracks(
     market: str = "US",
     limit: int = 5,
 ) -> List[Dict[str, str]]:
-    """Resolve LLM-suggested tracks to concrete Spotify IDs."""
     sp = spotipy.Spotify(auth=token)
     resolved: List[Dict[str, str]] = []
 
@@ -596,94 +368,96 @@ def resolve_seed_tracks(
 
         tracks: List[Dict] = []
         try:
-            _log(
-                debug_steps,
-                log_step,
-                f'Spotify API → search track: q="{query}", limit=5, market={market}',
-            )
-            results = sp.search(q=query, type="track", limit=5, market=market)
-            tracks = results.get("tracks", {}).get("items", [])
+            _log(debug_steps, log_step, f'Spotify API → search track: q="{query}", limit=5, market={market}')
+            tracks = sp.search(q=query, type="track", limit=5, market=market).get("tracks", {}).get("items", [])
             tracks = _filter_by_market(tracks, market)
             if _should_filter_non_latin():
                 tracks = _filter_non_latin_tracks(tracks)
         except SpotifyException as exc:
-            _log(
-                debug_steps,
-                log_step,
-                f"Spotify search failed for '{query}' with market {market}: {exc}.",
-            )
+            _log(debug_steps, log_step, f"Spotify search failed for '{query}' with market {market}: {exc}.")
 
         if not tracks:
             try:
-                _log(
-                    debug_steps,
-                    log_step,
-                    f'Spotify API → search track (no market): q="{query}", limit=5',
-                )
-                results = sp.search(q=query, type="track", limit=5)
-                tracks = results.get("tracks", {}).get("items", [])
+                _log(debug_steps, log_step, f'Spotify API → search track (no market): q="{query}", limit=5')
+                tracks = sp.search(q=query, type="track", limit=5).get("tracks", {}).get("items", [])
                 if _should_filter_non_latin():
                     tracks = _filter_non_latin_tracks(tracks)
             except SpotifyException as exc:
-                _log(
-                    debug_steps,
-                    log_step,
-                    f"Spotify search retry without market failed for '{query}': {exc}.",
-                )
+                _log(debug_steps, log_step, f"Spotify search retry without market failed for '{query}': {exc}.")
                 continue
 
         if not tracks:
-            _log(
-                debug_steps,
-                log_step,
-                f"No search results found for '{query}'.",
-            )
-        if not tracks:
+            _log(debug_steps, log_step, f"No search results found for '{query}'.")
             continue
 
         track = tracks[0]
+        artist_ids = [artist.get("id") for artist in track.get("artists", []) if artist.get("id")]
         resolved.append(
             {
                 "id": track["id"],
                 "name": track["name"],
-                "artists": ", ".join(artist["name"] for artist in track.get("artists", [])),
+                "artists": ", ".join(artist.get("name", "") for artist in track.get("artists", [])),
+                "artist_ids": artist_ids,
+                "year": _extract_release_year(track),
             }
         )
 
-    _log(
-        debug_steps,
-        log_step,
-        f"Resolved {len(resolved)} seed tracks via Spotify search.",
-    )
-
+    _log(debug_steps, log_step, f"Resolved {len(resolved)} seed tracks via Spotify search.")
     return resolved
+
+
+def _score_track_basic(
+    track: Dict,
+    seed_artist_ids: Set[str],
+    seed_year_avg: Optional[float],
+    energy_label: Optional[str],
+    prompt_keywords: Set[str],
+) -> float:
+    score = (track.get("popularity", 40) or 0) / 100.0 * 0.5
+
+    artists = track.get("artists") or []
+    if seed_artist_ids and any(artist.get("id") in seed_artist_ids for artist in artists):
+        score += 0.25
+
+    name_lower = (track.get("name") or "").lower()
+    if prompt_keywords:
+        keyword_hits = sum(1 for kw in prompt_keywords if kw in name_lower)
+        score += min(keyword_hits, 2) * 0.05
+
+    candidate_year = _extract_release_year(track)
+    if seed_year_avg and candidate_year:
+        year_diff = abs(candidate_year - seed_year_avg)
+        score += max(0.0, (20 - year_diff) / 40.0) * 0.2
+        energy_lower = (energy_label or "").lower()
+        if energy_lower == "high" and candidate_year >= seed_year_avg:
+            score += 0.05
+        elif energy_lower == "low" and candidate_year <= seed_year_avg:
+            score += 0.05
+
+    return score
 
 
 def get_similar_tracks(
     seed_track_ids: List[str],
+    seed_artist_ids: Set[str],
+    seed_year_avg: Optional[float],
     token: str,
     attributes: Dict[str, str],
+    prompt_keywords: Set[str],
     *,
     debug_steps: Optional[List[str]] = None,
     log_step: Optional[Callable[[str], None]] = None,
     market: str = "US",
     limit: int = 10,
 ) -> List[str]:
-    """Build local recommendations using Spotify audio features and similarity scoring."""
     if not seed_track_ids:
-        _log(
-            debug_steps,
-            log_step,
-            "No seed track IDs available; skipping local recommendations.",
-        )
+        _log(debug_steps, log_step, "No seed track IDs available; skipping local recommendations.")
         return []
 
     sp = spotipy.Spotify(auth=token)
 
-    energy_levels = {"low": 0.3, "medium": 0.55, "high": 0.8}
-    default_target_energy = energy_levels.get(attributes.get("energy", "").lower(), 0.65)
-    target_energy = default_target_energy
     normalized_genre = _normalize_genre(attributes.get("genre", "pop") or "pop")
+    energy_label = attributes.get("energy")
 
     candidate_tracks: List[Dict] = []
 
@@ -698,27 +472,20 @@ def get_similar_tracks(
     )
     candidate_tracks.extend(playlist_candidates)
 
-    search_queries = [
-        f'genre:"{normalized_genre}" year:2015-2025',
-    ]
+    search_queries = [f'genre:"{normalized_genre}" year:2015-2025']
     mood = attributes.get("mood")
     if mood:
         search_queries.append(f'"{mood}" {normalized_genre}')
 
     for search_query in search_queries:
-        _log(
-            debug_steps,
-            log_step,
-            f"Spotify API → search tracks: q='{search_query}', limit={min(limit * 4, 50)}, market={market}",
-        )
+        _log(debug_steps, log_step, f"Spotify API → search tracks: q='{search_query}', limit={min(limit * 4, 50)}, market={market}")
         try:
-            search_results = sp.search(
+            tracks = sp.search(
                 q=search_query,
                 type="track",
                 limit=min(limit * 4, 50),
                 market=market,
-            )
-            tracks = search_results.get("tracks", {}).get("items", [])
+            ).get("tracks", {}).get("items", [])
             tracks = _filter_by_market(tracks, market)
             tracks = _filter_tracks_by_artist_genre(
                 sp,
@@ -732,23 +499,11 @@ def get_similar_tracks(
             candidate_tracks.extend(tracks)
             sample_names = [track.get("name") for track in tracks[:5] if track.get("name")]
             if sample_names:
-                _log(
-                    debug_steps,
-                    log_step,
-                    f"Search returned {len(tracks)} candidates for query '{search_query}'. Sample: {sample_names}",
-                )
+                _log(debug_steps, log_step, f"Search returned {len(tracks)} candidates for query '{search_query}'. Sample: {sample_names}")
             else:
-                _log(
-                    debug_steps,
-                    log_step,
-                    f"Search returned {len(tracks)} candidates for query '{search_query}'.",
-                )
+                _log(debug_steps, log_step, f"Search returned {len(tracks)} candidates for query '{search_query}'.")
         except SpotifyException as exc:
-            _log(
-                debug_steps,
-                log_step,
-                f"Spotify search error for '{search_query}': {exc}.",
-            )
+            _log(debug_steps, log_step, f"Spotify search error for '{search_query}': {exc}.")
 
     unique_candidates: List[Dict] = []
     seen_ids: Set[str] = set(seed_track_ids)
@@ -759,112 +514,16 @@ def get_similar_tracks(
         seen_ids.add(track_id)
         unique_candidates.append(track)
 
-    _log(
-        debug_steps,
-        log_step,
-        f"Local recommender candidate pool size after filtering: {len(unique_candidates)}.",
-    )
-
-    seed_features = _fetch_audio_features(
-        sp,
-        list(dict.fromkeys(seed_track_ids)),
-        debug_steps=debug_steps,
-        log_step=log_step,
-    )
-    energy_values = [
-        feature.get("energy")
-        for feature in seed_features.values()
-        if feature and feature.get("energy") is not None
-    ]
-    if energy_values:
-        target_energy = sum(energy_values) / len(energy_values)
-        _log(
-            debug_steps,
-            log_step,
-            f"Derived target energy from seeds: {target_energy:0.2f}.",
-        )
-
-    seed_year_map = _fetch_track_years(
-        sp,
-        list(dict.fromkeys(seed_track_ids)),
-        debug_steps=debug_steps,
-        log_step=log_step,
-    )
-    seed_year_avg: Optional[float] = None
-    if seed_year_map:
-        seed_year_avg = sum(seed_year_map.values()) / len(seed_year_map)
-        _log(
-            debug_steps,
-            log_step,
-            f"Average seed release year: {seed_year_avg:0.1f}.",
-        )
-    centroid = _compute_centroid(seed_features.values())
-    if centroid is None:
-        _log(
-            debug_steps,
-            log_step,
-            "Seed audio features unavailable; ranking candidates by popularity.",
-        )
-        fallback_recommendations: List[str] = []
-        artist_counts: Dict[str, int] = {}
-        sorted_candidates = sorted(
-            unique_candidates,
-            key=lambda track: track.get("popularity", 0),
-            reverse=True,
-        )
-        for track in sorted_candidates:
-            if len(fallback_recommendations) >= limit:
-                break
-            artist_names = [artist.get("name", "") for artist in track.get("artists", [])]
-            if any(artist_counts.get(name, 0) >= 2 for name in artist_names if name):
-                continue
-            artist_label = ", ".join(name for name in artist_names if name) or "Unknown"
-            fallback_recommendations.append(
-                f"{track.get('name', 'Unknown')} - {artist_label}"
-            )
-            for name in artist_names:
-                if not name:
-                    continue
-                artist_counts[name] = artist_counts.get(name, 0) + 1
-
-        _log(
-            debug_steps,
-            log_step,
-            f"Local recommender popularity fallback selected {len(fallback_recommendations)} tracks.",
-        )
-        return fallback_recommendations
-
-    candidate_ids = [track["id"] for track in unique_candidates]
-    candidate_features = _fetch_audio_features(
-        sp,
-        candidate_ids,
-        debug_steps=debug_steps,
-        log_step=log_step,
-    )
+    _log(debug_steps, log_step, f"Local recommender candidate pool size after filtering: {len(unique_candidates)}.")
 
     scored_tracks: List[tuple[float, Dict]] = []
     artist_counts: Dict[str, int] = {}
 
     for track in unique_candidates:
-        feature = candidate_features.get(track["id"])
-        if not feature:
-            continue
-        score = _score_track(
-            feature,
-            centroid,
-            target_energy=target_energy,
-            track=track,
-            seed_year_avg=seed_year_avg,
-        )
-        if score is None:
-            continue
+        score = _score_track_basic(track, seed_artist_ids, seed_year_avg, energy_label, prompt_keywords)
         scored_tracks.append((score, track))
 
-    _log(
-        debug_steps,
-        log_step,
-        f"Local recommender scored {len(scored_tracks)} candidates.",
-    )
+    _log(debug_steps, log_step, f"Local recommender scored {len(scored_tracks)} candidates.")
 
     scored_tracks.sort(key=lambda item: item[0], reverse=True)
 
@@ -872,22 +531,17 @@ def get_similar_tracks(
     for score, track in scored_tracks:
         if len(recommendations) >= limit:
             break
-        artist_names = [artist.get("name", "") for artist in track.get("artists", [])]
+        artists = track.get("artists", [])
+        artist_names = [artist.get("name", "") for artist in artists]
         if any(artist_counts.get(name, 0) >= 2 for name in artist_names if name):
             continue
         artist_label = ", ".join(name for name in artist_names if name) or "Unknown"
-        recommendations.append(
-            f"{track.get('name', 'Unknown')} - {artist_label}"
-        )
+        recommendations.append(f"{track.get('name', 'Unknown')} - {artist_label}")
         for name in artist_names:
             if not name:
                 continue
             artist_counts[name] = artist_counts.get(name, 0) + 1
 
-    _log(
-        debug_steps,
-        log_step,
-        f"Local recommender selected {len(recommendations)} similarity-based tracks.",
-    )
+    _log(debug_steps, log_step, f"Local recommender selected {len(recommendations)} similarity-based tracks.")
 
     return recommendations
