@@ -136,3 +136,15 @@ SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/api/token'
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
 SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI', 'http://localhost:8000/spotify/callback/')
+
+SPOTIFY_SCOPES = [
+    'user-read-email',
+    'user-read-private',
+    'user-read-recently-played',
+    'user-top-read',
+    'user-library-read',
+    'playlist-read-private',
+]
+
+
+SPOTIFY_USE_RECOMMENDATIONS = True

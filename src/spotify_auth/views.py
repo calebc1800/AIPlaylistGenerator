@@ -18,12 +18,14 @@ class SpotifyLoginView(View):
         request.session['spotify_auth_state'] = state
         
         # Spotify authorization parameters
+        scope = " ".join(getattr(settings, "SPOTIFY_SCOPES", []))
+
         params = {
             'client_id': settings.SPOTIFY_CLIENT_ID,
             'response_type': 'code',
             'redirect_uri': settings.SPOTIFY_REDIRECT_URI,
             'state': state,
-            'scope': 'user-read-email user-read-private user-read-recently-played',  # Add scopes as needed
+            'scope': scope,
         }
         
         auth_url = f"https://accounts.spotify.com/authorize?{urlencode(params)}"

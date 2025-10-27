@@ -1,7 +1,13 @@
-<h2>Your Generated Playlist</h2>
-{% if prompt %}
-<p><em>Prompt:</em> {{ prompt }}</p>
+{% if debug_steps %}
+<h2>Generation Steps</h2>
+<ol>
+  {% for step in debug_steps %}
+    <li>{{ step }}</li>
+  {% endfor %}
+</ol>
 {% endif %}
+
+<h2>Final Playlist</h2>
 {% if playlist %}
 <ul>
   {% for song in playlist %}
