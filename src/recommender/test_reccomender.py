@@ -292,6 +292,7 @@ class SpotifyHandlerTests(TestCase):
                             "artists": [{"name": "Artist A", "id": "artistA"}],
                             "popularity": 70,
                             "available_markets": ["US"],
+                            "album": {"release_date": "2023-01-01"},
                         },
                         {
                             "id": "cand2",
@@ -299,6 +300,7 @@ class SpotifyHandlerTests(TestCase):
                             "artists": [{"name": "Artist B", "id": "artistB"}],
                             "popularity": 60,
                             "available_markets": ["US"],
+                            "album": {"release_date": "2015-05-05"},
                         },
                     ]
                 }
@@ -317,6 +319,7 @@ class SpotifyHandlerTests(TestCase):
                         "artists": [{"name": "Artist C", "id": "artistC"}],
                         "popularity": 75,
                         "available_markets": ["US"],
+                        "album": {"release_date": "2005-09-01"},
                     }
                 }
             ]
@@ -383,6 +386,15 @@ class SpotifyHandlerTests(TestCase):
 
         mock_instance.audio_features.side_effect = audio_features_side_effect
 
+        mock_instance.tracks.return_value = {
+            "tracks": [
+                {
+                    "id": "seed1",
+                    "album": {"release_date": "2020-01-01"},
+                }
+            ]
+        }
+
         results = get_similar_tracks(
             ["seed1"],
             token="token",
@@ -401,6 +413,14 @@ class SpotifyHandlerTests(TestCase):
             {"tracks": {"items": []}},
         ]
         mock_instance.audio_features.return_value = [None]
+        mock_instance.tracks.return_value = {
+            "tracks": [
+                {
+                    "id": "seed1",
+                    "album": {"release_date": "2020-01-01"},
+                }
+            ]
+        }
 
         results = get_similar_tracks(
             ["seed1"],
@@ -425,6 +445,7 @@ class SpotifyHandlerTests(TestCase):
                             "artists": [{"name": "Artist A", "id": "artistA"}],
                             "popularity": 80,
                             "available_markets": ["US"],
+                            "album": {"release_date": "2022-04-01"},
                         },
                         {
                             "id": "cand2",
@@ -432,6 +453,7 @@ class SpotifyHandlerTests(TestCase):
                             "artists": [{"name": "Artist B", "id": "artistB"}],
                             "popularity": 60,
                             "available_markets": ["US"],
+                            "album": {"release_date": "2010-02-02"},
                         },
                     ]
                 }
@@ -445,6 +467,14 @@ class SpotifyHandlerTests(TestCase):
             ]
         }
         mock_instance.audio_features.side_effect = SpotifyException(403, -1, "forbidden")
+        mock_instance.tracks.return_value = {
+            "tracks": [
+                {
+                    "id": "seed1",
+                    "album": {"release_date": "2018-01-01"},
+                }
+            ]
+        }
 
         results = get_similar_tracks(
             ["seed1"],

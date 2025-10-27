@@ -7,6 +7,37 @@ import spotipy
 from spotipy import SpotifyException
 from spotipy.oauth2 import SpotifyOAuth  # noqa: F401
 
+DEFAULT_POPULARITY_THRESHOLD = getattr(settings, "RECOMMENDER_POPULARITY_THRESHOLD", 45)
+GENRE_POPULARITY_OVERRIDES = getattr(
+    settings,
+    "RECOMMENDER_GENRE_POPULARITY_OVERRIDES",
+    {
+        "ambient": 25,
+        "lo-fi": 25,
+        "lofi": 25,
+        "jazz": 30,
+        "classical": 30,
+        "folk": 35,
+        "singer-songwriter": 35,
+    },
+)
+DEFAULT_FEATURE_WEIGHTS = {
+    "danceability": 0.15,
+    "energy": 0.2,
+    "valence": 0.2,
+    "tempo": 0.1,
+    "acousticness": 0.1,
+    "instrumentalness": 0.05,
+    "speechiness": 0.05,
+    "loudness": 0.15,
+}
+FEATURE_WEIGHTS = getattr(
+    settings,
+    "RECOMMENDER_FEATURE_WEIGHTS",
+    DEFAULT_FEATURE_WEIGHTS,
+)
+FEATURE_NAMES = list(FEATURE_WEIGHTS.keys())
+
 
 def _log(
     debug_steps: Optional[List[str]],
@@ -17,6 +48,17 @@ def _log(
         log_step(message)
     elif debug_steps is not None:
         debug_steps.append(message)
+
+
+def _should_filter_non_latin() -> bool:
+    return getattr(settings, "RECOMMENDER_REQUIRE_LATIN", False)
+
+
+def _popularity_threshold_for_genre(normalized_genre: str) -> int:
+    return GENRE_POPULARITY_OVERRIDES.get(
+        normalized_genre,
+        DEFAULT_POPULARITY_THRESHOLD,
+    )
 
 
 def _normalize_genre(raw_genre: str) -> str:
@@ -62,7 +104,7 @@ def _filter_tracks_by_artist_genre(
     *,
     debug_steps: Optional[List[str]] = None,
     log_step: Optional[Callable[[str], None]] = None,
-    popularity_threshold: int = 45,
+    popularity_threshold: Optional[int] = None,
 ) -> List[Dict]:
     if not tracks:
         return []
@@ -104,7 +146,10 @@ def _filter_tracks_by_artist_genre(
     target = normalized_genre.replace("-", "")
     filtered_tracks: List[Dict] = []
     for track in tracks:
-        if track.get("popularity", 0) < popularity_threshold:
+        threshold = popularity_threshold
+        if threshold is None:
+            threshold = _popularity_threshold_for_genre(normalized_genre)
+        if track.get("popularity", 0) < threshold:
             continue
         matched = False
         for artist_id in artist_id_map.get(track["id"], []):
@@ -157,6 +202,15 @@ def _filter_non_latin_tracks(tracks: Iterable[Dict]) -> List[Dict]:
         if _is_mostly_latin(track.get("name", "")):
             filtered.append(track)
     return filtered
+
+
+def _extract_release_year(track: Dict) -> Optional[int]:
+    album = (track or {}).get("album") or {}
+    date = album.get("release_date")
+    if not date:
+        return None
+    year_str = date.split("-")[0]
+    return int(year_str) if year_str.isdigit() else None
 
 
 AUDIO_FEATURE_CACHE_TTL = 60 * 60  # seconds
@@ -219,61 +273,97 @@ def _fetch_audio_features(
     return features
 
 
-def _vectorize_audio_feature(feature: Dict) -> Optional[List[float]]:
+def _fetch_track_years(
+    sp: spotipy.Spotify,
+    track_ids: List[str],
+    *,
+    debug_steps: Optional[List[str]] = None,
+    log_step: Optional[Callable[[str], None]] = None,
+) -> Dict[str, int]:
+    years: Dict[str, int] = {}
+    for chunk in _chunked(track_ids, 50):
+        if not chunk:
+            continue
+        _log(
+            debug_steps,
+            log_step,
+            f"Spotify API → tracks: ids={','.join(chunk[:5])}{'...' if len(chunk) > 5 else ''}",
+        )
+        try:
+            response = sp.tracks(chunk)
+        except SpotifyException as exc:
+            _log(
+                debug_steps,
+                log_step,
+                f"Spotify tracks error: {exc}.",
+            )
+            continue
+        for track in response.get("tracks", []):
+            track_id = track.get("id")
+            year = _extract_release_year(track)
+            if track_id and year:
+                years[track_id] = year
+    return years
+
+
+def _vectorize_audio_feature(feature: Dict) -> Optional[Dict[str, float]]:
     if not feature:
         return None
     tempo = feature.get("tempo") or 0.0
     loudness = feature.get("loudness") or -60.0
-    return [
-        feature.get("danceability", 0.0),
-        feature.get("energy", 0.0),
-        feature.get("valence", 0.0),
-        min(max(tempo / 200.0, 0.0), 2.0),
-        feature.get("acousticness", 0.0),
-        feature.get("instrumentalness", 0.0),
-        feature.get("speechiness", 0.0),
-        min(max((loudness + 60.0) / 60.0, 0.0), 1.0),
+    return {
+        "danceability": feature.get("danceability", 0.0),
+        "energy": feature.get("energy", 0.0),
+        "valence": feature.get("valence", 0.0),
+        "tempo": min(max(tempo / 200.0, 0.0), 2.0),
+        "acousticness": feature.get("acousticness", 0.0),
+        "instrumentalness": feature.get("instrumentalness", 0.0),
+        "speechiness": feature.get("speechiness", 0.0),
+        "loudness": min(max((loudness + 60.0) / 60.0, 0.0), 1.0),
     ]
 
 
-def _compute_centroid(features: Iterable[Dict]) -> Optional[List[float]]:
-    vectors: List[List[float]] = []
+def _compute_centroid(features: Iterable[Dict]) -> Optional[Dict[str, float]]:
+    totals = {name: 0.0 for name in FEATURE_WEIGHTS}
+    count = 0
     for feature in features:
         vec = _vectorize_audio_feature(feature)
         if vec is not None:
-            vectors.append(vec)
-    if not vectors:
+            count += 1
+            for name in FEATURE_WEIGHTS:
+                totals[name] += vec.get(name, 0.0)
+    if count == 0:
         return None
-    length = len(vectors[0])
-    centroid = [0.0] * length
-    for vec in vectors:
-        for idx, value in enumerate(vec):
-            centroid[idx] += value
-    count = float(len(vectors))
-    return [value / count for value in centroid]
+    return {name: totals[name] / count for name in FEATURE_WEIGHTS}
 
 
 def _score_track(
     feature: Dict,
-    centroid: List[float],
+    centroid: Dict[str, float],
     *,
     target_energy: float,
     track: Dict,
+    seed_year_avg: Optional[float] = None,
 ) -> Optional[float]:
     vec = _vectorize_audio_feature(feature)
     if vec is None or centroid is None:
         return None
-    if len(vec) != len(centroid):
-        return None
-
-    avg_diff = sum(abs(a - b) for a, b in zip(vec, centroid)) / len(vec)
-    similarity = max(0.0, 1.0 - avg_diff)
+    diff = 0.0
+    for name, weight in FEATURE_WEIGHTS.items():
+        diff += weight * abs(vec.get(name, 0.0) - centroid.get(name, 0.0))
+    similarity = max(0.0, 1.0 - diff)
 
     energy_penalty = abs((feature.get("energy") or 0.0) - target_energy)
-    score = similarity - 0.3 * energy_penalty
+    score = similarity - 0.25 * energy_penalty
 
     popularity = (track.get("popularity", 40) or 0) / 100.0
     score = (score * 0.7) + (popularity * 0.3)
+
+    candidate_year = _extract_release_year(track)
+    if seed_year_avg is not None and candidate_year is not None:
+        year_diff = abs(candidate_year - seed_year_avg)
+        temporal_bonus = min(max(year_diff - 5, 0.0) / 40.0, 0.15)
+        score += temporal_bonus
 
     return score
 
@@ -375,7 +465,8 @@ def discover_top_tracks_for_genre(
         debug_steps=debug_steps,
         log_step=log_step,
     )
-    playlist_tracks = _filter_non_latin_tracks(playlist_tracks)
+    if _should_filter_non_latin():
+        playlist_tracks = _filter_non_latin_tracks(playlist_tracks)
 
     playlist_tracks.sort(key=lambda t: t.get("popularity", 0), reverse=True)
 
@@ -451,7 +542,8 @@ def discover_top_tracks_for_genre(
                 debug_steps=debug_steps,
                 log_step=log_step,
             )
-            tracks = _filter_non_latin_tracks(tracks)
+            if _should_filter_non_latin():
+                tracks = _filter_non_latin_tracks(tracks)
             tracks.sort(key=lambda t: t.get("popularity", 0), reverse=True)
             sample_names = [track["name"] for track in tracks[:5] if track.get("name")]
             if sample_names:
@@ -512,7 +604,8 @@ def resolve_seed_tracks(
             results = sp.search(q=query, type="track", limit=5, market=market)
             tracks = results.get("tracks", {}).get("items", [])
             tracks = _filter_by_market(tracks, market)
-            tracks = _filter_non_latin_tracks(tracks)
+            if _should_filter_non_latin():
+                tracks = _filter_non_latin_tracks(tracks)
         except SpotifyException as exc:
             _log(
                 debug_steps,
@@ -528,7 +621,9 @@ def resolve_seed_tracks(
                     f'Spotify API → search track (no market): q="{query}", limit=5',
                 )
                 results = sp.search(q=query, type="track", limit=5)
-                tracks = _filter_non_latin_tracks(results.get("tracks", {}).get("items", []))
+                tracks = results.get("tracks", {}).get("items", [])
+                if _should_filter_non_latin():
+                    tracks = _filter_non_latin_tracks(tracks)
             except SpotifyException as exc:
                 _log(
                     debug_steps,
@@ -586,7 +681,8 @@ def get_similar_tracks(
     sp = spotipy.Spotify(auth=token)
 
     energy_levels = {"low": 0.3, "medium": 0.55, "high": 0.8}
-    target_energy = energy_levels.get(attributes.get("energy", "").lower(), 0.65)
+    default_target_energy = energy_levels.get(attributes.get("energy", "").lower(), 0.65)
+    target_energy = default_target_energy
     normalized_genre = _normalize_genre(attributes.get("genre", "pop") or "pop")
 
     candidate_tracks: List[Dict] = []
@@ -631,7 +727,8 @@ def get_similar_tracks(
                 debug_steps=debug_steps,
                 log_step=log_step,
             )
-            tracks = _filter_non_latin_tracks(tracks)
+            if _should_filter_non_latin():
+                tracks = _filter_non_latin_tracks(tracks)
             candidate_tracks.extend(tracks)
             sample_names = [track.get("name") for track in tracks[:5] if track.get("name")]
             if sample_names:
@@ -674,6 +771,33 @@ def get_similar_tracks(
         debug_steps=debug_steps,
         log_step=log_step,
     )
+    energy_values = [
+        feature.get("energy")
+        for feature in seed_features.values()
+        if feature and feature.get("energy") is not None
+    ]
+    if energy_values:
+        target_energy = sum(energy_values) / len(energy_values)
+        _log(
+            debug_steps,
+            log_step,
+            f"Derived target energy from seeds: {target_energy:0.2f}.",
+        )
+
+    seed_year_map = _fetch_track_years(
+        sp,
+        list(dict.fromkeys(seed_track_ids)),
+        debug_steps=debug_steps,
+        log_step=log_step,
+    )
+    seed_year_avg: Optional[float] = None
+    if seed_year_map:
+        seed_year_avg = sum(seed_year_map.values()) / len(seed_year_map)
+        _log(
+            debug_steps,
+            log_step,
+            f"Average seed release year: {seed_year_avg:0.1f}.",
+        )
     centroid = _compute_centroid(seed_features.values())
     if centroid is None:
         _log(
@@ -730,6 +854,7 @@ def get_similar_tracks(
             centroid,
             target_energy=target_energy,
             track=track,
+            seed_year_avg=seed_year_avg,
         )
         if score is None:
             continue

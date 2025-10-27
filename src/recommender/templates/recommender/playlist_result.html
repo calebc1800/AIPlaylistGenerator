@@ -7,6 +7,15 @@
 </ol>
 {% endif %}
 
+{% if errors %}
+<h2>Notices</h2>
+<ul>
+  {% for message in errors %}
+    <li>{{ message }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
 <h2>Final Playlist</h2>
 {% if playlist %}
 <ul>

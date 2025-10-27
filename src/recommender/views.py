@@ -22,13 +22,16 @@ def _cache_key(user_identifier: str, prompt: str) -> str:
     return f"recommender:{user_identifier}:{digest}"
 
 
-def _make_logger(debug_steps: List[str]) -> Callable[[str], None]:
+def _make_logger(debug_steps: List[str], errors: List[str]) -> Callable[[str], None]:
     start = time.perf_counter()
 
     def _log(message: str) -> None:
         elapsed = time.perf_counter() - start
         formatted = f"[{elapsed:0.2f}s] {message}"
         debug_steps.append(formatted)
+        lower_msg = message.lower()
+        if any(keyword in lower_msg for keyword in ("error", "failed", "missing", "unavailable")):
+            errors.append(message)
         logger.debug("generate_playlist: %s", formatted)
 
     return _log
@@ -38,7 +41,8 @@ def _make_logger(debug_steps: List[str]) -> Callable[[str], None]:
 def generate_playlist(request):
     prompt = request.POST.get("prompt", "").strip()
     debug_steps: List[str] = []
-    log = _make_logger(debug_steps)
+    errors: List[str] = []
+    log = _make_logger(debug_steps, errors)
 
     if not prompt:
         log("Prompt missing; redirecting to dashboard.")
@@ -157,6 +161,7 @@ def generate_playlist(request):
         "playlist": playlist,
         "prompt": prompt,
         "debug_steps": debug_steps,
+        "errors": errors,
         "attributes": attributes,
         "llm_suggestions": llm_suggestions,
         "seed_tracks": seed_track_display,
