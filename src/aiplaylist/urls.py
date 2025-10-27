@@ -8,4 +8,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('home.urls')),
     path('spotify/', include('spotify_auth.urls')),
+    path('recommender/', include('recommender.urls')),
 ]

@@ -263,9 +263,10 @@
     <div class="card create-playlist">
         <h2>Create a Playlist</h2>
         <p class="subtitle">Enter a prompt to generate a playlist based on your mood, genre, or theme.</p>
-        <form action="/create_playlist/" method="POST">
-            <input type="text" name="playlist_prompt" placeholder="Type your playlist idea here..." required>
-            <button type="submit">Create Playlist</button>
+        <form method="post" action="{% url 'recommender:generate_playlist' %}">
+            {% csrf_token %}
+            <textarea name="prompt" placeholder="Describe your desired playlist..." required style="width: 100%; min-height: 120px; padding: 12px 15px; border-radius: 15px; border: 1px solid #ccc; font-size: 1rem; margin-bottom: 15px;"></textarea>
+            <button type="submit">Generate Playlist</button>
         </form>
     </div>
 

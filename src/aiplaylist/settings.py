@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'django_extensions',
     'home',
     'spotify_auth',
+    'recommender',
 ]
 
 MIDDLEWARE = [

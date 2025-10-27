@@ -1,0 +1,13 @@
+<h2>Your Generated Playlist</h2>
+{% if prompt %}
+<p><em>Prompt:</em> {{ prompt }}</p>
+{% endif %}
+{% if playlist %}
+<ul>
+  {% for song in playlist %}
+    <li>{{ song }}</li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>No playlist could be generated. Try adjusting your prompt.</p>
+{% endif %}
