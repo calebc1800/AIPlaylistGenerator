@@ -1,3 +1,4 @@
+import re
 import unicodedata
 from typing import Callable, Dict, Iterable, List, Optional, Set
 
@@ -361,6 +362,7 @@ def resolve_seed_tracks(
         if not title:
             continue
 
+        primary_artist = _primary_artist_hint(artist)
         query_parts = [f'track:"{title}"']
         if artist:
             query_parts.append(f'artist:"{artist}"')
@@ -376,6 +378,17 @@ def resolve_seed_tracks(
         except SpotifyException as exc:
             _log(debug_steps, log_step, f"Spotify search failed for '{query}' with market {market}: {exc}.")
 
+        if not tracks and primary_artist and primary_artist != artist:
+            fallback_query = f'track:"{title}" artist:"{primary_artist}"'
+            try:
+                _log(debug_steps, log_step, f'Spotify API → search track (primary artist): q="{fallback_query}", limit=5, market={market}')
+                tracks = sp.search(q=fallback_query, type="track", limit=5, market=market).get("tracks", {}).get("items", [])
+                tracks = _filter_by_market(tracks, market)
+                if _should_filter_non_latin():
+                    tracks = _filter_non_latin_tracks(tracks)
+            except SpotifyException as exc:
+                _log(debug_steps, log_step, f"Spotify search failed for '{fallback_query}' with market {market}: {exc}.")
+
         if not tracks:
             try:
                 _log(debug_steps, log_step, f'Spotify API → search track (no market): q="{query}", limit=5')
@@ -387,7 +400,7 @@ def resolve_seed_tracks(
                 continue
 
         if not tracks:
-            _log(debug_steps, log_step, f"No search results found for '{query}'.")
+            _log(debug_steps, log_step, f"No search results found for '{title}' ({artist}).")
             continue
 
         track = tracks[0]

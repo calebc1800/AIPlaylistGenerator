@@ -100,8 +100,11 @@ def suggest_seed_tracks(
     if response:
         try:
             parsed = json.loads(response)
-            if isinstance(parsed, dict) and "tracks" in parsed:
-                parsed = parsed["tracks"]
+            if isinstance(parsed, dict):
+                if "tracks" in parsed:
+                    parsed = parsed["tracks"]
+                elif "playlist" in parsed:
+                    parsed = parsed["playlist"]
             if isinstance(parsed, list):
                 for item in parsed:
                     if not isinstance(item, dict):
@@ -169,3 +172,5 @@ def refine_playlist(
     ]
     _log(debug_steps, log_step, f"LLM suggested additions: {additions}")
     return seed_tracks + additions
+
+    return suggestions[:max_suggestions]
