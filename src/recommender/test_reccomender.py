@@ -3,7 +3,7 @@ from django.urls import reverse
 from django.core.cache import cache
 from unittest.mock import patch
 
-from spotipy.exceptions import SpotifyException
+from spotipy import SpotifyException
 
 from .services.spotify_handler import get_spotify_recommendations
 from .views import _cache_key
@@ -113,11 +113,11 @@ class SpotifyHandlerTests(TestCase):
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_fallback_to_pop_on_recommendation_error(self, mock_spotify):
         mock_instance = mock_spotify.return_value
-        mock_instance.recommendation_genre_seeds.return_value = {"genres": ["pop"]}
         mock_instance.recommendations.side_effect = [
             SpotifyException(404, -1, "not found"),
             {"tracks": [{"name": "Song", "artists": [{"name": "Artist"}]}]},
         ]
+        mock_instance.search.return_value = {"tracks": {"items": []}}
 
         results = get_spotify_recommendations(
             {"genre": "nonexistent genre", "energy": "medium"},
@@ -126,22 +126,24 @@ class SpotifyHandlerTests(TestCase):
 
         self.assertEqual(results, ["Song - Artist"])
         self.assertEqual(mock_instance.recommendations.call_count, 2)
+        mock_instance.search.assert_not_called()
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_seed_fetch_failure_defaults_to_pop(self, mock_spotify):
         mock_instance = mock_spotify.return_value
-        mock_instance.recommendation_genre_seeds.side_effect = SpotifyException(
-            404, -1, "not found"
-        )
         mock_instance.recommendations.side_effect = [
             SpotifyException(404, -1, "not found"),
-            {"tracks": [{"name": "Song", "artists": [{"name": "Artist"}]}]},
+            SpotifyException(404, -1, "not found"),
         ]
+        mock_instance.search.return_value = {
+            "tracks": {"items": [{"name": "Track", "artists": [{"name": "Artist"}]}]}
+        }
 
         results = get_spotify_recommendations(
             {"genre": "k-pop", "energy": "high"},
             token="token",
         )
 
-        self.assertEqual(results, ["Song - Artist"])
+        self.assertEqual(results, ["Track - Artist"])
         self.assertEqual(mock_instance.recommendations.call_count, 2)
+        mock_instance.search.assert_called()
