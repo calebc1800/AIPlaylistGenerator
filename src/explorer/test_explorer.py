@@ -2,8 +2,8 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
 from unittest.mock import patch
-from home.models import Playlist, Song
-from home.views import SpotifyAPIHelper
+from explorer.models import Playlist, Song
+from explorer.views import SpotifyAPIHelper
 
 
 class PlaylistModelTests(TestCase):
@@ -39,25 +39,25 @@ class HomeViewTests(TestCase):
         Playlist.objects.create(name='Playlist B', creator=self.user, likes=2, spotify_id='pB')
 
     def test_home_view_renders(self):
-        response = self.client.get(reverse('home'))
+        response = self.client.get(reverse('explorer'))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'home/index.html')
+        self.assertTemplateUsed(response, 'explorer/index.html')
         self.assertContains(response, 'Playlist A')
 
-    @patch('home.views.SpotifyAPIHelper.fetch_playlists', return_value=[])
+    @patch('explorer.views.SpotifyAPIHelper.fetch_playlists', return_value=[])
     def test_home_view_no_spotify_call_when_playlists_exist(self, mock_fetch):
-        self.client.get(reverse('home'))
+        self.client.get(reverse('explorer'))
         mock_fetch.assert_not_called()
 
-    @patch('home.views.SpotifyAPIHelper.fetch_playlists')
-    @patch('home.views.SpotifyAPIHelper.import_playlist')
+    @patch('explorer.views.SpotifyAPIHelper.fetch_playlists')
+    @patch('explorer.views.SpotifyAPIHelper.import_playlist')
     def test_home_view_fetches_from_spotify_when_empty(self, mock_import, mock_fetch):
         Playlist.objects.all().delete()
         mock_fetch.return_value = [{'id': 'sp1', 'name': 'From Spotify', 'tracks': {'href': 'http://tracks'}}]
         mock_import.return_value = Playlist.objects.create(
             name='From Spotify', creator=self.user, spotify_id='sp1'
         )
-        response = self.client.get(reverse('home'))
+        response = self.client.get(reverse('explorer'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'From Spotify')
 
@@ -78,14 +78,14 @@ class SearchViewTests(TestCase):
         response = self.client.get(reverse('search') + '?q=Thunderstruck')
         self.assertContains(response, 'Rock Mix')
 
-    @patch('home.views.SpotifyAPIHelper.fetch_playlists', return_value=[])
+    @patch('explorer.views.SpotifyAPIHelper.fetch_playlists', return_value=[])
     def test_search_no_results_returns_message(self, mock_fetch):
         response = self.client.get(reverse('search') + '?q=Nonexistent')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'No playlists found')
 
-    @patch('home.views.SpotifyAPIHelper.fetch_playlists')
-    @patch('home.views.SpotifyAPIHelper.import_playlist')
+    @patch('explorer.views.SpotifyAPIHelper.fetch_playlists')
+    @patch('explorer.views.SpotifyAPIHelper.import_playlist')
     def test_search_fetches_from_spotify_when_not_found(self, mock_import, mock_fetch):
         Playlist.objects.all().delete()
         mock_fetch.return_value = [{'id': 'abc', 'name': 'Imported', 'tracks': {'href': 'link'}}]
@@ -124,25 +124,25 @@ class LogoutViewTests(TestCase):
         response = self.client.get(reverse('logout'))
         self.assertNotIn('key', self.client.session)
         self.assertEqual(response.status_code, 302)
-        self.assertRedirects(response, reverse('home'))
+        self.assertRedirects(response, reverse('explorer'))
 
 
 class SpotifyAPIHelperTests(TestCase):
-    @patch('home.views.requests.post')
+    @patch('explorer.views.requests.post')
     def test_get_access_token_success(self, mock_post):
         mock_post.return_value.status_code = 200
         mock_post.return_value.json.return_value = {'access_token': 'abc123'}
         token = SpotifyAPIHelper.get_access_token()
         self.assertEqual(token, 'abc123')
 
-    @patch('home.views.requests.post')
+    @patch('explorer.views.requests.post')
     def test_get_access_token_failure(self, mock_post):
         mock_post.return_value.status_code = 400
         with self.assertRaises(Exception):
             SpotifyAPIHelper.get_access_token()
 
-    @patch('home.views.requests.get')
-    @patch('home.views.SpotifyAPIHelper.get_access_token', return_value='tok')
+    @patch('explorer.views.requests.get')
+    @patch('explorer.views.SpotifyAPIHelper.get_access_token', return_value='tok')
     def test_fetch_playlists_success(self, mock_token, mock_get):
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = {
@@ -151,8 +151,8 @@ class SpotifyAPIHelperTests(TestCase):
         data = SpotifyAPIHelper.fetch_playlists('query')
         self.assertEqual(data[0]['id'], 'p1')
 
-    @patch('home.views.requests.get')
-    @patch('home.views.SpotifyAPIHelper.get_access_token', return_value='tok')
+    @patch('explorer.views.requests.get')
+    @patch('explorer.views.SpotifyAPIHelper.get_access_token', return_value='tok')
     def test_fetch_playlists_error(self, mock_token, mock_get):
         mock_get.return_value.status_code = 400
         data = SpotifyAPIHelper.fetch_playlists('query')

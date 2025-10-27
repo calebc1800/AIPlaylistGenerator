@@ -142,7 +142,7 @@ class HomeView(View):
             'playlists': playlists,
         }
 
-        return render(request, 'home/index.html', context)
+        return render(request, 'explorer/index.html', context)
 
 
 class SearchView(View):
@@ -177,7 +177,7 @@ class SearchView(View):
             'results_count': len(playlists) if isinstance(playlists, list) else playlists.count(),
         }
 
-        return render(request, 'home/search.html', context)
+        return render(request, 'explorer/search.html', context)
 
 
 class ProfileView(View):
@@ -187,7 +187,7 @@ class ProfileView(View):
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            return render(request, 'home/profile.html', {
+            return render(request, 'explorer/profile.html', {
                 'error': 'User not found'
             }, status=404)
 
@@ -198,7 +198,7 @@ class ProfileView(View):
             'playlists': playlists,
         }
 
-        return render(request, 'home/profile.html', context)
+        return render(request, 'explorer/profile.html', context)
 
 
 class LogoutView(View):
@@ -207,7 +207,7 @@ class LogoutView(View):
     def get(self, request):
         # Clear session data
         request.session.flush()
-        return redirect('home')
+        return redirect('explorer')
 
 
 # Keep these for backwards compatibility if needed
