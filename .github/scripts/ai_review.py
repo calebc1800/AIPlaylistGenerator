@@ -195,8 +195,7 @@ try:
             {"role": "user", "content": prompt}
         ],
         max_completion_tokens=1500,
-        temperature = 1.0
-        
+        temperature=0.3
     )
 
     ai_review_content = response.choices[0].message.content.strip()
