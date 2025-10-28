@@ -199,6 +199,9 @@ try:
 
     ai_review_content = response.choices[0].message.content.strip()
 
+    if not ai_review_content:
+        raise ValueError("Primary model returned empty content")
+
     print("\n" + "="*50)
     print("AI Code Review Summary:")
     print("="*50)
