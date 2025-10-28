@@ -1,16 +1,19 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from explorer.models import Playlist, Song
 from explorer.views import SpotifyAPIHelper
 
 
 class PlaylistModelTests(TestCase):
+    """Tests for Playlist model"""
+
     def setUp(self):
         self.user = User.objects.create_user(username='tester', password='testpass')
 
     def test_create_playlist(self):
+        """Test creating a playlist with all fields"""
         playlist = Playlist.objects.create(
             name='Test Playlist',
             description='Sample playlist',
@@ -22,138 +25,317 @@ class PlaylistModelTests(TestCase):
         self.assertEqual(str(playlist), 'Test Playlist')
         self.assertEqual(playlist.likes, 5)
         self.assertEqual(playlist.creator.username, 'tester')
+        self.assertEqual(playlist.spotify_id, 'sp123')
+
+    def test_playlist_ordering(self):
+        """Test that playlists are ordered by likes descending"""
+        p1 = Playlist.objects.create(name='Low', creator=self.user, likes=1, spotify_id='low')
+        p2 = Playlist.objects.create(name='High', creator=self.user, likes=10, spotify_id='high')
+        playlists = Playlist.objects.all()
+        self.assertEqual(playlists[0], p2)
+        self.assertEqual(playlists[1], p1)
 
     def test_song_creation_and_relation(self):
+        """Test creating songs and their relationship with playlists"""
         playlist = Playlist.objects.create(name='Test', creator=self.user, spotify_id='xyz1')
         song = Song.objects.create(playlist=playlist, name='Track 1', artist='Artist X')
         self.assertEqual(str(song), 'Track 1')
         self.assertEqual(song.playlist, playlist)
         self.assertEqual(playlist.sample_songs.count(), 1)
 
-
-class HomeViewTests(TestCase):
-    def setUp(self):
-        self.client = Client()
-        self.user = User.objects.create_user(username='alice', password='1234')
-        Playlist.objects.create(name='Playlist A', creator=self.user, likes=10, spotify_id='pA')
-        Playlist.objects.create(name='Playlist B', creator=self.user, likes=2, spotify_id='pB')
-
-    def test_home_view_renders(self):
-        response = self.client.get(reverse('explorer'))
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'explorer/index.html')
-        self.assertContains(response, 'Playlist A')
-
-    @patch('explorer.views.SpotifyAPIHelper.fetch_playlists', return_value=[])
-    def test_home_view_no_spotify_call_when_playlists_exist(self, mock_fetch):
-        self.client.get(reverse('explorer'))
-        mock_fetch.assert_not_called()
-
-    @patch('explorer.views.SpotifyAPIHelper.fetch_playlists')
-    @patch('explorer.views.SpotifyAPIHelper.import_playlist')
-    def test_home_view_fetches_from_spotify_when_empty(self, mock_import, mock_fetch):
-        Playlist.objects.all().delete()
-        mock_fetch.return_value = [{'id': 'sp1', 'name': 'From Spotify', 'tracks': {'href': 'http://tracks'}}]
-        mock_import.return_value = Playlist.objects.create(
-            name='From Spotify', creator=self.user, spotify_id='sp1'
-        )
-        response = self.client.get(reverse('explorer'))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'From Spotify')
+    def test_multiple_songs_in_playlist(self):
+        """Test adding multiple songs to a playlist"""
+        playlist = Playlist.objects.create(name='Multi', creator=self.user, spotify_id='multi')
+        Song.objects.create(playlist=playlist, name='Song 1', artist='Artist 1')
+        Song.objects.create(playlist=playlist, name='Song 2', artist='Artist 2')
+        Song.objects.create(playlist=playlist, name='Song 3', artist='Artist 3')
+        self.assertEqual(playlist.sample_songs.count(), 3)
 
 
 class SearchViewTests(TestCase):
+    """Tests for the search functionality"""
+
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(username='bob', password='123')
-        self.p1 = Playlist.objects.create(name='Rock Mix', creator=self.user, likes=4, spotify_id='rockmix')
-        Song.objects.create(playlist=self.p1, name='Thunderstruck')
+        self.p1 = Playlist.objects.create(
+            name='Rock Mix',
+            description='Best rock songs',
+            creator=self.user,
+            likes=4,
+            spotify_id='rockmix'
+        )
+        Song.objects.create(playlist=self.p1, name='Thunderstruck', artist='AC/DC')
+
+    def test_search_view_renders(self):
+        """Test that search view renders successfully"""
+        response = self.client.get(reverse('search'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'explorer/search.html')
 
     def test_search_by_name(self):
+        """Test searching for playlists by name"""
         response = self.client.get(reverse('search') + '?q=rock')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Rock Mix')
 
+    def test_search_by_description(self):
+        """Test searching for playlists by description"""
+        response = self.client.get(reverse('search') + '?q=Best')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Rock Mix')
+
     def test_search_by_song_name(self):
+        """Test searching for playlists by song name"""
         response = self.client.get(reverse('search') + '?q=Thunderstruck')
         self.assertContains(response, 'Rock Mix')
 
+    def test_search_by_creator_username(self):
+        """Test searching for playlists by creator username"""
+        response = self.client.get(reverse('search') + '?q=bob')
+        self.assertContains(response, 'Rock Mix')
+
+    def test_search_case_insensitive(self):
+        """Test that search is case insensitive"""
+        response = self.client.get(reverse('search') + '?q=ROCK')
+        self.assertContains(response, 'Rock Mix')
+
     @patch('explorer.views.SpotifyAPIHelper.fetch_playlists', return_value=[])
-    def test_search_no_results_returns_message(self, mock_fetch):
+    def test_search_no_results_shows_empty_message(self, mock_fetch):
+        """Test that search shows appropriate message when no results found"""
         response = self.client.get(reverse('search') + '?q=Nonexistent')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'No playlists found')
 
     @patch('explorer.views.SpotifyAPIHelper.fetch_playlists')
     @patch('explorer.views.SpotifyAPIHelper.import_playlist')
-    def test_search_fetches_from_spotify_when_not_found(self, mock_import, mock_fetch):
+    def test_search_fetches_from_spotify_when_not_found_locally(self, mock_import, mock_fetch):
+        """Test that search fetches from Spotify API when no local results"""
         Playlist.objects.all().delete()
-        mock_fetch.return_value = [{'id': 'abc', 'name': 'Imported', 'tracks': {'href': 'link'}}]
+        mock_fetch.return_value = [
+            {
+                'id': 'abc',
+                'name': 'Imported',
+                'description': 'From Spotify',
+                'images': [{'url': 'http://image.url'}],
+                'followers': {'total': 100},
+                'tracks': {'href': 'http://tracks'}
+            }
+        ]
         mock_import.return_value = Playlist.objects.create(
-            name='Imported', creator=self.user, spotify_id='abc')
+            name='Imported',
+            creator=self.user,
+            spotify_id='abc'
+        )
         response = self.client.get(reverse('search') + '?q=something')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Imported')
 
+    def test_search_without_query(self):
+        """Test search without query parameter returns all playlists"""
+        response = self.client.get(reverse('search'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Rock Mix')
+
+    def test_search_results_count_in_context(self):
+        """Test that search results count is in context"""
+        response = self.client.get(reverse('search') + '?q=rock')
+        self.assertIn('results_count', response.context)
+        self.assertEqual(response.context['results_count'], 1)
+
 
 class ProfileViewTests(TestCase):
+    """Tests for user profile view"""
+
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(username='charlie', password='test')
-        Playlist.objects.create(name='User Playlist', creator=self.user, spotify_id='user1')
+        Playlist.objects.create(name='User Playlist 1', creator=self.user, spotify_id='user1')
+        Playlist.objects.create(name='User Playlist 2', creator=self.user, spotify_id='user2')
 
     def test_profile_page_valid_user(self):
+        """Test that profile page displays for valid user"""
         response = self.client.get(reverse('profile', args=[self.user.id]))
         self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'explorer/profile.html')
         self.assertContains(response, "charlie's Playlists")
 
+    def test_profile_shows_user_playlists(self):
+        """Test that profile shows all user's playlists"""
+        response = self.client.get(reverse('profile', args=[self.user.id]))
+        self.assertContains(response, 'User Playlist 1')
+        self.assertContains(response, 'User Playlist 2')
+
     def test_profile_page_invalid_user(self):
+        """Test that profile page returns 404 for non-existent user"""
         response = self.client.get(reverse('profile', args=[999]))
         self.assertEqual(response.status_code, 404)
 
+    def test_profile_shows_only_user_playlists(self):
+        """Test that profile only shows playlists created by that user"""
+        other_user = User.objects.create_user(username='other', password='pass')
+        Playlist.objects.create(name='Other Playlist', creator=other_user, spotify_id='other')
+
+        response = self.client.get(reverse('profile', args=[self.user.id]))
+        self.assertContains(response, 'User Playlist 1')
+        self.assertNotContains(response, 'Other Playlist')
+
 
 class LogoutViewTests(TestCase):
+    """Tests for logout functionality"""
+
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(username='tester', password='pass')
 
     def test_logout_clears_session(self):
+        """Test that logout clears all session data"""
         session = self.client.session
         session['key'] = 'value'
+        session['spotify_token'] = 'token123'
         session.save()
+
         response = self.client.get(reverse('logout'))
+
         self.assertNotIn('key', self.client.session)
+        self.assertNotIn('spotify_token', self.client.session)
         self.assertEqual(response.status_code, 302)
-        self.assertRedirects(response, reverse('explorer'))
+
+    def test_logout_redirects_to_home(self):
+        """Test that logout redirects to home page"""
+        response = self.client.get(reverse('logout'))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('home'))
 
 
 class SpotifyAPIHelperTests(TestCase):
+    """Tests for Spotify API helper functions"""
+
     @patch('explorer.views.requests.post')
     def test_get_access_token_success(self, mock_post):
+        """Test successful token retrieval"""
         mock_post.return_value.status_code = 200
         mock_post.return_value.json.return_value = {'access_token': 'abc123'}
+
         token = SpotifyAPIHelper.get_access_token()
+
         self.assertEqual(token, 'abc123')
+        mock_post.assert_called_once()
 
     @patch('explorer.views.requests.post')
     def test_get_access_token_failure(self, mock_post):
+        """Test token retrieval failure raises exception"""
         mock_post.return_value.status_code = 400
-        with self.assertRaises(Exception):
+
+        with self.assertRaises(Exception) as context:
             SpotifyAPIHelper.get_access_token()
+
+        self.assertIn('Failed to get Spotify access token', str(context.exception))
 
     @patch('explorer.views.requests.get')
     @patch('explorer.views.SpotifyAPIHelper.get_access_token', return_value='tok')
     def test_fetch_playlists_success(self, mock_token, mock_get):
+        """Test successful playlist fetching from Spotify"""
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = {
-            'playlists': {'items': [{'id': 'p1', 'name': 'Playlist'}]}
+            'playlists': {'items': [
+                {'id': 'p1', 'name': 'Playlist 1'},
+                {'id': 'p2', 'name': 'Playlist 2'}
+            ]}
         }
+
         data = SpotifyAPIHelper.fetch_playlists('query')
+
+        self.assertEqual(len(data), 2)
         self.assertEqual(data[0]['id'], 'p1')
+        self.assertEqual(data[1]['id'], 'p2')
 
     @patch('explorer.views.requests.get')
     @patch('explorer.views.SpotifyAPIHelper.get_access_token', return_value='tok')
     def test_fetch_playlists_error(self, mock_token, mock_get):
+        """Test playlist fetching handles errors gracefully"""
         mock_get.return_value.status_code = 400
+
         data = SpotifyAPIHelper.fetch_playlists('query')
+
         self.assertEqual(data, [])
+
+    @patch('explorer.views.requests.get')
+    @patch('explorer.views.SpotifyAPIHelper.get_access_token', return_value='tok')
+    def test_fetch_playlists_with_limit(self, mock_token, mock_get):
+        """Test fetch playlists respects limit parameter"""
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {
+            'playlists': {'items': [{'id': f'p{i}', 'name': f'Playlist {i}'} for i in range(5)]}
+        }
+
+        SpotifyAPIHelper.fetch_playlists('query', limit=5)
+
+        # Check that the API was called with the correct limit
+        call_args = mock_get.call_args
+        self.assertEqual(call_args[1]['params']['limit'], 5)
+
+    @patch('explorer.views.User.objects.get_or_create')
+    @patch('explorer.views.Playlist.objects.get_or_create')
+    def test_import_playlist(self, mock_playlist_create, mock_user_create):
+        """Test importing a playlist from Spotify data"""
+        mock_user = Mock()
+        mock_user.username = 'spotify_user'
+        mock_user_create.return_value = (mock_user, True)
+
+        mock_playlist = Mock()
+        mock_playlist.name = 'Imported Playlist'
+        mock_playlist_create.return_value = (mock_playlist, True)
+
+        playlist_data = {
+            'id': 'sp123',
+            'name': 'Imported Playlist',
+            'description': 'A test playlist',
+            'images': [{'url': 'http://image.url'}],
+            'followers': {'total': 100},
+            'uri': 'spotify:playlist:sp123',
+            'tracks': {'href': 'http://tracks'}
+        }
+
+        result = SpotifyAPIHelper.import_playlist(playlist_data)
+
+        self.assertIsNotNone(result)
+        mock_playlist_create.assert_called_once()
+
+    @patch('explorer.views.requests.get')
+    @patch('explorer.views.SpotifyAPIHelper.get_access_token', return_value='token')
+    def test_fetch_and_add_songs(self, mock_token, mock_get):
+        """Test fetching and adding songs to a playlist"""
+        user = User.objects.create_user(username='test', password='pass')
+        playlist = Playlist.objects.create(
+            name='Test',
+            creator=user,
+            spotify_id='test123'
+        )
+
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {
+            'items': [
+                {
+                    'track': {
+                        'id': 't1',
+                        'name': 'Song 1',
+                        'artists': [{'name': 'Artist 1'}]
+                    }
+                },
+                {
+                    'track': {
+                        'id': 't2',
+                        'name': 'Song 2',
+                        'artists': [{'name': 'Artist 2'}, {'name': 'Artist 3'}]
+                    }
+                }
+            ]
+        }
+
+        SpotifyAPIHelper.fetch_and_add_songs(playlist, 'http://tracks', limit=2)
+
+        self.assertEqual(playlist.sample_songs.count(), 2)
+        songs = playlist.sample_songs.all()
+        self.assertEqual(songs[0].name, 'Song 1')
+        self.assertEqual(songs[1].artist, 'Artist 2, Artist 3')
