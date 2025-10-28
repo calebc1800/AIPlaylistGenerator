@@ -1,4 +1,5 @@
 import spotipy
+from django.conf import settings
 from django.shortcuts import redirect, render
 from django.views import View
 from explorer.models import Playlist
@@ -45,6 +46,19 @@ class DashboardView(View):
 
                 playlists = Playlist.objects.all().order_by('-likes')
 
+            debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
+            default_provider = str(
+                getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
+            ).lower()
+            session_provider = (request.session.get("llm_provider") or "").strip().lower()
+            if session_provider not in {"openai", "ollama"}:
+                session_provider = default_provider
+            if not debug_enabled:
+                session_provider = default_provider if default_provider in {"openai", "ollama"} else "openai"
+                request.session["llm_provider"] = session_provider
+            else:
+                request.session["llm_provider"] = session_provider
+
             context = {
                 'username': username,
                 'user_id': user_id,
@@ -53,6 +67,10 @@ class DashboardView(View):
                 'last_song': last_song,
                 'profile_url': user_profile.get('external_urls', {}).get('spotify'),
                 'explore_playlists': playlists,
+                'debug_enabled': debug_enabled,
+                'llm_toggle_visible': debug_enabled,
+                'llm_provider': session_provider,
+                'llm_provider_default': default_provider,
             }
             return render(request, 'dashboard/dashboard.html', context)
 

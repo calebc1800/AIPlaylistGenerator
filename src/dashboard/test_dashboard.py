@@ -1,4 +1,4 @@
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
 from unittest.mock import patch, Mock
@@ -411,6 +411,74 @@ class DashboardViewTests(TestCase):
         self.assertContains(response, 'Create')
         self.assertContains(response, 'Stats')
         self.assertContains(response, 'Account')
+
+    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=False)
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_llm_toggle_hidden_when_debug_disabled(self, mock_spotify):
+        """Toggle switch should not render when debug mode is disabled."""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        Playlist.objects.create(
+            name='Sample Playlist',
+            description='',
+            creator=self.user,
+            likes=0,
+            spotify_id='toggle-sample',
+        )
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user',
+            'display_name': 'Test User',
+            'followers': {'total': 0},
+            'external_urls': {'spotify': 'https://example.com/profile'},
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        response = self.client.get(self.dashboard_url)
+        content = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['llm_toggle_visible'])
+        self.assertNotIn('id="llm-toggle"', content)
+        self.assertNotIn('LLM Provider', content)
+
+    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=True)
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_llm_toggle_visible_when_debug_enabled(self, mock_spotify):
+        """Toggle switch should render when debug mode is enabled."""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        Playlist.objects.create(
+            name='Visible Playlist',
+            description='',
+            creator=self.user,
+            likes=0,
+            spotify_id='toggle-visible',
+        )
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user',
+            'display_name': 'Test User',
+            'followers': {'total': 0},
+            'external_urls': {'spotify': 'https://example.com/profile'},
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        response = self.client.get(self.dashboard_url)
+        content = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['llm_toggle_visible'])
+        self.assertIn('id="llm-toggle"', content)
+        self.assertIn('LLM Provider', content)
 
 
 class DashboardIntegrationTests(TestCase):

@@ -20,7 +20,11 @@ from recommender.services.user_preferences import (
     describe_pending_options,
     get_default_preferences,
 )
-from recommender.services.llm_handler import refine_playlist, suggest_seed_tracks
+from recommender.services.llm_handler import (
+    extract_playlist_attributes,
+    refine_playlist,
+    suggest_seed_tracks,
+)
 from recommender.views import _cache_key
 
 
@@ -465,7 +469,44 @@ class SpotifyHandlerTests(TestCase):
 class LLMHandlerTests(TestCase):
     """Unit tests for LLM helper behaviour."""
 
-    @patch("recommender.services.llm_handler.query_ollama", return_value="")
+    @patch(
+        "recommender.services.llm_handler.dispatch_llm_query",
+        return_value='Here you go!\n```json\n{ "mood": "nostalgic", "genre": "country", "energy_level": "medium" }\n```',
+    )
+    def test_extract_playlist_attributes_handles_code_fence(self, mock_query):
+        attributes = extract_playlist_attributes("country classics", debug_steps=[], provider="openai")
+        self.assertEqual(attributes["mood"], "nostalgic")
+        self.assertEqual(attributes["genre"], "country")
+        self.assertEqual(attributes["energy"], "medium")
+        mock_query.assert_called_once()
+
+    @patch(
+        "recommender.services.llm_handler.dispatch_llm_query",
+        return_value=(
+            "Here’s a JSON array of country classics that fit the requested attributes:\n"
+            "```json\n"
+            '[{"title": "Take Me Home, Country Roads", "artist": "John Denver"},'
+            '{"title": "Jolene", "artist": "Dolly Parton"}]\n'
+            "```"
+        ),
+    )
+    def test_suggest_seed_tracks_parses_json_code_block(self, mock_query):
+        suggestions = suggest_seed_tracks(
+            "country classics",
+            {"genre": "country", "mood": "nostalgic", "energy": "medium"},
+            debug_steps=[],
+            provider="openai",
+        )
+        self.assertEqual(
+            suggestions[:2],
+            [
+                {"title": "Take Me Home, Country Roads", "artist": "John Denver"},
+                {"title": "Jolene", "artist": "Dolly Parton"},
+            ],
+        )
+        mock_query.assert_called_once()
+
+    @patch("recommender.services.llm_handler.dispatch_llm_query", return_value="")
     def test_refine_playlist_empty_response_returns_seeds(self, mock_query):
         seeds = ["Song A - Artist A", "Song B - Artist B"]
         result = refine_playlist(seeds, {"mood": "chill"}, query_fn=mock_query)
@@ -473,7 +514,7 @@ class LLMHandlerTests(TestCase):
         mock_query.assert_called_once()
 
     @patch(
-        "recommender.services.llm_handler.query_ollama",
+        "recommender.services.llm_handler.dispatch_llm_query",
         return_value="New Track - Artist\nSong A - Artist A\n",
     )
     def test_refine_playlist_appends_unique_suggestions(self, mock_query):
@@ -482,7 +523,7 @@ class LLMHandlerTests(TestCase):
         self.assertEqual(result, ["Song A - Artist A", "New Track - Artist"])
         mock_query.assert_called_once()
 
-    @patch("recommender.services.llm_handler.query_ollama", return_value="")
+    @patch("recommender.services.llm_handler.dispatch_llm_query", return_value="")
     def test_suggest_seed_tracks_uses_fallback_when_llm_unavailable(self, mock_query):
         suggestions = suggest_seed_tracks(
             "Feel-good pop anthems",

@@ -70,6 +70,9 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
             for key, value in preference_descriptions.items()
         ]
     debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
+    default_provider = str(
+        getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
+    ).lower()
     context_debug_steps: List[str] = []
     if debug_enabled:
         context_debug_steps = list(payload.get("debug_steps", []))
@@ -97,6 +100,9 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
         "prompt": payload.get("prompt", ""),
         "debug_steps": context_debug_steps,
         "debug_enabled": debug_enabled,
+        "llm_toggle_visible": debug_enabled,
+        "llm_provider": payload.get("llm_provider") or default_provider,
+        "llm_provider_default": default_provider,
         "errors": list(payload.get("errors", [])),
         "attributes": payload.get("attributes"),
         "llm_suggestions": payload.get("llm_suggestions", []),
@@ -123,6 +129,23 @@ def generate_playlist(request):
         log("Prompt missing; redirecting to dashboard.")
         return redirect("dashboard:dashboard")
 
+    debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
+    default_provider = str(
+        getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
+    ).lower()
+    provider_choices = {"openai", "ollama"}
+    requested_provider = (request.POST.get("llm_provider") or "").strip().lower()
+    session_provider = (request.session.get("llm_provider") or "").strip().lower()
+    if debug_enabled and requested_provider in provider_choices:
+        llm_provider = requested_provider
+    elif session_provider in provider_choices:
+        llm_provider = session_provider
+    else:
+        llm_provider = default_provider if default_provider in provider_choices else "openai"
+    if not debug_enabled and llm_provider != (default_provider if default_provider in provider_choices else "openai"):
+        llm_provider = default_provider if default_provider in provider_choices else "openai"
+    request.session["llm_provider"] = llm_provider
+
     log(f"Prompt received: {prompt}")
 
     access_token = request.session.get("spotify_access_token")
@@ -147,6 +170,7 @@ def generate_playlist(request):
             **cached_payload,
             "user_preferences": cached_payload.get("user_preferences", preference_snapshot),
             "preference_descriptions": cached_payload.get("preference_descriptions", preference_descriptions),
+            "llm_provider": cached_payload.get("llm_provider") or llm_provider,
         }
         context = _build_context_from_payload(updated_payload)
         context.setdefault("cache_key", cache_key)
@@ -178,12 +202,14 @@ def generate_playlist(request):
             "cache_key": cache_key,
             "user_preferences": preference_snapshot,
             "preference_descriptions": preference_descriptions,
+            "llm_provider": llm_provider,
         }
     else:
         attributes = extract_playlist_attributes(
             prompt,
             debug_steps=debug_steps,
             log_step=log,
+            provider=llm_provider,
         )
         log(f"Attributes after normalization: {attributes}")
 
@@ -192,6 +218,7 @@ def generate_playlist(request):
             attributes,
             debug_steps=debug_steps,
             log_step=log,
+            provider=llm_provider,
         )
         resolved_seed_tracks = resolve_seed_tracks(
             llm_suggestions,
@@ -313,6 +340,7 @@ def generate_playlist(request):
             "cache_key": cache_key,
             "user_preferences": preference_snapshot,
             "preference_descriptions": preference_descriptions,
+            "llm_provider": llm_provider,
         }
         cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
         cache.set(cache_key, payload, timeout=cache_timeout)

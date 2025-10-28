@@ -194,10 +194,34 @@ def _int_env(var_name: str, default: int) -> int:
         return default
 
 
+def _float_env(var_name: str, default: float) -> float:
+    raw = os.getenv(var_name)
+    if raw is None:
+        return default
+    try:
+        return float(raw.strip())
+    except (TypeError, ValueError):
+        return default
+
+
 RECOMMENDER_PLAYLIST_PREFIX = os.getenv("RECOMMENDER_PLAYLIST_PREFIX", "TEST ")
 RECOMMENDER_PLAYLIST_PUBLIC = _bool_env("RECOMMENDER_PLAYLIST_PUBLIC", default=False)
-RECOMMENDER_DEBUG_VIEW_ENABLED = _bool_env("RECOMMENDER_DEBUG_VIEW_ENABLED", default=True)
+RECOMMENDER_DEBUG_VIEW_ENABLED = _bool_env("RECOMMENDER_DEBUG_VIEW_ENABLED", default=DEBUG)
 RECOMMENDER_CACHE_TIMEOUT_SECONDS = _int_env("RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
+RECOMMENDER_OPENAI_MODEL = os.getenv("RECOMMENDER_OPENAI_MODEL", "gpt-4o-mini")
+RECOMMENDER_OPENAI_TEMPERATURE = _float_env("RECOMMENDER_OPENAI_TEMPERATURE", 0.7)
+RECOMMENDER_OPENAI_MAX_TOKENS = _int_env("RECOMMENDER_OPENAI_MAX_TOKENS", 512)
+RECOMMENDER_LLM_DEFAULT_PROVIDER = os.getenv("RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai").lower()
+RECOMMENDER_OLLAMA_MODEL = os.getenv("RECOMMENDER_OLLAMA_MODEL", "mistral")
+_default_ollama_timeout = 600 if DEBUG else 60
+RECOMMENDER_OLLAMA_TIMEOUT_SECONDS = _int_env(
+    "RECOMMENDER_OLLAMA_TIMEOUT_SECONDS",
+    _default_ollama_timeout,
+)
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_BASE = os.getenv("OPENAI_API_BASE")
+OPENAI_ORGANIZATION = os.getenv("OPENAI_ORGANIZATION") or os.getenv("OPENAI_ORG_ID")
 
 # Placeholder knobs for upcoming user-configurable recommender options.
 RECOMMENDER_DEFAULT_PLAYLIST_LENGTH = _int_env("RECOMMENDER_DEFAULT_PLAYLIST_LENGTH", 20)
