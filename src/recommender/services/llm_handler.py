@@ -9,7 +9,15 @@ from typing import Callable, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 DEFAULT_ATTRIBUTES = {"mood": "chill", "genre": "pop", "energy": "medium"}
-OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "60"))
+try:
+    from django.conf import settings  # type: ignore
+except Exception:  # pragma: no cover - settings may not be ready during import time
+    settings = None
+
+if settings is not None and getattr(settings, "DEBUG", False):
+    OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "600"))
+else:
+    OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "60"))
 _GENRE_FALLBACKS = {
     "pop": [
         {"title": "Blinding Lights", "artist": "The Weeknd"},
