@@ -194,7 +194,8 @@ try:
             {"role": "system", "content": "You are an expert code reviewer for Django projects. Provide constructive, specific feedback with clear recommendations."},
             {"role": "user", "content": prompt}
         ],
-        max_completion_tokens=1500
+        max_completion_tokens=1500,
+        temperature = 1.0
         
     )
 
