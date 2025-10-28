@@ -9,6 +9,46 @@ on:
     branches: [ main ]
 jobs:
     build_and_push:
-    
+        name: Build and Push Docker Image
+        runs-on: ubuntu-latest
+        permissions:
+          contents: read
+          packages: write
+        steps:
+          - name: Checkout repository
+            uses: actions/checkout@v4
+            with:
+              fetch-depth: 0
+
+          - name: Log in to Docker Hub
+            uses: docker/login-action@v2
+            with:
+              username: ${{ secrets.DOCKER_HUB_USERNAME }}
+              password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+          - name: Build and push Docker image
+            uses: docker/build-push-action@v4
+            with:
+              context: .
+              push: true
+              tags: ${{ secrets.DOCKER_HUB_USERNAME }}/ai_playlist:latest
+    deploy:
+        name: Deploy to Server
+        runs-on: ubuntu-latest
+        needs: build_and_push
+        steps:
+          - name: Deploy to Remote Server
+            uses: appleboy/ssh-action@v0.1.7
+            with:
+              host: ${{ secrets.SERVER_HOST }}
+              username: ${{ secrets.SERVER_USERNAME }}
+              key: ${{ secrets.SERVER_SSH_KEY }}
+              port: ${{ secrets.SERVER_SSH_PORT }}
+              script: |
+                docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/ai_playlist:latest
+                docker stop ai_playlist || true
+                docker rm ai_playlist || true
+                docker run -d --name ai_playlist -p 80:80 ${{ secrets.DOCKER_HUB_USERNAME }}/ai_playlist:latest
+
         
 

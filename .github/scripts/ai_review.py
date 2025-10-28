@@ -183,7 +183,7 @@ Code:
 """
 
 # Use a configurable model
-model_name = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
+model_name = os.environ.get("OPENAI_MODEL", "gpt-5")
 
 ai_review_content = ""
 try:
