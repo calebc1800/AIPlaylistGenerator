@@ -193,7 +193,7 @@ try:
             {"role": "system", "content": "You are an expert code reviewer for Django projects. Provide constructive, specific feedback with clear recommendations."},
             {"role": "user", "content": prompt}
         ],
-        max_completion_tokens=3500,
+        max_completion_tokens=1500,
         temperature=1  # Lower temperature for more consistent reviews
     )
 
@@ -204,7 +204,7 @@ try:
         print(f"⚠️ Could not extract AI review content: {e}")
         print("Full response object for debugging:")
         print(response)
-    
+
 
     print("\n" + "="*50)
     print("AI Code Review Summary:")
