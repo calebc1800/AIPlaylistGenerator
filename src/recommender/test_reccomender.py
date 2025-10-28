@@ -17,6 +17,7 @@ from .services.user_preferences import (
     describe_pending_options,
     get_default_preferences,
 )
+from .services.llm_handler import refine_playlist
 from .views import _cache_key
 
 
@@ -381,6 +382,27 @@ class SpotifyHandlerTests(TestCase):
     def test_create_playlist_with_tracks_requires_tracks(self):
         with self.assertRaises(ValueError):
             create_playlist_with_tracks(token="token", track_ids=[], playlist_name="Empty")
+
+
+class LLMHandlerTests(TestCase):
+    """Unit tests for LLM helper behaviour."""
+
+    @patch("recommender.services.llm_handler.query_ollama", return_value="")
+    def test_refine_playlist_empty_response_returns_seeds(self, mock_query):
+        seeds = ["Song A - Artist A", "Song B - Artist B"]
+        result = refine_playlist(seeds, {"mood": "chill"})
+        self.assertEqual(result, seeds)
+        mock_query.assert_called_once()
+
+    @patch(
+        "recommender.services.llm_handler.query_ollama",
+        return_value="New Track - Artist\nSong A - Artist A\n",
+    )
+    def test_refine_playlist_appends_unique_suggestions(self, mock_query):
+        seeds = ["Song A - Artist A"]
+        result = refine_playlist(seeds, {"mood": "focus"})
+        self.assertEqual(result, ["Song A - Artist A", "New Track - Artist"])
+        mock_query.assert_called_once()
 
 
 class SavePlaylistViewTests(TestCase):

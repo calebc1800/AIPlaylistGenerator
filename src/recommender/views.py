@@ -5,7 +5,7 @@ import logging
 import re
 import time
 from dataclasses import asdict
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Set
 
 from django.conf import settings
 from django.contrib import messages
@@ -66,10 +66,11 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
             }
             for key, value in preference_descriptions.items()
         ]
+    context_debug_steps = list(payload.get("debug_steps", [])) if settings.DEBUG else []
     return {
         "playlist": payload.get("playlist", []),
         "prompt": payload.get("prompt", ""),
-        "debug_steps": list(payload.get("debug_steps", [])),
+        "debug_steps": context_debug_steps,
         "errors": list(payload.get("errors", [])),
         "attributes": payload.get("attributes"),
         "llm_suggestions": payload.get("llm_suggestions", []),
@@ -203,12 +204,34 @@ def generate_playlist(request):
             if len(kw) > 2
         }
 
-        seed_track_ids = [track["id"] for track in resolved_seed_tracks]
+        seed_track_ids = [track["id"] for track in resolved_seed_tracks if track.get("id")]
         similar_tracks: List[Dict[str, str]] = []
         similar_display: List[str] = []
+        ordered_tracks: List[Dict[str, str]] = []
+        seen_keys: Set[str] = set()
+
+        def _append_track(track_dict: Dict[str, str]) -> None:
+            track_id = track_dict.get("id")
+            dedupe_key = track_id or f"{track_dict.get('name')}::{track_dict.get('artists')}"
+            if dedupe_key in seen_keys:
+                return
+            seen_keys.add(dedupe_key)
+            ordered_tracks.append(
+                {
+                    "id": track_id,
+                    "name": track_dict.get("name", "Unknown"),
+                    "artists": track_dict.get("artists", "Unknown"),
+                }
+            )
+
+        for track in resolved_seed_tracks:
+            _append_track(track)
+
         if not seed_track_ids:
             log("No seed track IDs resolved; skipping local recommendation.")
-            playlist = seed_track_display[:]
+            playlist = [
+                f"{track['name']} - {track['artists']}" for track in ordered_tracks
+            ]
         else:
             # Merge seeded tracks with context-aware recommendations from Spotify APIs.
             similar_tracks = get_similar_tracks(
@@ -227,21 +250,16 @@ def generate_playlist(request):
                 f"{track['name']} - {track['artists']}" for track in similar_tracks
             ]
 
-            combined = seed_track_display + similar_display
-            playlist = []
-            for song in combined:
-                if song not in playlist:
-                    playlist.append(song)
+            for track in similar_tracks:
+                _append_track(track)
+
+            playlist = [
+                f"{track['name']} - {track['artists']}" for track in ordered_tracks
+            ]
 
             log(f"Final playlist ({len(playlist)} tracks) compiled from seeds and similar tracks.")
 
-        track_ids: List[str] = []
-        for track in resolved_seed_tracks:
-            if track.get("id") and track["id"] not in track_ids:
-                track_ids.append(track["id"])
-        for track in similar_tracks:
-            if track.get("id") and track["id"] not in track_ids:
-                track_ids.append(track["id"])
+        track_ids: List[str] = [track["id"] for track in ordered_tracks if track.get("id")]
 
         payload = {
             "playlist": playlist,

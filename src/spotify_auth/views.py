@@ -1,11 +1,15 @@
+import logging
 import secrets
-import requests
 from urllib.parse import urlencode
 
+import requests
 from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.views import View
+
+logger = logging.getLogger(__name__)
+SPOTIFY_HTTP_TIMEOUT = int(getattr(settings, "SPOTIFY_HTTP_TIMEOUT", 15))
 
 
 class SpotifyLoginView(View):
@@ -62,7 +66,11 @@ class SpotifyCallbackView(View):
             'client_secret': settings.SPOTIFY_CLIENT_SECRET,
         }
         
-        response = requests.post(token_url, data=data)
+        try:
+            response = requests.post(token_url, data=data, timeout=SPOTIFY_HTTP_TIMEOUT)
+        except requests.exceptions.RequestException as exc:
+            logger.exception("Spotify token exchange failed: %s", exc)
+            return JsonResponse({'error': 'Unable to reach Spotify at the moment.'}, status=502)
         
         if response.status_code != 200:
             return JsonResponse({'error': 'Failed to get access token'}, status=400)
@@ -87,7 +95,15 @@ class SpotifyCallbackView(View):
     def get_user_profile(self, access_token):
         """Fetch the user's Spotify profile"""
         headers = {'Authorization': f'Bearer {access_token}'}
-        response = requests.get('https://api.spotify.com/v1/me', headers=headers)
+        try:
+            response = requests.get(
+                'https://api.spotify.com/v1/me',
+                headers=headers,
+                timeout=SPOTIFY_HTTP_TIMEOUT,
+            )
+        except requests.exceptions.RequestException as exc:
+            logger.exception("Spotify profile fetch failed: %s", exc)
+            return None
         
         if response.status_code == 200:
             return response.json()
@@ -111,7 +127,11 @@ class SpotifyRefreshTokenView(View):
             'client_secret': settings.SPOTIFY_CLIENT_SECRET,
         }
         
-        response = requests.post(token_url, data=data)
+        try:
+            response = requests.post(token_url, data=data, timeout=SPOTIFY_HTTP_TIMEOUT)
+        except requests.exceptions.RequestException as exc:
+            logger.exception("Spotify token refresh failed: %s", exc)
+            return JsonResponse({'error': 'Unable to reach Spotify at the moment.'}, status=502)
         
         if response.status_code != 200:
             return JsonResponse({'error': 'Failed to refresh token'}, status=400)

@@ -1,10 +1,15 @@
 """Lightweight adapters around the local LLM used for playlist generation."""
 
 import json
+import logging
+import os
 import subprocess
 from typing import Callable, Dict, List, Optional
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_ATTRIBUTES = {"mood": "chill", "genre": "pop", "energy": "medium"}
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "60"))
 
 
 def _log(
@@ -23,10 +28,32 @@ def query_ollama(prompt: str, model: str = "mistral") -> str:
     """Run a prompt against the local Ollama model and return the raw response."""
     cmd = ["ollama", "run", model, prompt]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=OLLAMA_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "Ollama request timed out after %s seconds. Prompt snippet: %s",
+            OLLAMA_TIMEOUT_SECONDS,
+            prompt[:120],
+        )
+        return ""
     except FileNotFoundError:
+        logger.error("Ollama executable not found. Ensure Ollama is installed and on PATH.")
+        return ""
+    except subprocess.SubprocessError as exc:
+        logger.error("Ollama execution failed: %s", exc)
         return ""
     if result.returncode != 0:
+        logger.error(
+            "Ollama returned non-zero exit code %s. stderr: %s",
+            result.returncode,
+            (result.stderr or "").strip(),
+        )
         return ""
     return result.stdout.strip()
 
@@ -175,5 +202,3 @@ def refine_playlist(
     ]
     _log(debug_steps, log_step, f"LLM suggested additions: {additions}")
     return seed_tracks + additions
-
-    return suggestions[:max_suggestions]
