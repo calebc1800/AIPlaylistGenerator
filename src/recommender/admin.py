@@ -2,4 +2,10 @@
 
 from django.contrib import admin
 
-# Placeholder for future admin registrations (e.g., saved playlists or presets).
+from .models import SavedPlaylist
+
+
+@admin.register(SavedPlaylist)
+class SavedPlaylistAdmin(admin.ModelAdmin):
+    list_display = ("playlist_id", "creator_user_id", "like_count")
+    search_fields = ("playlist_id", "creator_user_id")

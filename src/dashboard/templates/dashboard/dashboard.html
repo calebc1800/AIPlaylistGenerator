@@ -27,20 +27,22 @@
         .dashboard-container::before {
             content: '';
             position: fixed;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
+            top: 50%;
+            left: 50%;
+            width: 500%;
+            height: 500%;
             background: radial-gradient(circle at 20% 50%, rgba(2, 136, 209, 0.15) 0%, transparent 50%),
                         radial-gradient(circle at 80% 80%, rgba(66, 165, 245, 0.1) 0%, transparent 50%);
+            transform: translate(-50%, -50%) rotate(0deg) scale(1);
+            transform-origin: center;
             animation: gradientShift 20s ease infinite;
             pointer-events: none;
             z-index: 0;
         }
 
         @keyframes gradientShift {
-            0%, 100% { transform: translate(0, 0) rotate(0deg); }
-            50% { transform: translate(10%, 10%) rotate(180deg); }
+            0%, 100% { transform: translate(-50%, -50%) rotate(0deg) scale(1); }
+            50% { transform: translate(-46%, -46%) rotate(180deg) scale(1.05); }
         }
 
         .header {
@@ -197,6 +199,84 @@
                 opacity: 1;
                 transform: translateY(0);
             }
+        }
+
+        .generation-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 10, 10, 0.92);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .generation-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .generation-modal {
+            width: min(420px, 90%);
+            background: linear-gradient(135deg, rgba(2, 136, 209, 0.18), rgba(66, 165, 245, 0.1));
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            padding: 36px 32px;
+            text-align: center;
+        }
+
+        .generation-modal h3 {
+            font-size: 1.4rem;
+            margin-bottom: 16px;
+            font-weight: 700;
+        }
+
+        .loader-ring {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #42a5f5;
+            margin: 0 auto 24px;
+            animation: spin 1.2s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loader-progress {
+            position: relative;
+            height: 10px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            overflow: hidden;
+            margin-bottom: 14px;
+        }
+
+        .loader-progress-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: linear-gradient(135deg, #0288D1 0%, #42a5f5 100%);
+            box-shadow: 0 0 18px rgba(66, 165, 245, 0.45);
+            width: 0%;
+            transition: width 0.18s ease;
+        }
+
+        .loader-step {
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.85);
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
         }
 
         .section-title {
@@ -852,6 +932,17 @@
         </footer>
     </div>
 
+    <div class="generation-overlay" id="generation-overlay" data-total-steps="29">
+        <div class="generation-modal">
+            <div class="loader-ring"></div>
+            <h3>Generating Your Playlist</h3>
+            <div class="loader-progress">
+                <div class="loader-progress-bar" id="generation-progress-bar"></div>
+            </div>
+            <div class="loader-step" id="generation-progress-label">Initializing...</div>
+        </div>
+    </div>
+
     <script>
         // Tab switching functionality
         const tabs = document.querySelectorAll('.tab');
@@ -870,6 +961,114 @@
                 document.getElementById(targetTab).classList.add('active');
             });
         });
+
+        // Playlist generation progress overlay
+        const generationOverlay = document.getElementById('generation-overlay');
+        const progressBar = document.getElementById('generation-progress-bar');
+        const progressLabel = document.getElementById('generation-progress-label');
+        const createForm = document.querySelector('.create-form');
+
+        if (createForm && generationOverlay && progressBar && progressLabel) {
+            let progressFrame = null;
+
+            const resetProgress = () => {
+                if (progressFrame !== null) {
+                    cancelAnimationFrame(progressFrame);
+                    progressFrame = null;
+                }
+                progressBar.style.width = '0%';
+                progressLabel.textContent = 'Initializing...';
+            };
+
+            const startProgress = () => {
+                const totalSteps = Number(generationOverlay.dataset.totalSteps || 29);
+                const phaseTimeline = [
+                    { label: 'Analyzing your prompt', duration: 1200, target: 0.06 },
+                    { label: 'Extracting playlist attributes', duration: 12500, target: 0.18 },
+                    { label: 'Gathering seed ideas', duration: 58000, target: 0.72 },
+                    { label: 'Resolving Spotify tracks', duration: 5500, target: 0.88 },
+                    { label: 'Scoring recommendations', duration: 4200, target: 0.93 },
+                    { label: 'Crafting playlist flow', duration: 2600, target: 0.96 },
+                ];
+                const finalLabel = 'Finalizing track order';
+                const totalDuration = phaseTimeline.reduce((sum, phase) => sum + phase.duration, 0);
+                const startTime = performance.now();
+
+                const animate = () => {
+                    if (!generationOverlay.classList.contains('visible')) {
+                        resetProgress();
+                        return;
+                    }
+
+                    const elapsed = performance.now() - startTime;
+                    const clampedElapsed = Math.min(elapsed, totalDuration);
+
+                    let accumulated = 0;
+                    let previousTarget = 0;
+                    let currentLabel = phaseTimeline[phaseTimeline.length - 1].label;
+                    let progressRatio = phaseTimeline[phaseTimeline.length - 1].target;
+
+                    for (const phase of phaseTimeline) {
+                        const phaseStart = accumulated;
+                        const phaseEnd = accumulated + phase.duration;
+                        if (clampedElapsed <= phaseEnd) {
+                            const localProgress = Math.min(
+                                (clampedElapsed - phaseStart) / phase.duration,
+                                1
+                            );
+                            progressRatio =
+                                previousTarget + (phase.target - previousTarget) * (1 - Math.pow(1 - localProgress, 2));
+                            currentLabel = phase.label;
+                            break;
+                        }
+                        accumulated = phaseEnd;
+                        previousTarget = phase.target;
+                    }
+
+                    const percentage = Math.max(1, Math.floor(progressRatio * 100));
+                    progressBar.style.width = `${percentage}%`;
+
+                    const stepNumber = Math.max(
+                        1,
+                        Math.min(totalSteps, Math.round(progressRatio * totalSteps))
+                    );
+                    progressLabel.textContent = `${currentLabel} (${stepNumber}/${totalSteps})`;
+
+                    if (clampedElapsed < totalDuration) {
+                        progressFrame = requestAnimationFrame(animate);
+                    } else {
+                        progressFrame = requestAnimationFrame(() =>
+                            holdNearCompletion(finalLabel)
+                        );
+                    }
+                };
+
+                const holdNearCompletion = (label) => {
+                    if (!generationOverlay.classList.contains('visible')) {
+                        resetProgress();
+                        return;
+                    }
+
+                    const flicker = 94 + Math.random() * 2;
+                    progressBar.style.width = `${flicker}%`;
+                    progressLabel.textContent = `${label} (waiting on Spotify...)`;
+                    progressFrame = requestAnimationFrame(() => holdNearCompletion(label));
+                };
+
+                animate();
+            };
+
+            createForm.addEventListener('submit', () => {
+                generationOverlay.classList.add('visible');
+                resetProgress();
+                startProgress();
+            });
+
+            window.addEventListener('pagehide', () => {
+                resetProgress();
+                generationOverlay.classList.remove('visible');
+            });
+        }
     </script>
 </body>
 </html>

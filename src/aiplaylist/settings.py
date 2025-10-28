@@ -11,7 +11,9 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import warnings
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -21,13 +23,32 @@ load_dotenv()
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-o7bn%!hq630y7=7*m@e%f&gbvdpi46^a7z+vj=-!wji*75p7z&'
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+def _bool_env(var_name: str, default: bool = False) -> bool:
+    raw = os.getenv(var_name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
-ALLOWED_HOSTS = ["0.0.0.0", "localhost", "127.0.0.1", "192.168.1.111"]
+
+DEBUG = _bool_env("DJANGO_DEBUG", default=True)
+
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "dev-insecure-placeholder-key"
+        warnings.warn(
+            "DJANGO_SECRET_KEY was not set; using insecure development key.",
+            RuntimeWarning,
+        )
+    else:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY environment variable must be set.")
+
+_raw_allowed_hosts = os.getenv(
+    "DJANGO_ALLOWED_HOSTS",
+    "0.0.0.0,localhost,127.0.0.1,192.168.1.111",
+)
+ALLOWED_HOSTS = [host.strip() for host in _raw_allowed_hosts.split(",") if host.strip()]
 
 
 # Application definition
@@ -163,13 +184,6 @@ else:
 SPOTIFY_USE_RECOMMENDATIONS = True
 
 
-def _bool_env(var_name: str, default: bool = False) -> bool:
-    raw = os.getenv(var_name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
 def _int_env(var_name: str, default: int) -> int:
     raw = os.getenv(var_name)
     if raw is None:
@@ -182,6 +196,8 @@ def _int_env(var_name: str, default: int) -> int:
 
 RECOMMENDER_PLAYLIST_PREFIX = os.getenv("RECOMMENDER_PLAYLIST_PREFIX", "TEST ")
 RECOMMENDER_PLAYLIST_PUBLIC = _bool_env("RECOMMENDER_PLAYLIST_PUBLIC", default=False)
+RECOMMENDER_DEBUG_VIEW_ENABLED = _bool_env("RECOMMENDER_DEBUG_VIEW_ENABLED", default=True)
+RECOMMENDER_CACHE_TIMEOUT_SECONDS = _int_env("RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
 
 # Placeholder knobs for upcoming user-configurable recommender options.
 RECOMMENDER_DEFAULT_PLAYLIST_LENGTH = _int_env("RECOMMENDER_DEFAULT_PLAYLIST_LENGTH", 20)
@@ -191,3 +207,11 @@ RECOMMENDER_EXPERIMENTAL_FLAGS = {
     "enforce_unique_tracks": _bool_env("RECOMMENDER_ENFORCE_UNIQUE_DEFAULT", True),
     "allow_seed_only_playlists": _bool_env("RECOMMENDER_ALLOW_SEED_ONLY_DEFAULT", False),
 }
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = _bool_env("DJANGO_SECURE_SSL_REDIRECT", True)
+    SESSION_COOKIE_SECURE = _bool_env("DJANGO_SESSION_COOKIE_SECURE", True)
+    CSRF_COOKIE_SECURE = _bool_env("DJANGO_CSRF_COOKIE_SECURE", True)
+    SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "31536000"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = _bool_env("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", True)
+    SECURE_HSTS_PRELOAD = _bool_env("DJANGO_SECURE_HSTS_PRELOAD", True)

@@ -1,23 +1,27 @@
 """Unit tests for the recommender app services and views."""
 
+import json
+
 from django.conf import settings
 from django.contrib.messages import get_messages
 from django.core.cache import cache
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import patch
 
-from .services.spotify_handler import (
+from recommender.models import SavedPlaylist
+from recommender.services.spotify_handler import (
     discover_top_tracks_for_genre,
     get_similar_tracks,
     resolve_seed_tracks,
     create_playlist_with_tracks,
 )
-from .services.user_preferences import (
+from recommender.services.user_preferences import (
     describe_pending_options,
     get_default_preferences,
 )
-from .views import _cache_key
+from recommender.services.llm_handler import refine_playlist, suggest_seed_tracks
+from recommender.views import _cache_key
 
 
 class GeneratePlaylistViewTests(TestCase):
@@ -83,8 +87,9 @@ class GeneratePlaylistViewTests(TestCase):
         mock_similar.assert_called_once()
         mock_discover.assert_not_called()
         page = response.content.decode()
-        self.assertIn("Song A - Artist A", page)
-        self.assertIn("Song C - Artist C", page)
+        self.assertIn('class="track-name">Song A', page)
+        self.assertIn('class="track-name">Song C', page)
+        self.assertIn('class="track-artist">Artist A', page)
 
     @patch("recommender.views.extract_playlist_attributes")
     @patch("recommender.views.suggest_seed_tracks")
@@ -122,8 +127,8 @@ class GeneratePlaylistViewTests(TestCase):
         mock_discover.assert_called_once()
         mock_similar.assert_called_once()
         page = response.content.decode()
-        self.assertIn("Fallback Song - Fallback Artist", page)
-        self.assertIn("Similar Song - Artist", page)
+        self.assertIn('class="track-name">Fallback Song', page)
+        self.assertIn('class="track-name">Similar Song', page)
 
     @patch("recommender.views.extract_playlist_attributes")
     @patch("recommender.views.suggest_seed_tracks")
@@ -164,12 +169,78 @@ class GeneratePlaylistViewTests(TestCase):
         response = self.client.post(self.url, {"prompt": "high energy pop"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Cached Song - Artist", response.content.decode())
+        page = response.content.decode()
+        self.assertIn('class="track-name">Cached Song', page)
+        self.assertIn('class="track-artist">Artist', page)
         mock_extract.assert_not_called()
         mock_suggest.assert_not_called()
         mock_resolve.assert_not_called()
         mock_similar.assert_not_called()
         mock_discover.assert_not_called()
+
+    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=False)
+    def test_debug_panel_hidden_by_default(self):
+        session = self.client.session
+        session["spotify_access_token"] = "token"
+        session["spotify_user_id"] = "debugger"
+        session.save()
+
+        cache_key = _cache_key("debugger", "prompt")
+        cache.set(
+            cache_key,
+            {
+                "playlist": ["Debug Song - Debug Artist"],
+                "track_ids": ["debug-track"],
+                "track_details": [
+                    {
+                        "id": "debug-track",
+                        "name": "Debug Song",
+                        "artists": "Debug Artist",
+                        "album_name": "",
+                        "album_image_url": "",
+                        "duration_ms": 0,
+                    }
+                ],
+                "debug_steps": ["[0.00s] Step executed."],
+            },
+            timeout=60,
+        )
+
+        response = self.client.post(self.url, {"prompt": "prompt"})
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("Generation Debug Steps", response.content.decode())
+
+    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=True)
+    def test_debug_panel_visible_when_flag_enabled(self):
+        session = self.client.session
+        session["spotify_access_token"] = "token"
+        session["spotify_user_id"] = "debugger"
+        session.save()
+
+        cache_key = _cache_key("debugger", "prompt")
+        cache.set(
+            cache_key,
+            {
+                "playlist": ["Debug Song - Debug Artist"],
+                "track_ids": ["debug-track"],
+                "track_details": [
+                    {
+                        "id": "debug-track",
+                        "name": "Debug Song",
+                        "artists": "Debug Artist",
+                        "album_name": "",
+                        "album_image_url": "",
+                        "duration_ms": 0,
+                    }
+                ],
+                "debug_steps": ["[0.00s] Step executed."],
+            },
+            timeout=60,
+        )
+
+        response = self.client.post(self.url, {"prompt": "prompt"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Generation Debug Steps", response.content.decode())
 
 
 class SpotifyHandlerTests(TestCase):
@@ -185,8 +256,13 @@ class SpotifyHandlerTests(TestCase):
                         "id": "1",
                         "name": "Song",
                         "artists": [{"name": "Artist", "id": "artist1"}],
+                        "duration_ms": 210000,
                         "available_markets": ["US"],
-                        "album": {"release_date": "2021-01-01"},
+                        "album": {
+                            "release_date": "2021-01-01",
+                            "name": "Album",
+                            "images": [{"url": "http://example.com/art.jpg"}],
+                        },
                     }
                 ]
             }
@@ -201,6 +277,9 @@ class SpotifyHandlerTests(TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["artist_ids"], ["artist1"])
         self.assertEqual(results[0]["year"], 2021)
+        self.assertEqual(results[0]["album_name"], "Album")
+        self.assertEqual(results[0]["album_image_url"], "http://example.com/art.jpg")
+        self.assertEqual(results[0]["duration_ms"], 210000)
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_discover_top_tracks_for_genre(self, mock_spotify):
@@ -383,6 +462,37 @@ class SpotifyHandlerTests(TestCase):
             create_playlist_with_tracks(token="token", track_ids=[], playlist_name="Empty")
 
 
+class LLMHandlerTests(TestCase):
+    """Unit tests for LLM helper behaviour."""
+
+    @patch("recommender.services.llm_handler.query_ollama", return_value="")
+    def test_refine_playlist_empty_response_returns_seeds(self, mock_query):
+        seeds = ["Song A - Artist A", "Song B - Artist B"]
+        result = refine_playlist(seeds, {"mood": "chill"}, query_fn=mock_query)
+        self.assertEqual(result, seeds)
+        mock_query.assert_called_once()
+
+    @patch(
+        "recommender.services.llm_handler.query_ollama",
+        return_value="New Track - Artist\nSong A - Artist A\n",
+    )
+    def test_refine_playlist_appends_unique_suggestions(self, mock_query):
+        seeds = ["Song A - Artist A"]
+        result = refine_playlist(seeds, {"mood": "focus"}, query_fn=mock_query)
+        self.assertEqual(result, ["Song A - Artist A", "New Track - Artist"])
+        mock_query.assert_called_once()
+
+    @patch("recommender.services.llm_handler.query_ollama", return_value="")
+    def test_suggest_seed_tracks_uses_fallback_when_llm_unavailable(self, mock_query):
+        suggestions = suggest_seed_tracks(
+            "Feel-good pop anthems",
+            {"genre": "pop", "mood": "happy", "energy": "high"},
+            debug_steps=[],
+        )
+        self.assertTrue(suggestions)
+        self.assertEqual(suggestions[0]["title"], "Blinding Lights")
+
+
 class SavePlaylistViewTests(TestCase):
     """Tests for saving playlists to Spotify."""
 
@@ -409,6 +519,7 @@ class SavePlaylistViewTests(TestCase):
     @patch("recommender.views.create_playlist_with_tracks")
     def test_save_playlist_success(self, mock_create_playlist):
         mock_create_playlist.return_value = {
+            "playlist_id": "playlist123",
             "playlist_name": "TEST Summer Vibes",
             "user_id": "user123",
         }
@@ -427,6 +538,35 @@ class SavePlaylistViewTests(TestCase):
         self.assertTrue(any("saved to Spotify" in message for message in messages))
         session = self.client.session
         self.assertEqual(session.get("spotify_user_id"), "user123")
+        saved = SavedPlaylist.objects.get(playlist_id="playlist123")
+        self.assertEqual(saved.creator_user_id, "user123")
+        self.assertEqual(saved.like_count, 0)
+
+    @patch("recommender.views.create_playlist_with_tracks")
+    def test_save_playlist_preserves_existing_like_count(self, mock_create_playlist):
+        SavedPlaylist.objects.create(
+            playlist_id="playlist123",
+            creator_user_id="initial-user",
+            like_count=5,
+        )
+        mock_create_playlist.return_value = {
+            "playlist_id": "playlist123",
+            "playlist_name": "TEST Summer Vibes",
+            "user_id": "user456",
+        }
+
+        response = self.client.post(
+            self.url,
+            {
+                "cache_key": self.cache_key,
+                "playlist_name": "Summer Vibes",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        saved = SavedPlaylist.objects.get(playlist_id="playlist123")
+        self.assertEqual(saved.creator_user_id, "user456")
+        self.assertEqual(saved.like_count, 5)
 
     @patch("recommender.views.create_playlist_with_tracks")
     def test_save_playlist_missing_name(self, mock_create_playlist):
@@ -444,6 +584,101 @@ class SavePlaylistViewTests(TestCase):
         self.assertIn("Please provide a playlist name.", messages)
 
 
+class PlaylistEditingTests(TestCase):
+    """Tests for modifying cached playlists via the editing endpoint."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse("recommender:update_cached_playlist")
+        cache.clear()
+
+    def test_remove_track_updates_cache(self):
+        cache_key = "recommender:test"
+        cache.set(
+            cache_key,
+            {
+                "track_details": [
+                    {
+                        "id": "track1",
+                        "name": "First",
+                        "artists": "Artist",
+                        "album_name": "",
+                        "album_image_url": "",
+                        "duration_ms": 0,
+                    },
+                    {
+                        "id": "track2",
+                        "name": "Second",
+                        "artists": "Artist",
+                        "album_name": "",
+                        "album_image_url": "",
+                        "duration_ms": 0,
+                    },
+                ],
+                "track_ids": ["track1", "track2"],
+                "playlist": ["First - Artist", "Second - Artist"],
+            },
+            timeout=60,
+        )
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"action": "remove", "cache_key": cache_key, "track_id": "track1"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["track_count"], 1)
+        self.assertEqual(payload["track_ids"], ["track2"])
+        cached = cache.get(cache_key)
+        self.assertEqual(len(cached["track_details"]), 1)
+        self.assertEqual(cached["track_details"][0]["id"], "track2")
+
+    def test_remove_by_position_when_id_missing(self):
+        cache_key = "recommender:position"
+        cache.set(
+            cache_key,
+            {
+                "track_details": [
+                    {
+                        "id": "",
+                        "name": "Untitled",
+                        "artists": "Unknown",
+                        "album_name": "",
+                        "album_image_url": "",
+                        "duration_ms": 0,
+                    }
+                ],
+                "track_ids": [],
+                "playlist": ["Untitled - Unknown"],
+            },
+            timeout=60,
+        )
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps(
+                {
+                    "action": "remove",
+                    "cache_key": cache_key,
+                    "track_id": "",
+                    "position": 0,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["track_count"], 0)
+        cached = cache.get(cache_key)
+        self.assertEqual(cached["track_details"], [])
+        self.assertEqual(cached["playlist"], [])
+
+    def test_update_requires_json_payload(self):
+        response = self.client.post(self.url, {"action": "remove"})
+        self.assertEqual(response.status_code, 400)
 class UserPreferencePlaceholderTests(TestCase):
     """Smoke tests for future user preference helpers."""
 

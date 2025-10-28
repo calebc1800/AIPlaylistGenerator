@@ -4,10 +4,10 @@ import re
 import unicodedata
 from typing import Callable, Dict, Iterable, List, Optional, Set
 
+import requests
 from django.conf import settings
 import spotipy
 from spotipy import SpotifyException
-from spotipy.oauth2 import SpotifyOAuth  # noqa: F401
 
 
 DEFAULT_POPULARITY_THRESHOLD = getattr(settings, "RECOMMENDER_POPULARITY_THRESHOLD", 45)
@@ -39,8 +39,12 @@ def _log(
 
 
 def _normalize_genre(raw_genre: str) -> str:
-    """Normalize a genre string into a lowercase hyphenated token."""
-    return raw_genre.strip().lower().replace(" ", "-")
+    """Normalize a genre string into a lowercase, ascii-safe hyphenated token."""
+    if not raw_genre:
+        return ""
+    normalized = unicodedata.normalize("NFKD", raw_genre)
+    ascii_clean = normalized.encode("ascii", "ignore").decode("ascii")
+    return ascii_clean.strip().lower().replace(" ", "-")
 
 
 def _genre_variants(normalized_genre: str) -> Set[str]:
@@ -122,16 +126,26 @@ def _filter_tracks_by_artist_genre(
     if not artist_ids:
         return tracks
 
-    try:
-        response = sp.artists(list(dict.fromkeys(artist_ids))[:50])
-    except SpotifyException as exc:
-        _log(debug_steps, log_step, f"Failed to fetch artist genres: {exc}.")
-        return tracks
+    unique_artist_ids = list(dict.fromkeys(artist_ids))
+    artist_details: Dict[str, List[str]] = {}
 
-    artist_details = {
-        artist.get("id"): artist.get("genres", [])
-        for artist in response.get("artists", [])
-    }
+    for start in range(0, len(unique_artist_ids), 50):
+        batch = unique_artist_ids[start : start + 50]
+        try:
+            response = sp.artists(batch)
+        except SpotifyException as exc:
+            _log(debug_steps, log_step, f"Failed to fetch artist genres: {exc}.")
+            continue
+        except requests.exceptions.RequestException as exc:
+            _log(debug_steps, log_step, f"Network error while fetching artist genres: {exc}.")
+            continue
+        for artist in response.get("artists", []):
+            artist_id = artist.get("id")
+            if artist_id:
+                artist_details[artist_id] = artist.get("genres", [])
+
+    if not artist_details:
+        return tracks
 
     target = normalized_genre.replace("-", "")
     threshold = popularity_threshold or _popularity_threshold_for_genre(normalized_genre)
@@ -185,11 +199,44 @@ def _filter_non_latin_tracks(tracks: Iterable[Dict]) -> List[Dict]:
 def _extract_release_year(track: Dict) -> Optional[int]:
     """Return the release year from a track dictionary, if available."""
     album = (track or {}).get("album") or {}
-    date = album.get("release_date")
+    date = album.get("release_date") or track.get("release_date")
     if not date:
         return None
-    year_str = date.split("-")[0]
-    return int(year_str) if year_str.isdigit() else None
+    match = re.match(r"(\d{4})", date)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _primary_image_url(images: Optional[List[Dict]]) -> str:
+    """Return the first available URL from a list of Spotify image dictionaries."""
+    if not images:
+        return ""
+    for image in images:
+        url = image.get("url")
+        if url:
+            return url
+    return ""
+
+
+def _serialize_track_payload(track: Dict) -> Dict[str, object]:
+    """Normalize Spotify track metadata for downstream views and caching."""
+    album = track.get("album") or {}
+    artists = track.get("artists") or []
+    artist_names = ", ".join(artist.get("name", "") for artist in artists if artist.get("name"))
+    return {
+        "id": track.get("id"),
+        "name": track.get("name", "Unknown"),
+        "artists": artist_names or "Unknown",
+        "album_name": album.get("name", ""),
+        "album_image_url": _primary_image_url(album.get("images")),
+        "duration_ms": int(track.get("duration_ms") or 0),
+        "artist_ids": [artist.get("id") for artist in artists if artist.get("id")],
+        "year": _extract_release_year(track),
+    }
 
 
 def _discover_playlist_seeds(
@@ -233,6 +280,20 @@ def _discover_playlist_seeds(
                 response = sp.playlist_items(playlist_id, limit=track_limit)
             except SpotifyException:
                 continue
+            except requests.exceptions.RequestException as exc:
+                _log(
+                    debug_steps,
+                    log_step,
+                    f"Network error fetching playlist items for '{playlist_id}': {exc}.",
+                )
+                continue
+        except requests.exceptions.RequestException as exc:
+            _log(
+                debug_steps,
+                log_step,
+                f"Network error fetching playlist items for '{playlist_id}': {exc}.",
+            )
+            continue
         items = response.get("items", [])
         for entry in items:
             track = entry.get("track")
@@ -323,6 +384,8 @@ def discover_top_tracks_for_genre(
             tracks = _filter_by_market(tracks, market)
         except SpotifyException as exc:
             _log(debug_steps, log_step, f"Spotify search for genre seeds failed: {exc}.")
+        except requests.exceptions.RequestException as exc:
+            _log(debug_steps, log_step, f"Network error during Spotify genre search: {exc}.")
 
         if not tracks:
             try:
@@ -334,6 +397,9 @@ def discover_top_tracks_for_genre(
                 tracks = sp.search(q=query, type="track", limit=search_limit).get("tracks", {}).get("items", [])
             except SpotifyException as exc:
                 _log(debug_steps, log_step, f"Spotify search without market failed: {exc}.")
+                tracks = []
+            except requests.exceptions.RequestException as exc:
+                _log(debug_steps, log_step, f"Network error during Spotify fallback search: {exc}.")
                 tracks = []
 
         if tracks:
@@ -402,6 +468,8 @@ def resolve_seed_tracks(
                 tracks = _filter_non_latin_tracks(tracks)
         except SpotifyException as exc:
             _log(debug_steps, log_step, f"Spotify search failed for '{query}' with market {market}: {exc}.")
+        except requests.exceptions.RequestException as exc:
+            _log(debug_steps, log_step, f"Network error during Spotify search for '{query}': {exc}.")
 
         if not tracks and primary_artist and primary_artist != artist:
             fallback_query = f'track:"{title}" artist:"{primary_artist}"'
@@ -413,6 +481,8 @@ def resolve_seed_tracks(
                     tracks = _filter_non_latin_tracks(tracks)
             except SpotifyException as exc:
                 _log(debug_steps, log_step, f"Spotify search failed for '{fallback_query}' with market {market}: {exc}.")
+            except requests.exceptions.RequestException as exc:
+                _log(debug_steps, log_step, f"Network error during fallback Spotify search '{fallback_query}': {exc}.")
 
         if not tracks:
             try:
@@ -423,22 +493,16 @@ def resolve_seed_tracks(
             except SpotifyException as exc:
                 _log(debug_steps, log_step, f"Spotify search retry without market failed for '{query}': {exc}.")
                 continue
+            except requests.exceptions.RequestException as exc:
+                _log(debug_steps, log_step, f"Network error during Spotify search retry for '{query}': {exc}.")
+                continue
 
         if not tracks:
             _log(debug_steps, log_step, f"No search results found for '{title}' ({artist}).")
             continue
 
         track = tracks[0]
-        artist_ids = [artist.get("id") for artist in track.get("artists", []) if artist.get("id")]
-        resolved.append(
-            {
-                "id": track["id"],
-                "name": track["name"],
-                "artists": ", ".join(artist.get("name", "") for artist in track.get("artists", [])),
-                "artist_ids": artist_ids,
-                "year": _extract_release_year(track),
-            }
-        )
+        resolved.append(_serialize_track_payload(track))
 
     _log(debug_steps, log_step, f"Resolved {len(resolved)} seed tracks via Spotify search.")
     return resolved
@@ -544,6 +608,8 @@ def get_similar_tracks(
                 _log(debug_steps, log_step, f"Search returned {len(tracks)} candidates for query '{search_query}'.")
         except SpotifyException as exc:
             _log(debug_steps, log_step, f"Spotify search error for '{search_query}': {exc}.")
+        except requests.exceptions.RequestException as exc:
+            _log(debug_steps, log_step, f"Network error during Spotify search for '{search_query}': {exc}.")
 
     unique_candidates: List[Dict] = []
     seen_ids: Set[str] = set(seed_track_ids)
@@ -576,13 +642,10 @@ def get_similar_tracks(
         if any(artist_counts.get(name, 0) >= 2 for name in artist_names if name):
             continue
         artist_label = ", ".join(name for name in artist_names if name) or "Unknown"
-        recommendations.append(
-            {
-                "id": track.get("id"),
-                "name": track.get("name", "Unknown"),
-                "artists": artist_label,
-            }
-        )
+        serialized = _serialize_track_payload(track)
+        if artist_label and not serialized.get("artists"):
+            serialized["artists"] = artist_label
+        recommendations.append(serialized)
         for name in artist_names:
             if not name:
                 continue
@@ -622,7 +685,12 @@ def create_playlist_with_tracks(
             raise RuntimeError("Spotify user id could not be resolved.")
 
     normalized_prefix = prefix or ""
-    playlist_title = f"{normalized_prefix}{playlist_name}" if normalized_prefix else playlist_name
+    cleaned_name = (playlist_name or "").strip()
+    if not cleaned_name:
+        raise ValueError("A playlist name must be provided.")
+    playlist_title = f"{normalized_prefix}{cleaned_name}" if normalized_prefix else cleaned_name
+    if len(playlist_title) > 100:
+        raise ValueError("Playlist name must be 100 characters or fewer.")
 
     created = sp.user_playlist_create(
         user=resolved_user_id,
@@ -638,7 +706,16 @@ def create_playlist_with_tracks(
     for start in range(0, len(track_ids), chunk_size):
         batch = track_ids[start : start + chunk_size]
         # Add tracks in batches to respect Spotify API limits.
-        sp.playlist_add_items(playlist_id, batch)
+        try:
+            sp.playlist_add_items(playlist_id, batch)
+        except SpotifyException as exc:
+            raise RuntimeError(
+                f"Spotify rejected playlist items batch starting at index {start}: {exc}"
+            ) from exc
+        except requests.exceptions.RequestException as exc:
+            raise RuntimeError(
+                f"Network error while adding playlist items starting at index {start}: {exc}"
+            ) from exc
 
     return {
         "playlist_id": playlist_id,

@@ -1,84 +1,631 @@
-{% if messages %}
-<div class="messages">
-  {% for message in messages %}
-    <p class="message {{ message.tags }}">{{ message }}</p>
-  {% endfor %}
-</div>
-{% endif %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playlist Preview</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-{% if debug_steps %}
-<h2>Generation Steps</h2>
-<ol>
-  {% for step in debug_steps %}
-    <li>{{ step }}</li>
-  {% endfor %}
-</ol>
-{% endif %}
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #121212;
+            color: #fff;
+            min-height: 100vh;
+        }
 
-{% if errors %}
-<h2>Notices</h2>
-<ul>
-  {% for message in errors %}
-    <li>{{ message }}</li>
-  {% endfor %}
-</ul>
-{% endif %}
+        .page-container {
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
 
-<h2>Final Playlist</h2>
-{% if playlist %}
-<ul>
-  {% for song in playlist %}
-    <li>{{ song }}</li>
-  {% endfor %}
-</ul>
-<form method="post" action="{% url 'recommender:save_playlist' %}" id="save-playlist-form">
-  {% csrf_token %}
-  <input type="hidden" name="cache_key" value="{{ cache_key }}">
-  <input type="hidden" id="playlist_name_input" name="playlist_name">
-  <button type="button" id="save-to-spotify-button">Save to Spotify</button>
-  <noscript>
-    <p>Please enable JavaScript to name and save your playlist.</p>
-  </noscript>
-</form>
-{% else %}
-<p>No playlist could be generated. Try adjusting your prompt.</p>
-{% endif %}
+        .page-container::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 15% 40%, rgba(2, 136, 209, 0.2) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 80%, rgba(66, 165, 245, 0.12) 0%, transparent 55%);
+            animation: gradientShift 25s ease infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
 
-<script>
-(function () {
-  const form = document.getElementById('save-playlist-form');
-  const button = document.getElementById('save-to-spotify-button');
-  const input = document.getElementById('playlist_name_input');
+        @keyframes gradientShift {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            50% { transform: translate(8%, 6%) rotate(160deg); }
+        }
 
-  if (!form || !button || !input) {
-    return;
-  }
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: rgba(18, 18, 18, 0.95);
+            backdrop-filter: blur(24px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
 
-  button.addEventListener('click', function () {
-    const name = window.prompt('Enter a name for your playlist:');
-    if (!name) {
-      return;
-    }
-    const trimmed = name.trim();
-    if (!trimmed) {
-      alert('Playlist name cannot be empty.');
-      return;
-    }
-    input.value = trimmed;
-    form.submit();
-  });
-})();
-</script>
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
 
-{% if preference_descriptions %}
-<section>
-  <h3>Coming Soon</h3>
-  <p>Personalized playlist settings will be available here once the profile page launches.</p>
-  <ul>
-    {% for item in preference_descriptions %}
-      <li><strong>{{ item.label }}</strong>: {{ item.description }}</li>
-    {% endfor %}
-  </ul>
-  <p><em>Current default track count:</em> {{ user_preferences.track_count }}</p>
-</section>
-{% endif %}
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 700;
+            text-decoration: none;
+            background: linear-gradient(135deg, #0288D1 0%, #42a5f5 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .track-count {
+            font-size: 0.95rem;
+            color: #b3b3b3;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        main {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 48px 32px 96px;
+        }
+
+        .message-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .message {
+            padding: 14px 18px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+        }
+
+        .message-success {
+            border-color: rgba(46, 204, 113, 0.4);
+            background: rgba(46, 204, 113, 0.15);
+        }
+
+        .message-error {
+            border-color: rgba(231, 76, 60, 0.45);
+            background: rgba(231, 76, 60, 0.18);
+        }
+
+        .message-warning {
+            border-color: rgba(241, 196, 15, 0.45);
+            background: rgba(241, 196, 15, 0.18);
+        }
+
+        .playlist-card {
+            background: rgba(22, 22, 22, 0.88);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            padding: 32px;
+            backdrop-filter: blur(18px);
+        }
+
+        .playlist-header {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .playlist-name-input {
+            flex: 1 1 260px;
+            padding: 14px 18px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.04);
+            color: #fff;
+            font-size: 1rem;
+            transition: border 0.3s ease, background 0.3s ease;
+        }
+
+        .playlist-name-input:focus {
+            outline: none;
+            border-color: rgba(66, 165, 245, 0.6);
+            background: rgba(66, 165, 245, 0.12);
+        }
+
+        .action-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border-radius: 50px;
+            padding: 12px 28px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            border: none;
+            transition: transform 0.25s ease, box-shadow 0.25s ease, opacity 0.2s ease;
+        }
+
+        .btn[disabled] {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0288D1 0%, #42a5f5 100%);
+            color: #fff;
+            box-shadow: 0 10px 30px rgba(2, 136, 209, 0.45);
+        }
+
+        .btn-primary:hover:not([disabled]) {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 40px rgba(2, 136, 209, 0.6);
+        }
+
+        .btn-ghost {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+
+        .btn-ghost:hover:not([disabled]) {
+            transform: translateY(-1px);
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .search-bar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            flex: 1 1 280px;
+            padding: 12px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            background: rgba(255, 255, 255, 0.03);
+            color: #fff;
+        }
+
+        .search-input:disabled {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .track-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .track-item {
+            display: grid;
+            grid-template-columns: 64px 1fr auto;
+            gap: 18px;
+            align-items: center;
+            padding: 14px 18px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .track-item:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .track-artwork {
+            width: 64px;
+            height: 64px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.08);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .track-artwork img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .track-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .track-name {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .track-artist {
+            font-size: 0.9rem;
+            color: #b3b3b3;
+        }
+
+        .track-album {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.55);
+        }
+
+        .track-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .track-duration {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            min-width: 48px;
+            text-align: right;
+        }
+
+        .remove-track-button {
+            background: transparent;
+            border: 1px solid rgba(231, 76, 60, 0.4);
+            color: rgba(231, 76, 60, 0.9);
+            padding: 6px 12px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+
+        .remove-track-button:hover:not([disabled]) {
+            background: rgba(231, 76, 60, 0.12);
+            color: #ff6f61;
+        }
+
+        .remove-track-button[disabled] {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .empty-state {
+            padding: 24px;
+            text-align: center;
+            border: 1px dashed rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .coming-soon-note {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.45);
+        }
+
+        .debug-panel {
+            margin-top: 32px;
+            padding: 24px;
+            border-radius: 16px;
+            background: rgba(6, 23, 32, 0.85);
+            border: 1px solid rgba(66, 165, 245, 0.3);
+        }
+
+        .debug-panel h3 {
+            margin-bottom: 12px;
+            font-size: 1rem;
+        }
+
+        .debug-steps {
+            list-style: decimal;
+            margin-left: 20px;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 0.92rem;
+        }
+
+        @media (max-width: 768px) {
+            .header-inner {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+
+            main {
+                padding: 32px 20px 72px;
+            }
+
+            .playlist-card {
+                padding: 24px 20px;
+            }
+
+            .track-item {
+                grid-template-columns: 48px 1fr;
+                grid-template-rows: auto auto;
+            }
+
+            .track-meta {
+                justify-content: flex-end;
+                margin-top: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <header>
+            <div class="header-inner">
+                <a href="{% url 'dashboard:dashboard' %}" class="logo">AI Playlist Generator</a>
+                <div class="track-count"><span id="track-count">{{ playlist_tracks|length }}</span> Tracks</div>
+            </div>
+        </header>
+        <main>
+            <div class="message-stack" id="message-stack">
+                {% for message in messages %}
+                    <div class="message message-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+                {% for item in errors %}
+                    <div class="message message-warning">{{ item }}</div>
+                {% endfor %}
+            </div>
+
+            <section class="playlist-card">
+                <form id="playlist-save-form" method="post" action="{% url 'recommender:save_playlist' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="cache_key" value="{{ cache_key }}">
+                    {% if prompt %}
+                        <input type="hidden" name="prompt" value="{{ prompt }}">
+                    {% endif %}
+                    <div class="playlist-header">
+                        {% with current_name=playlist_name|default:suggested_playlist_name %}
+                            <input
+                                type="text"
+                                name="playlist_name"
+                                id="playlist-name-input"
+                                class="playlist-name-input"
+                                maxlength="100"
+                                placeholder="Name your playlist"
+                                value="{{ current_name }}">
+                        {% endwith %}
+                        <div class="action-buttons">
+                            <button
+                                type="submit"
+                                class="btn btn-ghost"
+                                formaction="{% url 'recommender:generate_playlist' %}"
+                                formmethod="post"
+                                {% if not prompt %}disabled{% endif %}>
+                                Remix
+                            </button>
+                            <button type="submit" class="btn btn-primary" id="save-playlist-button">
+                                Save to Spotify
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <div class="search-bar">
+                    <input
+                        type="text"
+                        class="search-input"
+                        placeholder="Search to add songs (coming soon)"
+                        disabled>
+                    <span class="coming-soon-note">Manual additions will arrive in a future update.</span>
+                </div>
+
+                <ul
+                    class="track-list"
+                    id="track-list"
+                    data-cache-key="{{ cache_key }}"
+                    data-update-url="{% url 'recommender:update_cached_playlist' %}">
+                    {% for track in playlist_tracks %}
+                        <li
+                            class="track-item"
+                            data-track-id="{{ track.id }}"
+                            data-position="{{ forloop.counter0 }}">
+                            <div class="track-artwork">
+                                {% if track.album_image_url %}
+                                    <img src="{{ track.album_image_url }}" alt="Album artwork for {{ track.name }}">
+                                {% else %}
+                                    {{ track.name|default:"?"|slice:":1" }}
+                                {% endif %}
+                            </div>
+                            <div class="track-info">
+                                <span class="track-name">{{ track.name }}</span>
+                                <span class="track-artist">{{ track.artists }}</span>
+                                {% if track.album_name %}
+                                    <span class="track-album">{{ track.album_name }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="track-meta">
+                                <span
+                                    class="track-duration"
+                                    data-duration-ms="{{ track.duration_ms|default:0 }}">--:--</span>
+                                <button
+                                    type="button"
+                                    class="remove-track-button">
+                                    Remove
+                                </button>
+                            </div>
+                        </li>
+                    {% empty %}
+                        <li class="empty-state" id="empty-state">
+                            No tracks available yet. Use Remix to generate a new set.
+                        </li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {% if debug_enabled and debug_steps %}
+                <section class="debug-panel">
+                    <h3>Generation Debug Steps</h3>
+                    <ol class="debug-steps">
+                        {% for step in debug_steps %}
+                            <li>{{ step }}</li>
+                        {% endfor %}
+                    </ol>
+                </section>
+            {% endif %}
+        </main>
+    </div>
+
+    <script>
+        (function () {
+            const trackList = document.getElementById('track-list');
+            const saveButton = document.getElementById('save-playlist-button');
+            const messageStack = document.getElementById('message-stack');
+            const cacheKey = trackList ? trackList.dataset.cacheKey : null;
+            const updateUrl = trackList ? trackList.dataset.updateUrl : null;
+
+            function formatDuration(ms) {
+                const totalSeconds = Math.max(0, Math.floor(Number(ms) / 1000));
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+
+            function refreshDurations() {
+                if (!trackList) {
+                    return;
+                }
+                const durations = trackList.querySelectorAll('[data-duration-ms]');
+                durations.forEach((node) => {
+                    const ms = Number(node.dataset.durationMs || 0);
+                    node.textContent = ms > 0 ? formatDuration(ms) : '--:--';
+                });
+            }
+
+            function updateTrackPositions() {
+                if (!trackList) {
+                    return;
+                }
+                const items = trackList.querySelectorAll('.track-item');
+                items.forEach((item, index) => {
+                    item.dataset.position = String(index);
+                });
+            }
+
+            function setTrackCount(count) {
+                const counter = document.getElementById('track-count');
+                if (counter) {
+                    counter.textContent = String(count);
+                }
+                if (saveButton) {
+                    saveButton.disabled = count === 0;
+                }
+                const emptyState = document.getElementById('empty-state');
+                if (count === 0) {
+                    if (!emptyState) {
+                        const placeholder = document.createElement('li');
+                        placeholder.id = 'empty-state';
+                        placeholder.className = 'empty-state';
+                        placeholder.textContent = 'No tracks available yet. Use Remix to generate a new set.';
+                        trackList.appendChild(placeholder);
+                    }
+                } else if (emptyState) {
+                    emptyState.remove();
+                }
+            }
+
+            function pushMessage(kind, text) {
+                if (!messageStack) {
+                    return;
+                }
+                const node = document.createElement('div');
+                node.className = `message message-${kind}`;
+                node.textContent = text;
+                messageStack.appendChild(node);
+            }
+
+            function getCsrfToken() {
+                const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+                return tokenInput ? tokenInput.value : '';
+            }
+
+            if (trackList && cacheKey && updateUrl) {
+                trackList.addEventListener('click', (event) => {
+                    const button = event.target.closest('.remove-track-button');
+                    if (!button) {
+                        return;
+                    }
+                    const item = button.closest('.track-item');
+                    if (!item) {
+                        return;
+                    }
+                    const trackId = item.dataset.trackId || '';
+                    const position = Number(item.dataset.position || 0);
+                    button.disabled = true;
+
+                    fetch(updateUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            action: 'remove',
+                            cache_key: cacheKey,
+                            track_id: trackId,
+                            position,
+                        }),
+                    })
+                        .then((response) => {
+                            if (!response.ok) {
+                                throw new Error('Request failed');
+                            }
+                            return response.json();
+                        })
+                        .then((payload) => {
+                            if (payload.status !== 'ok') {
+                                throw new Error(payload.error || 'Unable to update playlist.');
+                            }
+                            item.remove();
+                            updateTrackPositions();
+                            setTrackCount(payload.track_count || 0);
+                            pushMessage('success', 'Track removed from the playlist.');
+                        })
+                        .catch((error) => {
+                            button.disabled = false;
+                            pushMessage('error', error.message || 'Failed to remove track. Try again.');
+                        });
+                });
+            }
+
+            refreshDurations();
+            if (trackList) {
+                setTrackCount(trackList.querySelectorAll('.track-item').length);
+            }
+        })();
+    </script>
+</body>
+</html>
