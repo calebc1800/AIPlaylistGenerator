@@ -197,7 +197,14 @@ try:
         temperature=1  # Lower temperature for more consistent reviews
     )
 
-    ai_review_content = response.choices[0].message.content
+    ai_review_content = ""
+    try:
+        ai_review_content = response.choices[0].message.content.strip()
+    except (AttributeError, IndexError, KeyError) as e:
+        print(f"⚠️ Could not extract AI review content: {e}")
+        print("Full response object for debugging:")
+        print(response)
+    
 
     print("\n" + "="*50)
     print("AI Code Review Summary:")
