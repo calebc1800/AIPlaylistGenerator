@@ -207,7 +207,7 @@ class LogoutView(View):
     def get(self, request):
         # Clear session data
         request.session.flush()
-        return redirect('dashboard:dashboard')
+        return redirect('home')
 
 
 # Keep these for backwards compatibility if needed
