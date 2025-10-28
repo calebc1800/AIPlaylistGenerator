@@ -1,9 +1,10 @@
 import secrets
 import requests
 from urllib.parse import urlencode
-from django.shortcuts import redirect, render
-from django.http import JsonResponse
+
 from django.conf import settings
+from django.http import JsonResponse
+from django.shortcuts import redirect
 from django.views import View
 
 
@@ -16,12 +17,14 @@ class SpotifyLoginView(View):
         request.session['spotify_auth_state'] = state
         
         # Spotify authorization parameters
+        scope = " ".join(getattr(settings, "SPOTIFY_SCOPES", []))
+
         params = {
             'client_id': settings.SPOTIFY_CLIENT_ID,
             'response_type': 'code',
             'redirect_uri': settings.SPOTIFY_REDIRECT_URI,
             'state': state,
-            'scope': 'user-read-email user-read-private user-read-recently-played',  # Add scopes as needed
+            'scope': scope,
         }
         
         auth_url = f"https://accounts.spotify.com/authorize?{urlencode(params)}"
@@ -79,7 +82,6 @@ class SpotifyCallbackView(View):
             request.session['spotify_user_id'] = user_profile.get('id')
             request.session['spotify_display_name'] = user_profile.get('display_name')
         
-        # CHANGED: Redirect to dashboard instead of returning JSON
         return redirect('dashboard:dashboard')
     
     def get_user_profile(self, access_token):

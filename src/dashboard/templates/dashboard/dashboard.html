@@ -738,12 +738,13 @@
                     <p>Use AI to generate custom playlists based on your mood, activity, or favorite artists.</p>
                 </div>
                 
-                <form class="create-form" action="/create_playlist/" method="POST">
+                <form class="create-form" action="{% url 'recommender:generate_playlist' %}" method="POST">
+                    {% csrf_token %}
                     <div class="form-group">
                         <label for="playlist_prompt">Playlist Prompt</label>
                         <textarea 
                             id="playlist_prompt" 
-                            name="playlist_prompt" 
+                            name="prompt" 
                             placeholder="E.g., 'Upbeat indie rock for a road trip' or 'Relaxing jazz for studying'"
                             required
                         ></textarea>

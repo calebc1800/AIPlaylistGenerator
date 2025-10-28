@@ -1,0 +1,84 @@
+{% if messages %}
+<div class="messages">
+  {% for message in messages %}
+    <p class="message {{ message.tags }}">{{ message }}</p>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if debug_steps %}
+<h2>Generation Steps</h2>
+<ol>
+  {% for step in debug_steps %}
+    <li>{{ step }}</li>
+  {% endfor %}
+</ol>
+{% endif %}
+
+{% if errors %}
+<h2>Notices</h2>
+<ul>
+  {% for message in errors %}
+    <li>{{ message }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<h2>Final Playlist</h2>
+{% if playlist %}
+<ul>
+  {% for song in playlist %}
+    <li>{{ song }}</li>
+  {% endfor %}
+</ul>
+<form method="post" action="{% url 'recommender:save_playlist' %}" id="save-playlist-form">
+  {% csrf_token %}
+  <input type="hidden" name="cache_key" value="{{ cache_key }}">
+  <input type="hidden" id="playlist_name_input" name="playlist_name">
+  <button type="button" id="save-to-spotify-button">Save to Spotify</button>
+  <noscript>
+    <p>Please enable JavaScript to name and save your playlist.</p>
+  </noscript>
+</form>
+{% else %}
+<p>No playlist could be generated. Try adjusting your prompt.</p>
+{% endif %}
+
+<script>
+(function () {
+  const form = document.getElementById('save-playlist-form');
+  const button = document.getElementById('save-to-spotify-button');
+  const input = document.getElementById('playlist_name_input');
+
+  if (!form || !button || !input) {
+    return;
+  }
+
+  button.addEventListener('click', function () {
+    const name = window.prompt('Enter a name for your playlist:');
+    if (!name) {
+      return;
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+      alert('Playlist name cannot be empty.');
+      return;
+    }
+    input.value = trimmed;
+    form.submit();
+  });
+})();
+</script>
+
+{% if preference_descriptions %}
+<section>
+  <h3>Coming Soon</h3>
+  <p>Personalized playlist settings will be available here once the profile page launches.</p>
+  <ul>
+    {% for item in preference_descriptions %}
+      <li><strong>{{ item.label }}</strong>: {{ item.description }}</li>
+    {% endfor %}
+  </ul>
+  <p><em>Current default track count:</em> {{ user_preferences.track_count }}</p>
+</section>
+{% endif %}
