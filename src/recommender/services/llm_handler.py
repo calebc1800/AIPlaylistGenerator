@@ -10,6 +10,57 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_ATTRIBUTES = {"mood": "chill", "genre": "pop", "energy": "medium"}
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "60"))
+_GENRE_FALLBACKS = {
+    "pop": [
+        {"title": "Blinding Lights", "artist": "The Weeknd"},
+        {"title": "Levitating", "artist": "Dua Lipa"},
+        {"title": "Good 4 U", "artist": "Olivia Rodrigo"},
+        {"title": "Watermelon Sugar", "artist": "Harry Styles"},
+        {"title": "Don't Start Now", "artist": "Dua Lipa"},
+    ],
+    "rock": [
+        {"title": "Mr. Brightside", "artist": "The Killers"},
+        {"title": "Seven Nation Army", "artist": "The White Stripes"},
+        {"title": "Everlong", "artist": "Foo Fighters"},
+        {"title": "Use Somebody", "artist": "Kings of Leon"},
+        {"title": "Sweet Child O' Mine", "artist": "Guns N' Roses"},
+    ],
+    "hip hop": [
+        {"title": "SICKO MODE", "artist": "Travis Scott"},
+        {"title": "Lose Yourself", "artist": "Eminem"},
+        {"title": "HUMBLE.", "artist": "Kendrick Lamar"},
+        {"title": "God's Plan", "artist": "Drake"},
+        {"title": "POWER", "artist": "Kanye West"},
+    ],
+    "electronic": [
+        {"title": "Midnight City", "artist": "M83"},
+        {"title": "Strobe", "artist": "deadmau5"},
+        {"title": "Titanium", "artist": "David Guetta ft. Sia"},
+        {"title": "Wake Me Up", "artist": "Avicii"},
+        {"title": "Animals", "artist": "Martin Garrix"},
+    ],
+    "jazz": [
+        {"title": "So What", "artist": "Miles Davis"},
+        {"title": "Take Five", "artist": "The Dave Brubeck Quartet"},
+        {"title": "My Favorite Things", "artist": "John Coltrane"},
+        {"title": "Blue in Green", "artist": "Bill Evans"},
+        {"title": "Feeling Good", "artist": "Nina Simone"},
+    ],
+    "classical": [
+        {"title": "Clair de Lune", "artist": "Claude Debussy"},
+        {"title": "Nocturne Op.9 No.2", "artist": "Frédéric Chopin"},
+        {"title": "Canon in D", "artist": "Johann Pachelbel"},
+        {"title": "Spring (The Four Seasons)", "artist": "Antonio Vivaldi"},
+        {"title": "Moonlight Sonata", "artist": "Ludwig van Beethoven"},
+    ],
+}
+_DEFAULT_FALLBACKS = [
+    {"title": "Dreams", "artist": "Fleetwood Mac"},
+    {"title": "Africa", "artist": "Toto"},
+    {"title": "Uptown Funk", "artist": "Mark Ronson ft. Bruno Mars"},
+    {"title": "Stayin' Alive", "artist": "Bee Gees"},
+    {"title": "September", "artist": "Earth, Wind & Fire"},
+]
 
 
 def _log(
@@ -165,6 +216,15 @@ def suggest_seed_tracks(
             debug_steps,
             log_step,
             "LLM seed suggestions unavailable; will rely on Spotify fallback.",
+        )
+        genre_key = (attributes.get("genre") or "").lower()
+        canonical = genre_key.replace("-", " ").strip()
+        fallbacks = _GENRE_FALLBACKS.get(canonical) or _DEFAULT_FALLBACKS
+        suggestions = fallbacks[:max_suggestions]
+        _log(
+            debug_steps,
+            log_step,
+            f"Provided fallback seed suggestions for genre '{canonical or 'default'}'.",
         )
 
     return suggestions[:max_suggestions]

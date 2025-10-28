@@ -199,11 +199,44 @@ def _filter_non_latin_tracks(tracks: Iterable[Dict]) -> List[Dict]:
 def _extract_release_year(track: Dict) -> Optional[int]:
     """Return the release year from a track dictionary, if available."""
     album = (track or {}).get("album") or {}
-    date = album.get("release_date")
+    date = album.get("release_date") or track.get("release_date")
     if not date:
         return None
-    year_str = date.split("-")[0]
-    return int(year_str) if year_str.isdigit() else None
+    match = re.match(r"(\d{4})", date)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _primary_image_url(images: Optional[List[Dict]]) -> str:
+    """Return the first available URL from a list of Spotify image dictionaries."""
+    if not images:
+        return ""
+    for image in images:
+        url = image.get("url")
+        if url:
+            return url
+    return ""
+
+
+def _serialize_track_payload(track: Dict) -> Dict[str, object]:
+    """Normalize Spotify track metadata for downstream views and caching."""
+    album = track.get("album") or {}
+    artists = track.get("artists") or []
+    artist_names = ", ".join(artist.get("name", "") for artist in artists if artist.get("name"))
+    return {
+        "id": track.get("id"),
+        "name": track.get("name", "Unknown"),
+        "artists": artist_names or "Unknown",
+        "album_name": album.get("name", ""),
+        "album_image_url": _primary_image_url(album.get("images")),
+        "duration_ms": int(track.get("duration_ms") or 0),
+        "artist_ids": [artist.get("id") for artist in artists if artist.get("id")],
+        "year": _extract_release_year(track),
+    }
 
 
 def _discover_playlist_seeds(
@@ -469,16 +502,7 @@ def resolve_seed_tracks(
             continue
 
         track = tracks[0]
-        artist_ids = [artist.get("id") for artist in track.get("artists", []) if artist.get("id")]
-        resolved.append(
-            {
-                "id": track["id"],
-                "name": track["name"],
-                "artists": ", ".join(artist.get("name", "") for artist in track.get("artists", [])),
-                "artist_ids": artist_ids,
-                "year": _extract_release_year(track),
-            }
-        )
+        resolved.append(_serialize_track_payload(track))
 
     _log(debug_steps, log_step, f"Resolved {len(resolved)} seed tracks via Spotify search.")
     return resolved
@@ -618,13 +642,10 @@ def get_similar_tracks(
         if any(artist_counts.get(name, 0) >= 2 for name in artist_names if name):
             continue
         artist_label = ", ".join(name for name in artist_names if name) or "Unknown"
-        recommendations.append(
-            {
-                "id": track.get("id"),
-                "name": track.get("name", "Unknown"),
-                "artists": artist_label,
-            }
-        )
+        serialized = _serialize_track_payload(track)
+        if artist_label and not serialized.get("artists"):
+            serialized["artists"] = artist_label
+        recommendations.append(serialized)
         for name in artist_names:
             if not name:
                 continue
