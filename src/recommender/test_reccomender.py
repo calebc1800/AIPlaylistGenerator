@@ -20,7 +20,11 @@ from recommender.services.user_preferences import (
     describe_pending_options,
     get_default_preferences,
 )
-from recommender.services.llm_handler import refine_playlist, suggest_seed_tracks
+from recommender.services.llm_handler import (
+    extract_playlist_attributes,
+    refine_playlist,
+    suggest_seed_tracks,
+)
 from recommender.views import _cache_key
 
 
