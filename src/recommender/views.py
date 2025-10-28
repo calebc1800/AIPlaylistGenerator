@@ -2,6 +2,7 @@ import hashlib
 import logging
 import re
 import time
+from dataclasses import asdict
 from typing import Callable, Dict, List, Optional
 
 from django.conf import settings
@@ -17,6 +18,10 @@ from .services.spotify_handler import (
     get_similar_tracks,
     resolve_seed_tracks,
     create_playlist_with_tracks,
+)
+from .services.user_preferences import (
+    describe_pending_options,
+    get_preferences_for_request,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +50,17 @@ def _make_logger(debug_steps: List[str], errors: List[str]) -> Callable[[str], N
 def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]:
     if not payload:
         return {}
+    preferences = payload.get("user_preferences") or {}
+    preference_descriptions = payload.get("preference_descriptions", [])
+    if isinstance(preference_descriptions, dict):
+        preference_descriptions = [
+            {
+                "key": key,
+                "label": key.replace("_", " ").title(),
+                "description": value,
+            }
+            for key, value in preference_descriptions.items()
+        ]
     return {
         "playlist": payload.get("playlist", []),
         "prompt": payload.get("prompt", ""),
@@ -55,6 +71,8 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
         "seed_tracks": payload.get("seed_track_display") or payload.get("seed_tracks", []),
         "similar_tracks": payload.get("similar_tracks_display") or payload.get("similar_tracks", []),
         "cache_key": payload.get("cache_key"),
+        "user_preferences": preferences,
+        "preference_descriptions": preference_descriptions,
     }
 
 
@@ -84,9 +102,17 @@ def generate_playlist(request):
 
     cache_key = _cache_key(user_id, prompt)
     cached_payload: Optional[Dict[str, object]] = cache.get(cache_key)
+    preferences = get_preferences_for_request(request)
+    preference_snapshot = asdict(preferences)
+    preference_descriptions = describe_pending_options()
 
     if isinstance(cached_payload, dict):
-        context = _build_context_from_payload(cached_payload)
+        updated_payload = {
+            **cached_payload,
+            "user_preferences": cached_payload.get("user_preferences", preference_snapshot),
+            "preference_descriptions": cached_payload.get("preference_descriptions", preference_descriptions),
+        }
+        context = _build_context_from_payload(updated_payload)
         context.setdefault("cache_key", cache_key)
         return render(request, "recommender/playlist_result.html", context)
 
@@ -114,6 +140,8 @@ def generate_playlist(request):
             "similar_tracks": [],
             "track_ids": [],
             "cache_key": cache_key,
+            "user_preferences": preference_snapshot,
+            "preference_descriptions": preference_descriptions,
         }
     else:
         attributes = extract_playlist_attributes(
@@ -221,6 +249,8 @@ def generate_playlist(request):
             "debug_steps": list(debug_steps),
             "errors": list(errors),
             "cache_key": cache_key,
+            "user_preferences": preference_snapshot,
+            "preference_descriptions": preference_descriptions,
         }
         cache.set(cache_key, payload, timeout=60 * 15)
         log("Playlist cached for 15 minutes.")

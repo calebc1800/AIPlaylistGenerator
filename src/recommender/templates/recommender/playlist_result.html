@@ -69,3 +69,16 @@
   });
 })();
 </script>
+
+{% if preference_descriptions %}
+<section>
+  <h3>Coming Soon</h3>
+  <p>Personalized playlist settings will be available here once the profile page launches.</p>
+  <ul>
+    {% for item in preference_descriptions %}
+      <li><strong>{{ item.label }}</strong>: {{ item.description }}</li>
+    {% endfor %}
+  </ul>
+  <p><em>Current default track count:</em> {{ user_preferences.track_count }}</p>
+</section>
+{% endif %}

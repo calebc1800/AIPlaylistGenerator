@@ -169,5 +169,24 @@ def _bool_env(var_name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _int_env(var_name: str, default: int) -> int:
+    raw = os.getenv(var_name)
+    if raw is None:
+        return default
+    try:
+        return int(raw.strip())
+    except (TypeError, ValueError):
+        return default
+
+
 RECOMMENDER_PLAYLIST_PREFIX = os.getenv("RECOMMENDER_PLAYLIST_PREFIX", "TEST ")
 RECOMMENDER_PLAYLIST_PUBLIC = _bool_env("RECOMMENDER_PLAYLIST_PUBLIC", default=False)
+
+# Placeholder knobs for upcoming user-configurable recommender options.
+RECOMMENDER_DEFAULT_PLAYLIST_LENGTH = _int_env("RECOMMENDER_DEFAULT_PLAYLIST_LENGTH", 20)
+RECOMMENDER_MIN_PLAYLIST_LENGTH = _int_env("RECOMMENDER_MIN_PLAYLIST_LENGTH", 5)
+RECOMMENDER_MAX_PLAYLIST_LENGTH = _int_env("RECOMMENDER_MAX_PLAYLIST_LENGTH", 60)
+RECOMMENDER_EXPERIMENTAL_FLAGS = {
+    "enforce_unique_tracks": _bool_env("RECOMMENDER_ENFORCE_UNIQUE_DEFAULT", True),
+    "allow_seed_only_playlists": _bool_env("RECOMMENDER_ALLOW_SEED_ONLY_DEFAULT", False),
+}

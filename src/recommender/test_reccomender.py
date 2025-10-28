@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.messages import get_messages
 from django.core.cache import cache
 from django.test import Client, TestCase
@@ -8,6 +9,10 @@ from .services.spotify_handler import (
     discover_top_tracks_for_genre,
     get_similar_tracks,
     resolve_seed_tracks,
+)
+from .services.user_preferences import (
+    describe_pending_options,
+    get_default_preferences,
 )
 from .views import _cache_key
 
@@ -368,3 +373,19 @@ class SavePlaylistViewTests(TestCase):
         mock_create_playlist.assert_not_called()
         messages = [message.message for message in get_messages(response.wsgi_request)]
         self.assertIn("Please provide a playlist name.", messages)
+
+
+class UserPreferencePlaceholderTests(TestCase):
+    """Smoke tests for future user preference helpers."""
+
+    def test_get_default_preferences_within_bounds(self):
+        prefs = get_default_preferences()
+        self.assertGreaterEqual(prefs.track_count, settings.RECOMMENDER_MIN_PLAYLIST_LENGTH)
+        self.assertLessEqual(prefs.track_count, settings.RECOMMENDER_MAX_PLAYLIST_LENGTH)
+
+    def test_describe_pending_options_lists_expected_keys(self):
+        description = describe_pending_options()
+        keys = {item["key"] for item in description}
+        self.assertIn("track_count", keys)
+        self.assertIn("enforce_unique_tracks", keys)
+        self.assertIn("allow_seed_only_playlists", keys)
