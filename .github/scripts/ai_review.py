@@ -184,6 +184,7 @@ Code:
 
 # Use a configurable model
 model_name = os.environ.get("OPENAI_MODEL", "gpt-5")
+fallback_model = "gpt-4o"
 
 ai_review_content = ""
 try:
@@ -194,17 +195,10 @@ try:
             {"role": "user", "content": prompt}
         ],
         max_completion_tokens=1500,
-        temperature=1  # Lower temperature for more consistent reviews
+        temperature=0.3
     )
 
-    ai_review_content = ""
-    try:
-        ai_review_content = response.choices[0].message.content.strip()
-    except (AttributeError, IndexError, KeyError) as e:
-        print(f"⚠️ Could not extract AI review content: {e}")
-        print("Full response object for debugging:")
-        print(response)
-
+    ai_review_content = response.choices[0].message.content.strip()
 
     print("\n" + "="*50)
     print("AI Code Review Summary:")
@@ -212,21 +206,26 @@ try:
     print(ai_review_content)
     print("="*50)
 
+except (AttributeError, IndexError, KeyError) as e:
+    print(f"⚠️ Could not extract AI review content: {e}")
+    print("Full response object for debugging:")
+    print(response)
 except Exception as e:
-    print(f"AI review failed: {e}")
+    print(f"AI review failed with {model_name}: {e}")
     # Try with a fallback model if the primary one fails
-    if model_name != "gpt-5":
+    if model_name != fallback_model:
         try:
-            print("Retrying with fallback model...")
+            print(f"Retrying with fallback model {fallback_model}...")
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=fallback_model,
                 messages=[
                     {"role": "system", "content": "You are an expert code reviewer for Django projects."},
                     {"role": "user", "content": prompt}
                 ],
-                max_completion_tokens=1200
+                max_completion_tokens=1200,
+                temperature=0.3
             )
-            ai_review_content = response.choices[0].message.content
+            ai_review_content = response.choices[0].message.content.strip()
             print("\nAI Code Review Summary (Fallback):")
             print(ai_review_content)
         except Exception as fallback_error:
