@@ -9,6 +9,7 @@ from .services.spotify_handler import (
     discover_top_tracks_for_genre,
     get_similar_tracks,
     resolve_seed_tracks,
+    create_playlist_with_tracks,
 )
 from .services.user_preferences import (
     describe_pending_options,
@@ -275,6 +276,28 @@ class SpotifyHandlerTests(TestCase):
                     ]
                 }
             },
+            {
+                "tracks": {
+                    "items": [
+                        {
+                            "id": "cand1",
+                            "name": "Happy Energy",
+                            "artists": [{"name": "Artist A", "id": "artistA"}],
+                            "popularity": 70,
+                            "available_markets": ["US"],
+                            "album": {"release_date": "2023-01-01"},
+                        },
+                        {
+                            "id": "cand2",
+                            "name": "Mellow Tune",
+                            "artists": [{"name": "Artist B", "id": "artistB"}],
+                            "popularity": 65,
+                            "available_markets": ["US"],
+                            "album": {"release_date": "2010-05-05"},
+                        },
+                    ]
+                }
+            },
         ]
         mock_instance.artists.return_value = {
             "artists": [
@@ -312,6 +335,50 @@ class SpotifyHandlerTests(TestCase):
 
         self.assertEqual(results, [])
         mock_spotify.assert_not_called()
+
+    @patch("recommender.services.spotify_handler.spotipy.Spotify")
+    def test_create_playlist_with_tracks_chunking(self, mock_spotify):
+        mock_instance = mock_spotify.return_value
+        mock_instance.current_user.return_value = {"id": "user123"}
+        mock_instance.user_playlist_create.return_value = {"id": "playlist123"}
+
+        track_ids = [f"track{i}" for i in range(205)]
+        result = create_playlist_with_tracks(
+            token="token",
+            track_ids=track_ids,
+            playlist_name="Focus Mix",
+            prefix="TEST ",
+        )
+
+        self.assertEqual(result["playlist_id"], "playlist123")
+        self.assertEqual(result["playlist_name"], "TEST Focus Mix")
+        self.assertEqual(mock_instance.playlist_add_items.call_count, 3)
+        batched_lengths = [
+            len(call.args[1]) for call in mock_instance.playlist_add_items.call_args_list
+        ]
+        self.assertEqual(batched_lengths, [100, 100, 5])
+
+    @patch("recommender.services.spotify_handler.spotipy.Spotify")
+    def test_create_playlist_with_tracks_uses_existing_user(self, mock_spotify):
+        mock_instance = mock_spotify.return_value
+        mock_instance.user_playlist_create.return_value = {"id": "playlist456"}
+
+        result = create_playlist_with_tracks(
+            token="token",
+            track_ids=["track1"],
+            playlist_name="Daily Mix",
+            user_id="preset-user",
+        )
+
+        mock_instance.current_user.assert_not_called()
+        mock_instance.playlist_add_items.assert_called_once()
+        self.assertEqual(mock_instance.playlist_add_items.call_args.args[0], "playlist456")
+        self.assertEqual(mock_instance.playlist_add_items.call_args.args[1], ["track1"])
+        self.assertEqual(result["user_id"], "preset-user")
+
+    def test_create_playlist_with_tracks_requires_tracks(self):
+        with self.assertRaises(ValueError):
+            create_playlist_with_tracks(token="token", track_ids=[], playlist_name="Empty")
 
 
 class SavePlaylistViewTests(TestCase):
