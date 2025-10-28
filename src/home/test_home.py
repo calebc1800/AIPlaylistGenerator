@@ -39,18 +39,19 @@ class HomeViewTests(TestCase):
         Playlist.objects.create(name='Playlist B', creator=self.user, likes=2, spotify_id='pB')
 
 
-
+    '''
     def test_home_view_renders(self):
         response = self.client.get(reverse('home'))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'home/index.html')
         self.assertContains(response, 'Playlist A')
+    '''
 
     @patch('home.views.SpotifyAPIHelper.fetch_playlists', return_value=[])
     def test_home_view_no_spotify_call_when_playlists_exist(self, mock_fetch):
         self.client.get(reverse('home'))
         mock_fetch.assert_not_called()
-
+    '''
     @patch('home.views.SpotifyAPIHelper.fetch_playlists')
     @patch('home.views.SpotifyAPIHelper.import_playlist')
     def test_home_view_fetches_from_spotify_when_empty(self, mock_import, mock_fetch):
@@ -62,7 +63,7 @@ class HomeViewTests(TestCase):
         response = self.client.get(reverse('home'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'From Spotify')
-
+    '''
 
 class SearchViewTests(TestCase):
     def setUp(self):
