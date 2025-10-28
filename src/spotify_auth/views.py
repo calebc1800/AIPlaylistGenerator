@@ -1,12 +1,10 @@
 import secrets
 import requests
-import spotipy
 from urllib.parse import urlencode
 from django.shortcuts import redirect, render
 from django.http import JsonResponse
 from django.conf import settings
 from django.views import View
-from spotipy.oauth2 import SpotifyOAuth
 
 
 class SpotifyLoginView(View):
@@ -82,7 +80,7 @@ class SpotifyCallbackView(View):
             request.session['spotify_display_name'] = user_profile.get('display_name')
         
         # CHANGED: Redirect to dashboard instead of returning JSON
-        return redirect('spotify_auth:dashboard')
+        return redirect('dashboard:dashboard')
     
     def get_user_profile(self, access_token):
         """Fetch the user's Spotify profile"""
@@ -123,48 +121,3 @@ class SpotifyRefreshTokenView(View):
         request.session['spotify_expires_in'] = token_data.get('expires_in')
         
         return JsonResponse({'message': 'Token refreshed successfully'})
-
-        # Add this new view class at the end of the file
-class SpotifyDashboardView(View):
-    """Display user's Spotify data"""
-    
-    def get(self, request):
-        access_token = request.session.get('spotify_access_token')
-        if not access_token:
-            return redirect('spotify_auth:login')
-        
-        sp = spotipy.Spotify(auth=access_token)
-        try:
-            user_profile = sp.current_user()
-            recently_played = sp.current_user_recently_played(limit=1)
-            
-            username = user_profile.get('display_name') or user_profile.get('id')
-            user_id = user_profile.get('id')
-            email = user_profile.get('email')
-            followers = user_profile.get('followers', {}).get('total', 0)
-            
-            last_song = None
-            if recently_played and recently_played.get('items'):
-                track = recently_played['items'][0]['track']
-                last_song = {
-                    'name': track['name'],
-                    'artist': ', '.join([artist['name'] for artist in track['artists']]),
-                    'album': track['album']['name'],
-                    'image': track['album']['images'][0]['url'] if track['album']['images'] else None,
-                    'played_at': recently_played['items'][0]['played_at']
-                }
-            
-            context = {
-                'username': username,
-                'user_id': user_id,
-                'email': email,
-                'followers': followers,
-                'last_song': last_song,
-                'profile_url': user_profile.get('external_urls', {}).get('spotify'),
-            }
-            return render(request, 'spotify_auth/dashboard.html', context)
-        
-        except spotipy.exceptions.SpotifyException as e:
-            if e.http_status == 401:
-                return redirect('spotify_auth:login')
-            return render(request, 'spotify_auth/dashboard.html', {'error': f'Error fetching Spotify data: {str(e)}'})

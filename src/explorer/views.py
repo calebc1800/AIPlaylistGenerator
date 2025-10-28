@@ -124,7 +124,7 @@ class SpotifyAPIHelper:
             print(f"Error fetching songs: {e}")
 
 
-class HomeView(View):
+class ExplorerView(View):
     """Display playlists from database, or fetch from Spotify if empty"""
 
     def get(self, request):
@@ -142,7 +142,7 @@ class HomeView(View):
             'playlists': playlists,
         }
 
-        return render(request, 'explorer/index.html', context)
+        return render(request, 'explorer/playlist_grid.html', context)
 
 
 class SearchView(View):
@@ -211,9 +211,9 @@ class LogoutView(View):
 
 
 # Keep these for backwards compatibility if needed
-def home(request):
+def playlist_explorer(request):
     """Function-based view wrapper for HomeView"""
-    return HomeView.as_view()(request)
+    return ExplorerView.as_view()(request)
 
 
 def search(request):

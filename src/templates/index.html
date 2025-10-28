@@ -1,4 +1,4 @@
-{% extends 'home/base.html' %}
+{% extends 'base.html' %}
 {% block content %}
 <div class="playlist-explorer">
   <header class="header">
@@ -7,7 +7,7 @@
       <div class="auth-section">
         {% if user.is_authenticated %}
           <span class="user-greeting">Welcome, {{ user.username }}</span>
-          <a href="{% url 'spotify_auth:dashboard' %}" class="spotify-button">Go to Dashboard</a>
+          <a href="{% url 'dashboard:dashboard' %}" class="spotify-button">Go to Dashboard</a>
           <a href="{% url 'logout' %}" class="btn-secondary">Logout</a>
         {% else %}
           <span class="user-greeting">Get Started</span>
@@ -48,31 +48,31 @@
           <h3>AI-Powered Playlists</h3>
           <p>Generate custom playlists using AI based on your mood, activity, or favorite artists. Just describe what you want to hear.</p>
         </div>
-        
+
         <div class="feature-card">
           <div class="feature-icon">🎵</div>
           <h3>Discover Music</h3>
           <p>Explore trending playlists and discover new tracks tailored to your taste. Find your next favorite song.</p>
         </div>
-        
+
         <div class="feature-card">
           <div class="feature-icon">👥</div>
           <h3>Share & Connect</h3>
           <p>Share your playlists publicly or with friends. Like and rate playlists to help others discover great music.</p>
         </div>
-        
+
         <div class="feature-card">
           <div class="feature-icon">📊</div>
           <h3>Track Your Stats</h3>
           <p>See your listening history, most played tracks, and music preferences over time.</p>
         </div>
-        
+
         <div class="feature-card">
           <div class="feature-icon">✨</div>
           <h3>Smart Curation</h3>
           <p>Edit AI-generated playlists manually to perfect your listening experience. Add or remove tracks as you like.</p>
         </div>
-        
+
         <div class="feature-card">
           <div class="feature-icon">🔗</div>
           <h3>Spotify Integration</h3>
