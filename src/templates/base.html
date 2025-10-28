@@ -24,19 +24,21 @@
         .playlist-explorer::before {
             content: '';
             position: fixed;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
+            top: 50%;
+            left: 50%;
+            width: 500%;
+            height: 500%;
             background: radial-gradient(circle at 20% 50%, rgba(2, 136, 209, 0.15) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(66, 165, 245, 0.1) 0%, transparent 50%);
+            transform: translate(-50%, -50%) rotate(0deg) scale(1);
+            transform-origin: center;
             animation: gradientShift 20s ease infinite;
             pointer-events: none;
             z-index: 0;
         }
 
         @keyframes gradientShift {
-            0%, 100% { transform: translate(0, 0) rotate(0deg); }
-            50% { transform: translate(10%, 10%) rotate(180deg); }
+            0%, 100% { transform: translate(-50%, -50%) rotate(0deg) scale(1); }
+            50% { transform: translate(-46%, -46%) rotate(180deg) scale(1.05); }
         }
 
         .header {
