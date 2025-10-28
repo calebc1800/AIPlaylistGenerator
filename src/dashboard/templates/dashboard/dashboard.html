@@ -266,9 +266,44 @@
             text-overflow: ellipsis;
         }
 
+        .playlist-info-compact {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
         .playlist-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             font-size: 0.85rem;
             color: #b3b3b3;
+            margin-bottom: 4px;
+        }
+
+        .creator-name {
+            color: #b3b3b3;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .playlist-likes {
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .spotify-link {
+            color: #42a5f5;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: color 0.3s ease;
+        }
+
+        .spotify-link:hover {
+            color: #64B5F6;
         }
 
         .welcome-card {
@@ -672,15 +707,21 @@
                         {% for playlist in explore_playlists %}
                         <div class="playlist-card">
                             <div class="playlist-image">
-                                {% if playlist.image_url %}
-                                <img src="{{ playlist.image_url }}" alt="{{ playlist.name }}">
+                                {% if playlist.cover_image %}
+                                <img src="{{ playlist.cover_image }}" alt="{{ playlist.name }}">
                                 {% else %}
                                 🎵
                                 {% endif %}
                             </div>
-                            <div class="playlist-title">{{ playlist.name }}</div>
-                            <div class="playlist-meta">
-                                <a href="{{ playlist.url }}" target="_blank" style="color: #42a5f5; text-decoration: none;">View on Spotify →</a>
+                            <div class="playlist-info-compact">
+                                <div class="playlist-title">{{ playlist.name }}</div>
+                                <div class="playlist-meta">
+                                    <span class="creator-name">👤 {{ playlist.creator.username }}</span>
+                                    <span class="playlist-likes">{{ playlist.likes }} 👍</span>
+                                </div>
+                                {% if playlist.spotify_uri %}
+                                <a href="https://open.spotify.com/playlist/{{ playlist.spotify_id }}" target="_blank" class="spotify-link">View on Spotify →</a>
+                                {% endif %}
                             </div>
                         </div>
                         {% endfor %}
