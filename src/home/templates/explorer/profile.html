@@ -1,0 +1,15 @@
+{% extends 'home/base.html' %}
+
+{% block content %}
+<div class="profile-page">
+    <h1>{{ profile_user.username }}'s Playlists</h1>
+    
+    <div class="playlists-grid">
+      {% for playlist in playlists %}
+        {% include "home/partials/playlist_card.html" %}
+      {% empty %}
+        <p>No playlists found.</p>
+      {% endfor %}
+    </div>
+</div>
+{% endblock %}
