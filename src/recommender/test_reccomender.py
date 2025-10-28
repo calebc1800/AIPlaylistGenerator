@@ -178,6 +178,7 @@ class GeneratePlaylistViewTests(TestCase):
         mock_similar.assert_not_called()
         mock_discover.assert_not_called()
 
+    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=False)
     def test_debug_panel_hidden_by_default(self):
         session = self.client.session
         session["spotify_access_token"] = "token"
