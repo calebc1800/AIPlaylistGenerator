@@ -14,6 +14,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 from spotipy import SpotifyException
 
+from .models import SavedPlaylist
 from .services.llm_handler import extract_playlist_attributes, suggest_seed_tracks
 from .services.spotify_handler import (
     discover_top_tracks_for_genre,
@@ -333,9 +334,18 @@ def save_playlist(request):
         messages.error(request, f"Unexpected error: {exc}")
     else:
         resolved_name = result.get("playlist_name") or playlist_name
+        playlist_id = result.get("playlist_id")
         resolved_user_id = result.get("user_id")
         if resolved_user_id:
             request.session["spotify_user_id"] = resolved_user_id
+        if playlist_id and resolved_user_id:
+            try:
+                SavedPlaylist.objects.update_or_create(
+                    playlist_id=playlist_id,
+                    defaults={"creator_user_id": resolved_user_id},
+                )
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.exception("Failed to persist saved playlist %s: %s", playlist_id, exc)
         messages.success(request, f"Playlist '{resolved_name}' saved to Spotify.")
 
     return render(request, "recommender/playlist_result.html", context)
