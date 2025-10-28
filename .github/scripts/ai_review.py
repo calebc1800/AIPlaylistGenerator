@@ -194,7 +194,7 @@ try:
             {"role": "system", "content": "You are an expert code reviewer for Django projects. Provide constructive, specific feedback with clear recommendations."},
             {"role": "user", "content": prompt}
         ],
-        max_completion_tokens=1500
+        max_completion_tokens=4500
     )
 
     ai_review_content = response.choices[0].message.content.strip()
