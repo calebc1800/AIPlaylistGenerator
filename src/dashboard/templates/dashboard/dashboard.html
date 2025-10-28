@@ -645,6 +645,17 @@
             margin-bottom: 25px;
         }
 
+        .form-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .form-group-header label {
+            margin-bottom: 0;
+        }
+
         .form-group label {
             display: block;
             font-weight: 600;
@@ -695,6 +706,73 @@
         .create-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 30px rgba(2, 136, 209, 0.6);
+        }
+
+        .llm-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 12px;
+            user-select: none;
+        }
+
+        .llm-toggle .toggle-label {
+            font-size: 0.85rem;
+            color: #b3b3b3;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .llm-toggle .toggle-state {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #fff;
+            min-width: 56px;
+        }
+
+        .llm-toggle .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .llm-toggle .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .llm-toggle .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.2);
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+
+        .llm-toggle .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 3px;
+            background-color: #fff;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .llm-toggle .switch input:checked + .slider {
+            background: linear-gradient(135deg, #0288D1 0%, #42a5f5 100%);
+        }
+
+        .llm-toggle .switch input:checked + .slider:before {
+            transform: translateX(26px);
         }
 
         @media (max-width: 768px) {
@@ -821,13 +899,45 @@
                 <form class="create-form" action="{% url 'recommender:generate_playlist' %}" method="POST">
                     {% csrf_token %}
                     <div class="form-group">
-                        <label for="playlist_prompt">Playlist Prompt</label>
+                        <div class="form-group-header">
+                            <label for="playlist_prompt">Playlist Prompt</label>
+                            {% if debug_enabled %}
+                            {% with current_provider=llm_provider|default:llm_provider_default|default:'openai' %}
+                            <div class="llm-toggle" id="llm-toggle">
+                                <span class="toggle-label">LLM Provider</span>
+                                <label class="switch">
+                                    <input
+                                        type="checkbox"
+                                        id="llm_provider_toggle"
+                                        {% if current_provider|lower == 'ollama' %}checked{% endif %}
+                                    >
+                                    <span class="slider"></span>
+                                </label>
+                                <span class="toggle-state" id="llm-toggle-state">{{ current_provider|capfirst }}</span>
+                            </div>
+                            {% endwith %}
+                            {% endif %}
+                        </div>
                         <textarea 
                             id="playlist_prompt" 
                             name="prompt" 
                             placeholder="E.g., 'Upbeat indie rock for a road trip' or 'Relaxing jazz for studying'"
                             required
                         ></textarea>
+                        {% if debug_enabled %}
+                        <input
+                            type="hidden"
+                            name="llm_provider"
+                            id="llm_provider_input"
+                            value="{{ llm_provider|default:llm_provider_default|default:'openai' }}"
+                        >
+                        {% else %}
+                        <input
+                            type="hidden"
+                            name="llm_provider"
+                            value="{{ llm_provider_default|default:'openai' }}"
+                        >
+                        {% endif %}
                     </div>
                     
                     <div class="form-group">
@@ -947,6 +1057,21 @@
         // Tab switching functionality
         const tabs = document.querySelectorAll('.tab');
         const tabContents = document.querySelectorAll('.tab-content');
+
+        const llmProviderInput = document.getElementById('llm_provider_input');
+        const llmProviderToggle = document.getElementById('llm_provider_toggle');
+        const llmToggleState = document.getElementById('llm-toggle-state');
+
+        if (llmProviderInput && llmProviderToggle && llmToggleState) {
+            const applyProviderState = () => {
+                const provider = llmProviderToggle.checked ? 'ollama' : 'openai';
+                llmProviderInput.value = provider;
+                llmToggleState.textContent = provider === 'ollama' ? 'Ollama' : 'OpenAI';
+            };
+
+            applyProviderState();
+            llmProviderToggle.addEventListener('change', applyProviderState);
+        }
 
         tabs.forEach(tab => {
             tab.addEventListener('click', () => {

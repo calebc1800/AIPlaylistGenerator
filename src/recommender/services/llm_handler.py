@@ -1,10 +1,13 @@
-"""Lightweight adapters around the local LLM used for playlist generation."""
+"""Lightweight adapters around the OpenAI/Ollama LLMs used for playlist generation."""
 
 import json
 import logging
 import os
+import re
 import subprocess
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -14,10 +17,6 @@ try:
 except Exception:  # pragma: no cover - settings may not be ready during import time
     settings = None
 
-if settings is not None and getattr(settings, "DEBUG", False):
-    OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "600"))
-else:
-    OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "60"))
 _GENRE_FALLBACKS = {
     "pop": [
         {"title": "Blinding Lights", "artist": "The Weeknd"},
@@ -70,6 +69,46 @@ _DEFAULT_FALLBACKS = [
     {"title": "September", "artist": "Earth, Wind & Fire"},
 ]
 
+_OPENAI_CLIENT: Optional[OpenAI] = None
+_JSON_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+
+
+def _get_setting(name: str, default=None):
+    if settings is not None and hasattr(settings, name):
+        return getattr(settings, name)
+    return os.getenv(name, default)
+
+
+def _get_openai_client() -> Optional[OpenAI]:
+    """Lazily initialize the shared OpenAI client."""
+    global _OPENAI_CLIENT
+    if _OPENAI_CLIENT is not None:
+        return _OPENAI_CLIENT
+
+    api_key = _get_setting("OPENAI_API_KEY")
+    if not api_key:
+        logger.warning(
+            "OpenAI API key is not configured. Set OPENAI_API_KEY to enable LLM features."
+        )
+        return None
+
+    client_kwargs: Dict[str, str] = {"api_key": api_key}
+    base_url = _get_setting("OPENAI_API_BASE")
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    organization = _get_setting("OPENAI_ORGANIZATION")
+    if organization:
+        client_kwargs["organization"] = organization
+
+    try:
+        _OPENAI_CLIENT = OpenAI(**client_kwargs)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error("Failed to initialize OpenAI client: %s", exc)
+        return None
+
+    return _OPENAI_CLIENT
+
+
 
 def _log(
     debug_steps: Optional[List[str]],
@@ -83,21 +122,92 @@ def _log(
         debug_steps.append(message)
 
 
-def query_ollama(prompt: str, model: str = "mistral") -> str:
-    """Run a prompt against the local Ollama model and return the raw response."""
-    cmd = ["ollama", "run", model, prompt]
+def _json_candidates(raw: str) -> List[str]:
+    """Yield plausible JSON substrings from a potentially messy LLM response."""
+    if not raw:
+        return []
+    candidates: List[str] = []
+    for match in _JSON_CODE_FENCE_RE.findall(raw):
+        cleaned = match.strip()
+        if cleaned:
+            candidates.append(cleaned)
+
+    stripped = raw.strip()
+    if stripped:
+        candidates.append(stripped)
+
+    return candidates
+
+
+def _parse_json_response(raw: str) -> Optional[Any]:
+    """Attempt to parse JSON content from LLM output that may include extra text."""
+    if not raw:
+        return None
+
+    decoder = json.JSONDecoder()
+    for candidate in _json_candidates(raw):
+        # Try the entire candidate first.
+        try:
+            return decoder.raw_decode(candidate)[0]
+        except json.JSONDecodeError:
+            pass
+
+        # Look for the first JSON object/array within the candidate.
+        for idx, ch in enumerate(candidate):
+            if ch in "{[":
+                try:
+                    return decoder.raw_decode(candidate[idx:])[0]
+                except json.JSONDecodeError:
+                    continue
+
+    return None
+
+
+def _resolve_provider(provider: Optional[str]) -> str:
+    default_provider = (_get_setting("RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai") or "openai").lower()
+    candidates = {"openai", "ollama"}
+    if provider:
+        normalized = provider.strip().lower()
+        if normalized in candidates:
+            return normalized
+    return default_provider if default_provider in candidates else "openai"
+
+
+def query_ollama(
+    prompt: str,
+    *,
+    model: Optional[str] = None,
+    timeout: Optional[int] = None,
+) -> str:
+    """Send a prompt to a local Ollama model and return the response text."""
+    resolved_model = model or (_get_setting("RECOMMENDER_OLLAMA_MODEL", None) or "mistral")
+    resolved_timeout = timeout
+    if resolved_timeout is None:
+        timeout_setting = _get_setting("RECOMMENDER_OLLAMA_TIMEOUT_SECONDS")
+        if timeout_setting is not None:
+            try:
+                resolved_timeout = int(timeout_setting)
+            except (TypeError, ValueError):
+                resolved_timeout = None
+    if resolved_timeout is None:
+        if settings is not None and getattr(settings, "DEBUG", False):
+            resolved_timeout = 600
+        else:
+            resolved_timeout = 60
+
+    cmd = ["ollama", "run", resolved_model, prompt]
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             check=False,
-            timeout=OLLAMA_TIMEOUT_SECONDS,
+            timeout=max(resolved_timeout, 1),
         )
     except subprocess.TimeoutExpired:
         logger.warning(
             "Ollama request timed out after %s seconds. Prompt snippet: %s",
-            OLLAMA_TIMEOUT_SECONDS,
+            resolved_timeout,
             prompt[:120],
         )
         return ""
@@ -114,13 +224,100 @@ def query_ollama(prompt: str, model: str = "mistral") -> str:
             (result.stderr or "").strip(),
         )
         return ""
-    return result.stdout.strip()
+    return (result.stdout or "").strip()
+
+
+def query_openai(
+    prompt: str,
+    *,
+    model: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_output_tokens: Optional[int] = None,
+) -> str:
+    """Send a prompt to the configured OpenAI model and return the raw response text."""
+    client = _get_openai_client()
+    if client is None:
+        return ""
+
+    resolved_model = model or _get_setting("RECOMMENDER_OPENAI_MODEL", "gpt-4o-mini")
+    resolved_temperature = (
+        temperature
+        if temperature is not None
+        else _get_setting("RECOMMENDER_OPENAI_TEMPERATURE", 0.7)
+    )
+    resolved_max_tokens = (
+        max_output_tokens
+        if max_output_tokens is not None
+        else _get_setting("RECOMMENDER_OPENAI_MAX_TOKENS", 512)
+    )
+
+    request_kwargs: Dict[str, object] = {
+        "model": resolved_model,
+        "input": prompt,
+    }
+    if resolved_temperature is not None:
+        try:
+            request_kwargs["temperature"] = float(resolved_temperature)
+        except (TypeError, ValueError):
+            request_kwargs["temperature"] = 0.7
+    if resolved_max_tokens:
+        try:
+            request_kwargs["max_output_tokens"] = int(resolved_max_tokens)
+        except (TypeError, ValueError):
+            request_kwargs["max_output_tokens"] = 512
+
+    try:
+        response = client.responses.create(**request_kwargs)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error("OpenAI request failed: %s", exc)
+        return ""
+
+    output_text = getattr(response, "output_text", "")
+    if output_text:
+        return output_text.strip()
+
+    # Fallback parsing for unexpected response structures.
+    try:
+        segments: List[str] = []
+        for item in getattr(response, "output", []):
+            for content in getattr(item, "content", []):
+                text_value = getattr(content, "text", None)
+                value = getattr(text_value, "value", None)
+                if value:
+                    segments.append(str(value))
+        return "".join(segments).strip()
+    except Exception:  # pragma: no cover - fallback only
+        return ""
+
+
+def dispatch_llm_query(
+    prompt: str,
+    *,
+    provider: Optional[str] = None,
+    **kwargs: object,
+) -> str:
+    """Route LLM prompts to the active provider (OpenAI by default)."""
+    resolved_provider = _resolve_provider(provider)
+    if resolved_provider == "ollama":
+        model = kwargs.get("ollama_model") or kwargs.get("model")
+        timeout = kwargs.get("timeout") or kwargs.get("ollama_timeout")
+        return query_ollama(prompt, model=model if isinstance(model, str) else None, timeout=timeout if isinstance(timeout, int) else None)
+    model = kwargs.get("model")
+    temperature = kwargs.get("temperature")
+    max_tokens = kwargs.get("max_output_tokens")
+    return query_openai(
+        prompt,
+        model=model if isinstance(model, str) else None,
+        temperature=temperature if isinstance(temperature, (int, float)) else None,
+        max_output_tokens=max_tokens if isinstance(max_tokens, int) else None,
+    )
 
 
 def extract_playlist_attributes(
     prompt: str,
     debug_steps: Optional[List[str]] = None,
     log_step: Optional[Callable[[str], None]] = None,
+    provider: Optional[str] = None,
 ) -> Dict[str, str]:
     """Pull mood, genre, and energy descriptors from a free-form user prompt."""
     query = (
@@ -128,7 +325,7 @@ def extract_playlist_attributes(
         f"{prompt}. Return JSON."
     )
     _log(debug_steps, log_step, f"LLM prompt (attribute extraction): {query}")
-    response = query_ollama(query)
+    response = dispatch_llm_query(query, provider=provider)
     snippet = response if len(response) <= 300 else response[:297] + "..."
     _log(debug_steps, log_step, f"LLM raw response (attributes): {snippet}")
     if not response:
@@ -139,22 +336,27 @@ def extract_playlist_attributes(
         )
         return DEFAULT_ATTRIBUTES.copy()
 
-    try:
-        parsed = json.loads(response)
+    parsed = _parse_json_response(response)
+    if isinstance(parsed, dict):
+        lowered = {str(key).lower(): value for key, value in parsed.items()}
         attributes = {
-            "mood": parsed.get("mood", DEFAULT_ATTRIBUTES["mood"]),
-            "genre": parsed.get("genre", DEFAULT_ATTRIBUTES["genre"]),
-            "energy": parsed.get("energy", DEFAULT_ATTRIBUTES["energy"]),
+            "mood": lowered.get("mood", DEFAULT_ATTRIBUTES["mood"]),
+            "genre": lowered.get("genre") or lowered.get("music_genre", DEFAULT_ATTRIBUTES["genre"]),
+            "energy": lowered.get("energy")
+            or lowered.get("energy_level")
+            or lowered.get("energylevel")
+            or DEFAULT_ATTRIBUTES["energy"],
         }
+        attributes = {key: (value or DEFAULT_ATTRIBUTES[key]) for key, value in attributes.items()}
         _log(debug_steps, log_step, f"LLM parsed attributes: {attributes}")
         return attributes
-    except json.JSONDecodeError:
-        _log(
-            debug_steps,
-            log_step,
-            f"Failed to parse LLM attribute response; using defaults. Response snippet: {snippet}",
-        )
-        return DEFAULT_ATTRIBUTES.copy()
+
+    _log(
+        debug_steps,
+        log_step,
+        f"Failed to parse LLM attribute response; using defaults. Response snippet: {snippet}",
+    )
+    return DEFAULT_ATTRIBUTES.copy()
 
 
 def suggest_seed_tracks(
@@ -163,6 +365,7 @@ def suggest_seed_tracks(
     debug_steps: Optional[List[str]] = None,
     log_step: Optional[Callable[[str], None]] = None,
     max_suggestions: int = 5,
+    provider: Optional[str] = None,
 ) -> List[Dict[str, str]]:
     """Use the LLM to propose seed tracks as title/artist pairs."""
     query = (
@@ -174,7 +377,7 @@ def suggest_seed_tracks(
         "energy and are likely available on Spotify."
     )
     _log(debug_steps, log_step, f"LLM prompt (seed suggestions): {query}")
-    response = query_ollama(query)
+    response = dispatch_llm_query(query, provider=provider)
     snippet = response if len(response) <= 400 else response[:397] + "..."
     _log(debug_steps, log_step, f"LLM raw response (seed suggestions): {snippet}")
     suggestions: List[Dict[str, str]] = []
@@ -187,30 +390,36 @@ def suggest_seed_tracks(
         suggestions.append({"title": title, "artist": artist})
 
     if response:
-        try:
-            parsed = json.loads(response)
-            if isinstance(parsed, dict):
-                if "tracks" in parsed:
-                    parsed = parsed["tracks"]
-                elif "playlist" in parsed:
-                    parsed = parsed["playlist"]
-            if isinstance(parsed, list):
-                for item in parsed:
-                    if not isinstance(item, dict):
-                        continue
+        parsed = _parse_json_response(response)
+        if isinstance(parsed, dict):
+            if "tracks" in parsed:
+                parsed = parsed["tracks"]
+            elif "playlist" in parsed:
+                parsed = parsed["playlist"]
+            elif "songs" in parsed:
+                parsed = parsed["songs"]
+        if isinstance(parsed, list):
+            for item in parsed:
+                if isinstance(item, dict):
                     title = item.get("title") or item.get("song") or item.get("name")
-                    artist = item.get("artist") or item.get("artists")
+                    artist = item.get("artist") or item.get("artists") or item.get("singer")
                     if isinstance(artist, list):
-                        artist = ", ".join(artist)
+                        artist = ", ".join(str(part) for part in artist)
                     if title:
-                        _add_suggestion(title, artist or "")
-        except json.JSONDecodeError:
+                        _add_suggestion(str(title), str(artist or ""))
+                elif isinstance(item, str):
+                    if " - " in item:
+                        title, artist = item.split(" - ", 1)
+                    else:
+                        title, artist = item, ""
+                    _add_suggestion(title, artist)
+        else:
             lines = [line.strip() for line in response.splitlines() if line.strip()]
             for line in lines:
                 if " - " in line:
                     title, artist = line.split(" - ", 1)
                 else:
-                    title, artist = line, ""
+                    continue
                 _add_suggestion(title, artist)
 
     if suggestions:
@@ -244,6 +453,7 @@ def refine_playlist(
     debug_steps: Optional[List[str]] = None,
     log_step: Optional[Callable[[str], None]] = None,
     query_fn: Optional[Callable[[str], str]] = None,
+    provider: Optional[str] = None,
 ) -> List[str]:
     """Ask the LLM for additional tracks based on the current seed list and attributes."""
     track_list = "\n".join(seed_tracks)
@@ -253,8 +463,8 @@ def refine_playlist(
         "Return each song on a new line and prefer artists that match the requested genre."
     )
     _log(debug_steps, log_step, f"LLM prompt (playlist refinement): {query}")
-    query_llm = query_fn or query_ollama
-    response = query_llm(query)
+    llm_query_fn = query_fn or (lambda text: dispatch_llm_query(text, provider=provider))
+    response = llm_query_fn(query)
     snippet = response if len(response) <= 400 else response[:397] + "..."
     _log(debug_steps, log_step, f"LLM raw response (refinement): {snippet}")
     if not response:
