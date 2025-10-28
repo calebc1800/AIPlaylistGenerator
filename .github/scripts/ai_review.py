@@ -194,8 +194,7 @@ try:
             {"role": "system", "content": "You are an expert code reviewer for Django projects. Provide constructive, specific feedback with clear recommendations."},
             {"role": "user", "content": prompt}
         ],
-        max_completion_tokens=1500,
-        temperature=0.3
+        max_completion_tokens=1500
     )
 
     ai_review_content = response.choices[0].message.content.strip()
@@ -206,10 +205,6 @@ try:
     print(ai_review_content)
     print("="*50)
 
-except (AttributeError, IndexError, KeyError) as e:
-    print(f"⚠️ Could not extract AI review content: {e}")
-    print("Full response object for debugging:")
-    print(response)
 except Exception as e:
     print(f"Primary model {model_name} failed: {e}")
     # Try with a fallback model if the primary one fails
