@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import warnings
 from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
@@ -22,11 +23,6 @@ load_dotenv()
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
-if not SECRET_KEY:
-    raise ImproperlyConfigured("DJANGO_SECRET_KEY environment variable must be set.")
-
 # SECURITY WARNING: don't run with debug turned on in production!
 def _bool_env(var_name: str, default: bool = False) -> bool:
     raw = os.getenv(var_name)
@@ -36,6 +32,17 @@ def _bool_env(var_name: str, default: bool = False) -> bool:
 
 
 DEBUG = _bool_env("DJANGO_DEBUG", default=True)
+
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "dev-insecure-placeholder-key"
+        warnings.warn(
+            "DJANGO_SECRET_KEY was not set; using insecure development key.",
+            RuntimeWarning,
+        )
+    else:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY environment variable must be set.")
 
 _raw_allowed_hosts = os.getenv(
     "DJANGO_ALLOWED_HOSTS",
