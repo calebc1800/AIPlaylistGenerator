@@ -193,7 +193,7 @@ try:
             {"role": "system", "content": "You are an expert code reviewer for Django projects. Provide constructive, specific feedback with clear recommendations."},
             {"role": "user", "content": prompt}
         ],
-        max_tokens=1500,
+        max_completion_tokens=1500,
         temperature=0.1  # Lower temperature for more consistent reviews
     )
 
@@ -217,7 +217,7 @@ except Exception as e:
                     {"role": "system", "content": "You are an expert code reviewer for Django projects."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=1200
+                max_completion_tokens=1200
             )
             ai_review_content = response.choices[0].message.content
             print("\nAI Code Review Summary (Fallback):")
