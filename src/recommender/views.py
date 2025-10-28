@@ -70,7 +70,9 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
             for key, value in preference_descriptions.items()
         ]
     debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
-    default_provider = getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
+    default_provider = str(
+        getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
+    ).lower()
     context_debug_steps: List[str] = []
     if debug_enabled:
         context_debug_steps = list(payload.get("debug_steps", []))
@@ -98,6 +100,7 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
         "prompt": payload.get("prompt", ""),
         "debug_steps": context_debug_steps,
         "debug_enabled": debug_enabled,
+        "llm_toggle_visible": debug_enabled,
         "llm_provider": payload.get("llm_provider") or default_provider,
         "llm_provider_default": default_provider,
         "errors": list(payload.get("errors", [])),
@@ -127,7 +130,9 @@ def generate_playlist(request):
         return redirect("dashboard:dashboard")
 
     debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
-    default_provider = getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
+    default_provider = str(
+        getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
+    ).lower()
     provider_choices = {"openai", "ollama"}
     requested_provider = (request.POST.get("llm_provider") or "").strip().lower()
     session_provider = (request.session.get("llm_provider") or "").strip().lower()

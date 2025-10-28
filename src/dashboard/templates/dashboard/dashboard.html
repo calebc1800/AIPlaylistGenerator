@@ -901,7 +901,7 @@
                     <div class="form-group">
                         <div class="form-group-header">
                             <label for="playlist_prompt">Playlist Prompt</label>
-                            {% if debug_enabled %}
+                            {% if llm_toggle_visible %}
                             {% with current_provider=llm_provider|default:llm_provider_default|default:'openai' %}
                             <div class="llm-toggle" id="llm-toggle">
                                 <span class="toggle-label">LLM Provider</span>
@@ -924,7 +924,7 @@
                             placeholder="E.g., 'Upbeat indie rock for a road trip' or 'Relaxing jazz for studying'"
                             required
                         ></textarea>
-                        {% if debug_enabled %}
+                        {% if llm_toggle_visible %}
                         <input
                             type="hidden"
                             name="llm_provider"
