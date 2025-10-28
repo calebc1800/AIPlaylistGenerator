@@ -5,8 +5,8 @@ on:
     branches:
     - '**'
   pull_request:
-    branches:
-    - main 
+    branches: 
+    - main
 
 jobs:
   ai_code_review:
