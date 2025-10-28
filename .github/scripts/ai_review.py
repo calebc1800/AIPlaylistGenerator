@@ -211,7 +211,7 @@ except (AttributeError, IndexError, KeyError) as e:
     print("Full response object for debugging:")
     print(response)
 except Exception as e:
-    print(f"AI review failed with {model_name}: {e}")
+    print(f"Primary model {model_name} failed: {e}")
     # Try with a fallback model if the primary one fails
     if model_name != fallback_model:
         try:
@@ -222,12 +222,14 @@ except Exception as e:
                     {"role": "system", "content": "You are an expert code reviewer for Django projects."},
                     {"role": "user", "content": prompt}
                 ],
-                max_completion_tokens=1200,
-                temperature=0.3
+                max_completion_tokens=1200
             )
             ai_review_content = response.choices[0].message.content.strip()
-            print("\nAI Code Review Summary (Fallback):")
+            print("\n" + "="*50)
+            print("AI Code Review Summary (using fallback model):")
+            print("="*50)
             print(ai_review_content)
+            print("="*50)
         except Exception as fallback_error:
             print(f"Fallback also failed: {fallback_error}")
             ai_review_content = "AI review failed due to API issues. Please check the logs for details."
