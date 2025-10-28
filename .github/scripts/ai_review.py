@@ -277,5 +277,6 @@ else:
         print("Missing REPOSITORY_NAME")
     if not ai_review_content:
         print("No AI review content generated")
+        content = "There was not enough information to generate an AI review. this still works!"
 
 print("\n✅ AI Code Review completed successfully!")
