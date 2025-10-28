@@ -390,7 +390,7 @@ class LLMHandlerTests(TestCase):
     @patch("recommender.services.llm_handler.query_ollama", return_value="")
     def test_refine_playlist_empty_response_returns_seeds(self, mock_query):
         seeds = ["Song A - Artist A", "Song B - Artist B"]
-        result = refine_playlist(seeds, {"mood": "chill"})
+        result = refine_playlist(seeds, {"mood": "chill"}, query_fn=mock_query)
         self.assertEqual(result, seeds)
         mock_query.assert_called_once()
 
@@ -400,7 +400,7 @@ class LLMHandlerTests(TestCase):
     )
     def test_refine_playlist_appends_unique_suggestions(self, mock_query):
         seeds = ["Song A - Artist A"]
-        result = refine_playlist(seeds, {"mood": "focus"})
+        result = refine_playlist(seeds, {"mood": "focus"}, query_fn=mock_query)
         self.assertEqual(result, ["Song A - Artist A", "New Track - Artist"])
         mock_query.assert_called_once()
 
