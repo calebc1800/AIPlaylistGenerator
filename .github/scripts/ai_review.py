@@ -183,7 +183,8 @@ Code:
 """
 
 # Use a configurable model
-model_name = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
+model_name = os.environ.get("OPENAI_MODEL", "gpt-5")
+fallback_model = "gpt-4o"
 
 ai_review_content = ""
 try:
@@ -193,11 +194,13 @@ try:
             {"role": "system", "content": "You are an expert code reviewer for Django projects. Provide constructive, specific feedback with clear recommendations."},
             {"role": "user", "content": prompt}
         ],
-        max_tokens=1500,
-        temperature=0.1  # Lower temperature for more consistent reviews
+        max_completion_tokens=4500
     )
 
-    ai_review_content = response.choices[0].message.content
+    ai_review_content = response.choices[0].message.content.strip()
+
+    if not ai_review_content:
+        raise ValueError("Primary model returned empty content")
 
     print("\n" + "="*50)
     print("AI Code Review Summary:")
@@ -206,22 +209,25 @@ try:
     print("="*50)
 
 except Exception as e:
-    print(f"AI review failed: {e}")
+    print(f"Primary model {model_name} failed: {e}")
     # Try with a fallback model if the primary one fails
-    if model_name != "gpt-5":
+    if model_name != fallback_model:
         try:
-            print("Retrying with fallback model...")
+            print(f"Retrying with fallback model {fallback_model}...")
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=fallback_model,
                 messages=[
                     {"role": "system", "content": "You are an expert code reviewer for Django projects."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=1200
+                max_completion_tokens=1200
             )
-            ai_review_content = response.choices[0].message.content
-            print("\nAI Code Review Summary (Fallback):")
+            ai_review_content = response.choices[0].message.content.strip()
+            print("\n" + "="*50)
+            print("AI Code Review Summary (using fallback model):")
+            print("="*50)
             print(ai_review_content)
+            print("="*50)
         except Exception as fallback_error:
             print(f"Fallback also failed: {fallback_error}")
             ai_review_content = "AI review failed due to API issues. Please check the logs for details."
@@ -277,5 +283,6 @@ else:
         print("Missing REPOSITORY_NAME")
     if not ai_review_content:
         print("No AI review content generated")
+    
 
 print("\n✅ AI Code Review completed successfully!")

@@ -2,8 +2,7 @@ name: Django CI Pipeline
 
 on:
   push:
-    branches:
-    - '**'
+    branches: [ '**' ]
   pull_request:
     branches: 
     - main
