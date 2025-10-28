@@ -1,4 +1,4 @@
-{% extends 'home/base.html' %}
+{% extends 'explorer/base.html' %}
 
 {% block content %}
 <div class="profile-page">
@@ -6,7 +6,7 @@
     
     <div class="playlists-grid">
       {% for playlist in playlists %}
-        {% include "home/partials/playlist_card.html" %}
+        {% include "explorer/partials/playlist_card.html" %}
       {% empty %}
         <p>No playlists found.</p>
       {% endfor %}

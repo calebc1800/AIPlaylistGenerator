@@ -2,9 +2,10 @@ name: Django CI Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ '**' ]
   pull_request:
-    branches: [ main ]
+    branches: 
+    - main
 
 jobs:
   ai_code_review:

@@ -35,7 +35,7 @@ class GeneratePlaylistViewTests(TestCase):
     def test_redirects_without_prompt(self):
         response = self.client.post(self.url, {"prompt": ""})
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, reverse("spotify_auth:dashboard"))
+        self.assertEqual(response.url, reverse("dashboard:dashboard"))
 
     def test_redirects_without_access_token(self):
         response = self.client.post(self.url, {"prompt": "lofi coding"})

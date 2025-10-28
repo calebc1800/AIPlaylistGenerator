@@ -135,7 +135,7 @@ class SpotifyCallbackViewTests(TestCase):
         
         # Should redirect to dashboard
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, reverse('spotify_auth:dashboard'))
+        self.assertEqual(response.url, reverse('dashboard:dashboard'))
         
         # Tokens should be stored in session
         self.assertEqual(self.client.session['spotify_access_token'], 'test_access_token')
@@ -368,20 +368,20 @@ class SpotifyIntegrationTests(TestCase):
 
 class SpotifyDashboardViewTests(TestCase):
     """Tests for the Spotify dashboard view"""
-    
+
     def setUp(self):
         self.client = Client()
-        self.dashboard_url = reverse('spotify_auth:dashboard')
-    
+        self.dashboard_url = reverse('dashboard:dashboard')
+
     def test_dashboard_redirects_without_token(self):
         """Test that dashboard redirects to login if not authenticated"""
         response = self.client.get(self.dashboard_url)
-        
+
         # Should redirect to login
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('spotify_auth:login'))
     
-    @patch('spotify_auth.views.spotipy.Spotify')
+    @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_with_valid_token(self, mock_spotify):
         """Test dashboard displays user data with valid token"""
         # Set up session with access token
@@ -424,7 +424,7 @@ class SpotifyDashboardViewTests(TestCase):
         
         # Should render successfully
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'spotify_auth/dashboard.html')
+        self.assertTemplateUsed(response, 'dashboard/dashboard.html')
         
         # Check context data
         self.assertEqual(response.context['username'], 'Test User')
@@ -434,8 +434,9 @@ class SpotifyDashboardViewTests(TestCase):
         self.assertIsNotNone(response.context['last_song'])
         self.assertEqual(response.context['last_song']['name'], 'Test Song')
         self.assertEqual(response.context['last_song']['artist'], 'Test Artist')
+        self.assertIn('explore_playlists', response.context)
     
-    @patch('spotify_auth.views.spotipy.Spotify')
+    @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_without_display_name(self, mock_spotify):
         """Test dashboard uses user ID when display name is not available"""
         # Set up session with access token
@@ -463,7 +464,7 @@ class SpotifyDashboardViewTests(TestCase):
         # Should use user ID as username
         self.assertEqual(response.context['username'], 'test_user_id')
     
-    @patch('spotify_auth.views.spotipy.Spotify')
+    @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_with_no_recent_tracks(self, mock_spotify):
         """Test dashboard handles no recent listening history"""
         # Set up session with access token
@@ -492,7 +493,7 @@ class SpotifyDashboardViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context['last_song'])
     
-    @patch('spotify_auth.views.spotipy.Spotify')
+    @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_with_expired_token(self, mock_spotify):
         """Test dashboard redirects to login when token is expired"""
         # Set up session with access token
@@ -519,7 +520,7 @@ class SpotifyDashboardViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('spotify_auth:login'))
     
-    @patch('spotify_auth.views.spotipy.Spotify')
+    @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_with_api_error(self, mock_spotify):
         """Test dashboard handles Spotify API errors gracefully"""
         # Set up session with access token
@@ -546,7 +547,7 @@ class SpotifyDashboardViewTests(TestCase):
         self.assertIn('error', response.context)
         self.assertIn('Error fetching Spotify data', response.context['error'])
     
-    @patch('spotify_auth.views.spotipy.Spotify')
+    @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_with_multiple_artists(self, mock_spotify):
         """Test dashboard properly formats songs with multiple artists"""
         # Set up session with access token
@@ -592,7 +593,7 @@ class SpotifyDashboardViewTests(TestCase):
         # Should format multiple artists correctly
         self.assertEqual(response.context['last_song']['artist'], 'Artist One, Artist Two, Artist Three')
     
-    @patch('spotify_auth.views.spotipy.Spotify')
+    @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_creates_spotify_client_with_token(self, mock_spotify):
         """Test that Spotify client is created with the correct token"""
         # Set up session with access token

@@ -91,7 +91,7 @@ def generate_playlist(request):
 
     if not prompt:
         log("Prompt missing; redirecting to dashboard.")
-        return redirect("spotify_auth:dashboard")
+        return redirect("dashboard:dashboard")
 
     log(f"Prompt received: {prompt}")
 
@@ -274,12 +274,12 @@ def save_playlist(request):
 
     if not cache_key:
         messages.error(request, "Playlist session expired. Please generate a new playlist.")
-        return redirect("spotify_auth:dashboard")
+        return redirect("dashboard:dashboard")
 
     payload = cache.get(cache_key)
     if not isinstance(payload, dict):
         messages.error(request, "Playlist session expired. Please generate a new playlist.")
-        return redirect("spotify_auth:dashboard")
+        return redirect("dashboard:dashboard")
 
     context = _build_context_from_payload(payload)
     context.setdefault("cache_key", cache_key)

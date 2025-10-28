@@ -1,0 +1,10 @@
+{% extends 'explorer/base.html' %}
+{% block content %}
+    <div class="playlists-grid">
+        {% for playlist in playlists %}
+          {% include "explorer/partials/playlist_card.html" %}
+        {% empty %}
+          <div class="empty-state">No playlists found.</div>
+        {% endfor %}
+    </div>
+{% endblock %}
