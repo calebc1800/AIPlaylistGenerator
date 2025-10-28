@@ -6,4 +6,5 @@ app_name = "recommender"
 
 urlpatterns = [
     path("generate/", views.generate_playlist, name="generate_playlist"),
+    path("save/", views.save_playlist, name="save_playlist"),
 ]

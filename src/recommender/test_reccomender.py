@@ -1,3 +1,4 @@
+from django.contrib.messages import get_messages
 from django.core.cache import cache
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -60,7 +61,9 @@ class GeneratePlaylistViewTests(TestCase):
             {"id": "1", "name": "Song A", "artists": "Artist A"},
             {"id": "2", "name": "Song B", "artists": "Artist B"},
         ]
-        mock_similar.return_value = ["Song C - Artist C"]
+        mock_similar.return_value = [
+            {"id": "3", "name": "Song C", "artists": "Artist C"},
+        ]
         mock_discover.return_value = []
 
         response = self.client.post(self.url, {"prompt": "high energy pop"})
@@ -98,7 +101,9 @@ class GeneratePlaylistViewTests(TestCase):
         mock_discover.return_value = [
             {"id": "3", "name": "Fallback Song", "artists": "Fallback Artist"}
         ]
-        mock_similar.return_value = ["Similar Song - Artist"]
+        mock_similar.return_value = [
+            {"id": "4", "name": "Similar Song", "artists": "Artist"},
+        ]
 
         response = self.client.post(self.url, {"prompt": "calming ambient"})
 
@@ -143,7 +148,7 @@ class GeneratePlaylistViewTests(TestCase):
                     {"id": "1", "name": "Cached Song", "artists": "Cached Artist"}
                 ],
                 "seed_track_display": ["Cached Song - Cached Artist"],
-                "similar_tracks": ["Similar Song - Similar Artist"],
+                "similar_tracks_display": ["Similar Song - Similar Artist"],
             },
             timeout=60,
         )
@@ -285,7 +290,8 @@ class SpotifyHandlerTests(TestCase):
         )
 
         self.assertTrue(results)
-        self.assertEqual(results[0], "Happy Energy - Artist A")
+        self.assertEqual(results[0]["name"], "Happy Energy")
+        self.assertEqual(results[0]["artists"], "Artist A")
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_get_similar_tracks_handles_missing_seeds(self, mock_spotify):
@@ -301,3 +307,64 @@ class SpotifyHandlerTests(TestCase):
 
         self.assertEqual(results, [])
         mock_spotify.assert_not_called()
+
+
+class SavePlaylistViewTests(TestCase):
+    """Tests for saving playlists to Spotify."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse("recommender:save_playlist")
+        self.cache_key = "save-cache-key"
+        cache.clear()
+        cache.set(
+            self.cache_key,
+            {
+                "playlist": ["Song A - Artist A"],
+                "track_ids": ["track1", "track2"],
+                "prompt": "test prompt",
+                "debug_steps": [],
+                "errors": [],
+            },
+            timeout=60,
+        )
+        session = self.client.session
+        session["spotify_access_token"] = "token"
+        session.save()
+
+    @patch("recommender.views.create_playlist_with_tracks")
+    def test_save_playlist_success(self, mock_create_playlist):
+        mock_create_playlist.return_value = {
+            "playlist_name": "TEST Summer Vibes",
+            "user_id": "user123",
+        }
+
+        response = self.client.post(
+            self.url,
+            {
+                "cache_key": self.cache_key,
+                "playlist_name": "Summer Vibes",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_create_playlist.assert_called_once()
+        messages = [message.message for message in get_messages(response.wsgi_request)]
+        self.assertTrue(any("saved to Spotify" in message for message in messages))
+        session = self.client.session
+        self.assertEqual(session.get("spotify_user_id"), "user123")
+
+    @patch("recommender.views.create_playlist_with_tracks")
+    def test_save_playlist_missing_name(self, mock_create_playlist):
+        response = self.client.post(
+            self.url,
+            {
+                "cache_key": self.cache_key,
+                "playlist_name": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_create_playlist.assert_not_called()
+        messages = [message.message for message in get_messages(response.wsgi_request)]
+        self.assertIn("Please provide a playlist name.", messages)

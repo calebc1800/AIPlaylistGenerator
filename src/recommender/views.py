@@ -4,15 +4,19 @@ import re
 import time
 from typing import Callable, Dict, List, Optional
 
+from django.conf import settings
+from django.contrib import messages
 from django.core.cache import cache
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
+from spotipy import SpotifyException
 
 from .services.llm_handler import extract_playlist_attributes, suggest_seed_tracks
 from .services.spotify_handler import (
     discover_top_tracks_for_genre,
     get_similar_tracks,
     resolve_seed_tracks,
+    create_playlist_with_tracks,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,6 +40,22 @@ def _make_logger(debug_steps: List[str], errors: List[str]) -> Callable[[str], N
         logger.debug("generate_playlist: %s", formatted)
 
     return _log
+
+
+def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]:
+    if not payload:
+        return {}
+    return {
+        "playlist": payload.get("playlist", []),
+        "prompt": payload.get("prompt", ""),
+        "debug_steps": list(payload.get("debug_steps", [])),
+        "errors": list(payload.get("errors", [])),
+        "attributes": payload.get("attributes"),
+        "llm_suggestions": payload.get("llm_suggestions", []),
+        "seed_tracks": payload.get("seed_track_display") or payload.get("seed_tracks", []),
+        "similar_tracks": payload.get("similar_tracks_display") or payload.get("similar_tracks", []),
+        "cache_key": payload.get("cache_key"),
+    }
 
 
 @require_POST
@@ -65,24 +85,36 @@ def generate_playlist(request):
     cache_key = _cache_key(user_id, prompt)
     cached_payload: Optional[Dict[str, object]] = cache.get(cache_key)
 
+    if isinstance(cached_payload, dict):
+        context = _build_context_from_payload(cached_payload)
+        context.setdefault("cache_key", cache_key)
+        return render(request, "recommender/playlist_result.html", context)
+
     playlist: List[str] = []
     attributes: Optional[Dict[str, str]] = None
     llm_suggestions: List[Dict[str, str]] = []
     resolved_seed_tracks: List[Dict[str, str]] = []
     seed_track_display: List[str] = []
-    similar_tracks: List[str] = []
+    similar_display: List[str] = []
+    payload: Dict[str, object] = {}
 
-    if isinstance(cached_payload, dict):
-        log("Loaded playlist from cache.")
-        playlist = cached_payload.get("playlist", [])
-        attributes = cached_payload.get("attributes")
-        llm_suggestions = cached_payload.get("llm_suggestions", [])
-        resolved_seed_tracks = cached_payload.get("resolved_seed_tracks", [])
-        seed_track_display = cached_payload.get("seed_track_display", [])
-        similar_tracks = cached_payload.get("similar_tracks", [])
-    elif cached_payload:
+    if cached_payload:
         log("Loaded legacy cached playlist format.")
         playlist = cached_payload
+        payload = {
+            "playlist": playlist,
+            "attributes": None,
+            "llm_suggestions": [],
+            "resolved_seed_tracks": [],
+            "prompt": prompt,
+            "debug_steps": list(debug_steps),
+            "errors": list(errors),
+            "seed_track_display": playlist,
+            "similar_tracks_display": [],
+            "similar_tracks": [],
+            "track_ids": [],
+            "cache_key": cache_key,
+        }
     else:
         attributes = extract_playlist_attributes(
             prompt,
@@ -138,6 +170,8 @@ def generate_playlist(request):
         }
 
         seed_track_ids = [track["id"] for track in resolved_seed_tracks]
+        similar_tracks: List[Dict[str, str]] = []
+        similar_display: List[str] = []
         if not seed_track_ids:
             log("No seed track IDs resolved; skipping local recommendation.")
             playlist = seed_track_display[:]
@@ -152,11 +186,13 @@ def generate_playlist(request):
                 debug_steps=debug_steps,
                 log_step=log,
             )
-            log(
-                f"Similarity engine produced {len(similar_tracks)} tracks."
-            )
+            log(f"Similarity engine produced {len(similar_tracks)} tracks.")
 
-            combined = seed_track_display + similar_tracks
+            similar_display = [
+                f"{track['name']} - {track['artists']}" for track in similar_tracks
+            ]
+
+            combined = seed_track_display + similar_display
             playlist = []
             for song in combined:
                 if song not in playlist:
@@ -164,25 +200,86 @@ def generate_playlist(request):
 
             log(f"Final playlist ({len(playlist)} tracks) compiled from seeds and similar tracks.")
 
+        track_ids: List[str] = []
+        for track in resolved_seed_tracks:
+            if track.get("id") and track["id"] not in track_ids:
+                track_ids.append(track["id"])
+        for track in similar_tracks:
+            if track.get("id") and track["id"] not in track_ids:
+                track_ids.append(track["id"])
+
         payload = {
             "playlist": playlist,
             "attributes": attributes,
             "llm_suggestions": llm_suggestions,
             "resolved_seed_tracks": resolved_seed_tracks,
             "seed_track_display": seed_track_display,
+            "similar_tracks_display": similar_display if similar_tracks else [],
             "similar_tracks": similar_tracks,
+            "track_ids": track_ids,
+            "prompt": prompt,
+            "debug_steps": list(debug_steps),
+            "errors": list(errors),
+            "cache_key": cache_key,
         }
         cache.set(cache_key, payload, timeout=60 * 15)
         log("Playlist cached for 15 minutes.")
 
-    context = {
-        "playlist": playlist,
-        "prompt": prompt,
-        "debug_steps": debug_steps,
-        "errors": errors,
-        "attributes": attributes,
-        "llm_suggestions": llm_suggestions,
-        "seed_tracks": seed_track_display,
-        "similar_tracks": similar_tracks,
-    }
+    context = _build_context_from_payload(payload)
+    return render(request, "recommender/playlist_result.html", context)
+
+
+@require_POST
+def save_playlist(request):
+    cache_key = request.POST.get("cache_key", "").strip()
+    playlist_name = (request.POST.get("playlist_name") or "").strip()
+
+    if not cache_key:
+        messages.error(request, "Playlist session expired. Please generate a new playlist.")
+        return redirect("spotify_auth:dashboard")
+
+    payload = cache.get(cache_key)
+    if not isinstance(payload, dict):
+        messages.error(request, "Playlist session expired. Please generate a new playlist.")
+        return redirect("spotify_auth:dashboard")
+
+    context = _build_context_from_payload(payload)
+    context.setdefault("cache_key", cache_key)
+
+    if not playlist_name:
+        messages.error(request, "Please provide a playlist name.")
+        return render(request, "recommender/playlist_result.html", context)
+
+    track_ids = payload.get("track_ids") or []
+    if not track_ids:
+        messages.error(request, "No tracks available to save.")
+        return render(request, "recommender/playlist_result.html", context)
+
+    access_token = request.session.get("spotify_access_token")
+    if not access_token:
+        messages.error(request, "Spotify authentication required.")
+        return redirect("spotify_auth:login")
+
+    try:
+        result = create_playlist_with_tracks(
+            token=access_token,
+            track_ids=track_ids,
+            playlist_name=playlist_name,
+            prefix=getattr(settings, "RECOMMENDER_PLAYLIST_PREFIX", "TEST "),
+            user_id=request.session.get("spotify_user_id"),
+            public=getattr(settings, "RECOMMENDER_PLAYLIST_PUBLIC", False),
+        )
+    except SpotifyException as exc:
+        messages.error(request, f"Spotify error: {exc}")
+    except (ValueError, RuntimeError) as exc:
+        messages.error(request, str(exc))
+    except Exception as exc:
+        messages.error(request, f"Unexpected error: {exc}")
+    else:
+        resolved_name = result.get("playlist_name") or playlist_name
+        resolved_user_id = result.get("user_id")
+        if resolved_user_id:
+            request.session["spotify_user_id"] = resolved_user_id
+        messages.success(request, f"Playlist '{resolved_name}' saved to Spotify.")
+
     return render(request, "recommender/playlist_result.html", context)

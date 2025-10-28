@@ -137,14 +137,37 @@ SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
 SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI', 'http://localhost:8000/spotify/callback/')
 
-SPOTIFY_SCOPES = [
+_DEFAULT_SPOTIFY_SCOPES = [
     'user-read-email',
     'user-read-private',
     'user-read-recently-played',
     'user-top-read',
     'user-library-read',
     'playlist-read-private',
+    'playlist-modify-private',
+    'playlist-modify-public',
 ]
+
+_raw_spotify_scopes = os.getenv("SPOTIFY_SCOPES")
+if _raw_spotify_scopes:
+    SPOTIFY_SCOPES = [
+        scope.strip()
+        for scope in _raw_spotify_scopes.replace(",", " ").split()
+        if scope.strip()
+    ]
+else:
+    SPOTIFY_SCOPES = _DEFAULT_SPOTIFY_SCOPES[:]
 
 
 SPOTIFY_USE_RECOMMENDATIONS = True
+
+
+def _bool_env(var_name: str, default: bool = False) -> bool:
+    raw = os.getenv(var_name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+RECOMMENDER_PLAYLIST_PREFIX = os.getenv("RECOMMENDER_PLAYLIST_PREFIX", "TEST ")
+RECOMMENDER_PLAYLIST_PUBLIC = _bool_env("RECOMMENDER_PLAYLIST_PUBLIC", default=False)

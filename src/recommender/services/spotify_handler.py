@@ -79,6 +79,13 @@ def _popularity_threshold_for_genre(normalized_genre: str) -> int:
     return GENRE_POPULARITY_OVERRIDES.get(normalized_genre, DEFAULT_POPULARITY_THRESHOLD)
 
 
+def _primary_artist_hint(artist: str) -> str:
+    if not artist:
+        return ""
+    primary = re.split(r"\s*(?:,|&|feat\.?|ft\.?|with)\s*", artist, maxsplit=1)[0]
+    return primary.strip()
+
+
 def _filter_tracks_by_artist_genre(
     sp: spotipy.Spotify,
     tracks: List[Dict],
@@ -462,7 +469,7 @@ def get_similar_tracks(
     log_step: Optional[Callable[[str], None]] = None,
     market: str = "US",
     limit: int = 10,
-) -> List[str]:
+) -> List[Dict[str, str]]:
     if not seed_track_ids:
         _log(debug_steps, log_step, "No seed track IDs available; skipping local recommendations.")
         return []
@@ -540,7 +547,7 @@ def get_similar_tracks(
 
     scored_tracks.sort(key=lambda item: item[0], reverse=True)
 
-    recommendations: List[str] = []
+    recommendations: List[Dict[str, str]] = []
     for score, track in scored_tracks:
         if len(recommendations) >= limit:
             break
@@ -549,7 +556,13 @@ def get_similar_tracks(
         if any(artist_counts.get(name, 0) >= 2 for name in artist_names if name):
             continue
         artist_label = ", ".join(name for name in artist_names if name) or "Unknown"
-        recommendations.append(f"{track.get('name', 'Unknown')} - {artist_label}")
+        recommendations.append(
+            {
+                "id": track.get("id"),
+                "name": track.get("name", "Unknown"),
+                "artists": artist_label,
+            }
+        )
         for name in artist_names:
             if not name:
                 continue
@@ -558,3 +571,56 @@ def get_similar_tracks(
     _log(debug_steps, log_step, f"Local recommender selected {len(recommendations)} similarity-based tracks.")
 
     return recommendations
+
+
+def create_playlist_with_tracks(
+    token: str,
+    track_ids: List[str],
+    playlist_name: str,
+    *,
+    prefix: str = "",
+    user_id: Optional[str] = None,
+    public: bool = False,
+) -> Dict[str, str]:
+    """
+    Create a Spotify playlist and populate it with the given track IDs.
+
+    Returns the created playlist metadata and resolved user id.
+    """
+    if not track_ids:
+        raise ValueError("At least one track id is required to create a playlist.")
+    if not playlist_name:
+        raise ValueError("A playlist name must be provided.")
+
+    sp = spotipy.Spotify(auth=token)
+
+    resolved_user_id = user_id
+    if not resolved_user_id:
+        profile = sp.current_user()
+        resolved_user_id = profile.get("id")
+        if not resolved_user_id:
+            raise RuntimeError("Spotify user id could not be resolved.")
+
+    normalized_prefix = prefix or ""
+    playlist_title = f"{normalized_prefix}{playlist_name}" if normalized_prefix else playlist_name
+
+    created = sp.user_playlist_create(
+        user=resolved_user_id,
+        name=playlist_title,
+        public=public,
+    )
+    playlist_id = created.get("id")
+    if not playlist_id:
+        raise RuntimeError("Spotify did not return a playlist id.")
+
+    # Spotify limits each request to 100 tracks max.
+    chunk_size = 100
+    for start in range(0, len(track_ids), chunk_size):
+        batch = track_ids[start : start + chunk_size]
+        sp.playlist_add_items(playlist_id, batch)
+
+    return {
+        "playlist_id": playlist_id,
+        "playlist_name": playlist_title,
+        "user_id": resolved_user_id,
+    }
