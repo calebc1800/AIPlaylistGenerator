@@ -1,3 +1,5 @@
+"""Lightweight adapters around the local LLM used for playlist generation."""
+
 import json
 import subprocess
 from typing import Callable, Dict, List, Optional
@@ -10,6 +12,7 @@ def _log(
     log_step: Optional[Callable[[str], None]],
     message: str,
 ) -> None:
+    """Collect debug output centrally so callers can display progress."""
     if log_step:
         log_step(message)
     elif debug_steps is not None:

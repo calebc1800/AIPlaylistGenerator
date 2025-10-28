@@ -1,3 +1,5 @@
+"""Django views for generating and saving Spotify playlists."""
+
 import hashlib
 import logging
 import re
@@ -28,11 +30,13 @@ logger = logging.getLogger(__name__)
 
 
 def _cache_key(user_identifier: str, prompt: str) -> str:
+    """Return a deterministically hashed cache key for a user/prompt pair."""
     digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
     return f"recommender:{user_identifier}:{digest}"
 
 
 def _make_logger(debug_steps: List[str], errors: List[str]) -> Callable[[str], None]:
+    """Capture diagnostic messages and surface potential errors for the UI."""
     start = time.perf_counter()
 
     def _log(message: str) -> None:
@@ -48,6 +52,7 @@ def _make_logger(debug_steps: List[str], errors: List[str]) -> Callable[[str], N
 
 
 def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]:
+    """Translate cached playlist payloads into template-friendly context."""
     if not payload:
         return {}
     preferences = payload.get("user_preferences") or {}
@@ -78,6 +83,7 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
 
 @require_POST
 def generate_playlist(request):
+    """Generate a playlist based on the submitted prompt and render results."""
     prompt = request.POST.get("prompt", "").strip()
     debug_steps: List[str] = []
     errors: List[str] = []
@@ -204,6 +210,7 @@ def generate_playlist(request):
             log("No seed track IDs resolved; skipping local recommendation.")
             playlist = seed_track_display[:]
         else:
+            # Merge seeded tracks with context-aware recommendations from Spotify APIs.
             similar_tracks = get_similar_tracks(
                 seed_track_ids,
                 seed_artist_ids,
@@ -261,6 +268,7 @@ def generate_playlist(request):
 
 @require_POST
 def save_playlist(request):
+    """Create a Spotify playlist for the cached tracks and display feedback."""
     cache_key = request.POST.get("cache_key", "").strip()
     playlist_name = (request.POST.get("playlist_name") or "").strip()
 

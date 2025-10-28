@@ -1,3 +1,5 @@
+"""Unit tests for the recommender app services and views."""
+
 from django.conf import settings
 from django.contrib.messages import get_messages
 from django.core.cache import cache

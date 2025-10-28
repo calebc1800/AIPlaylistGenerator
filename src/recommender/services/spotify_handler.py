@@ -1,3 +1,5 @@
+"""Spotify helper utilities for the recommender app."""
+
 import re
 import unicodedata
 from typing import Callable, Dict, Iterable, List, Optional, Set
@@ -29,6 +31,7 @@ def _log(
     log_step: Optional[Callable[[str], None]],
     message: str,
 ) -> None:
+    """Record a debug message either via callback or mutable list."""
     if log_step:
         log_step(message)
     elif debug_steps is not None:
@@ -36,10 +39,12 @@ def _log(
 
 
 def _normalize_genre(raw_genre: str) -> str:
+    """Normalize a genre string into a lowercase hyphenated token."""
     return raw_genre.strip().lower().replace(" ", "-")
 
 
 def _genre_variants(normalized_genre: str) -> Set[str]:
+    """Return common permutations of a genre to improve fuzzy matches."""
     if not normalized_genre:
         return set()
     base = normalized_genre.replace("-", " ")
@@ -55,6 +60,7 @@ def _genre_variants(normalized_genre: str) -> Set[str]:
 
 
 def _tracks_to_strings(tracks: List[Dict]) -> List[str]:
+    """Render track dictionaries into human-readable strings."""
     return [
         f"{track['name']} - {track['artists'][0]['name']}"
         for track in tracks
@@ -63,6 +69,7 @@ def _tracks_to_strings(tracks: List[Dict]) -> List[str]:
 
 
 def _filter_by_market(tracks: List[Dict], market: str) -> List[Dict]:
+    """Filter tracks that are not available in the desired market."""
     filtered: List[Dict] = []
     for track in tracks:
         markets = track.get("available_markets")
@@ -72,14 +79,17 @@ def _filter_by_market(tracks: List[Dict], market: str) -> List[Dict]:
 
 
 def _should_filter_non_latin() -> bool:
+    """Return True when playlist results should prefer latin character sets."""
     return getattr(settings, "RECOMMENDER_REQUIRE_LATIN", False)
 
 
 def _popularity_threshold_for_genre(normalized_genre: str) -> int:
+    """Resolve the minimum track popularity for the supplied genre."""
     return GENRE_POPULARITY_OVERRIDES.get(normalized_genre, DEFAULT_POPULARITY_THRESHOLD)
 
 
 def _primary_artist_hint(artist: str) -> str:
+    """Extract the primary artist name from a formatted credit string."""
     if not artist:
         return ""
     primary = re.split(r"\s*(?:,|&|feat\.?|ft\.?|with)\s*", artist, maxsplit=1)[0]
@@ -95,6 +105,7 @@ def _filter_tracks_by_artist_genre(
     log_step: Optional[Callable[[str], None]] = None,
     popularity_threshold: Optional[int] = None,
 ) -> List[Dict]:
+    """Keep tracks whose artists are strongly associated with the target genre."""
     if not tracks:
         return []
 
@@ -156,6 +167,7 @@ def _filter_tracks_by_artist_genre(
 
 
 def _is_mostly_latin(text: str) -> bool:
+    """Heuristic that checks whether a string primarily uses latin characters."""
     if not text:
         return True
     alpha_chars = [c for c in text if c.isalpha()]
@@ -166,10 +178,12 @@ def _is_mostly_latin(text: str) -> bool:
 
 
 def _filter_non_latin_tracks(tracks: Iterable[Dict]) -> List[Dict]:
+    """Drop tracks whose names contain mostly non-latin characters."""
     return [track for track in tracks if _is_mostly_latin(track.get("name", ""))]
 
 
 def _extract_release_year(track: Dict) -> Optional[int]:
+    """Return the release year from a track dictionary, if available."""
     album = (track or {}).get("album") or {}
     date = album.get("release_date")
     if not date:
@@ -188,6 +202,7 @@ def _discover_playlist_seeds(
     playlist_limit: int = 3,
     track_limit: int = 40,
 ) -> List[Dict]:
+    """Harvest candidate seed tracks by scanning popular Spotify playlists."""
     query = f"{normalized_genre.replace('-', ' ')} hits"
     _log(debug_steps, log_step, f"Spotify API → search playlists: q='{query}', limit={playlist_limit}")
     try:
@@ -245,6 +260,7 @@ def discover_top_tracks_for_genre(
     seed_limit: int = 5,
     search_limit: int = 50,
 ) -> List[Dict[str, str]]:
+    """Return a curated list of genre-specific tracks to bootstrap recommendations."""
     sp = spotipy.Spotify(auth=token)
     normalized_genre = _normalize_genre(attributes.get("genre", "pop") or "pop")
     query = f'genre:"{normalized_genre}"'
@@ -268,6 +284,7 @@ def discover_top_tracks_for_genre(
     playlist_tracks.sort(key=lambda t: t.get("popularity", 0), reverse=True)
 
     def _collect(tracks: List[Dict]) -> List[Dict[str, str]]:
+        """Select unique tracks up to the desired seed limit."""
         selected: List[Dict[str, str]] = []
         seen_ids: Set[str] = set()
         for track in tracks:
@@ -357,6 +374,7 @@ def resolve_seed_tracks(
     market: str = "US",
     limit: int = 5,
 ) -> List[Dict[str, str]]:
+    """Resolve LLM-provided suggestions into concrete Spotify track metadata."""
     sp = spotipy.Spotify(auth=token)
     resolved: List[Dict[str, str]] = []
 
@@ -433,6 +451,7 @@ def _score_track_basic(
     energy_label: Optional[str],
     prompt_keywords: Set[str],
 ) -> float:
+    """Assign a heuristic score to a candidate track to rank recommendations."""
     score = (track.get("popularity", 40) or 0) / 100.0 * 0.5
 
     artists = track.get("artists") or []
@@ -470,6 +489,7 @@ def get_similar_tracks(
     market: str = "US",
     limit: int = 10,
 ) -> List[Dict[str, str]]:
+    """Return a ranked list of tracks similar to the provided seed set."""
     if not seed_track_ids:
         _log(debug_steps, log_step, "No seed track IDs available; skipping local recommendations.")
         return []
@@ -617,6 +637,7 @@ def create_playlist_with_tracks(
     chunk_size = 100
     for start in range(0, len(track_ids), chunk_size):
         batch = track_ids[start : start + chunk_size]
+        # Add tracks in batches to respect Spotify API limits.
         sp.playlist_add_items(playlist_id, batch)
 
     return {

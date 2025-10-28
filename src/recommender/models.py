@@ -1,3 +1,5 @@
+"""Data models for future recommender features."""
+
 from django.db import models
 
-# Create your models here.
+# Models will be defined once playlist customization requires persistence.

@@ -1,3 +1,5 @@
+"""Placeholder preference helpers until the settings UI is implemented."""
+
 from dataclasses import dataclass
 from typing import List, Optional, Dict
 
@@ -24,6 +26,7 @@ class UserPlaylistPreferences:
 
 
 def _clamp_track_count(value: int) -> int:
+    """Force a track-count value into the configured inclusive bounds."""
     lower = getattr(settings, "RECOMMENDER_MIN_PLAYLIST_LENGTH", 1)
     upper = getattr(settings, "RECOMMENDER_MAX_PLAYLIST_LENGTH", 50)
     return max(lower, min(upper, value))
