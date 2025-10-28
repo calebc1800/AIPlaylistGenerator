@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('home', '0001_initial'),
+        ('explorer', '0001_initial'),
     ]
 
     operations = [
@@ -60,12 +60,12 @@ class Migration(migrations.Migration):
                 ('name', models.CharField(max_length=255)),
                 ('artist', models.CharField(blank=True, max_length=255)),
                 ('spotify_id', models.CharField(blank=True, max_length=255)),
-                ('playlist', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='sample_songs', to='home.playlist')),
+                ('playlist', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='sample_songs', to='explorer.playlist')),
             ],
         ),
         migrations.AlterField(
             model_name='playlist',
             name='creator',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='home.user'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='explorer.user'),
         ),
     ]

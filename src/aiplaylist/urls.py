@@ -6,6 +6,6 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('home.urls')),
+    path('', include('explorer.urls')),
     path('spotify/', include('spotify_auth.urls')),
 ]

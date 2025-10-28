@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('home', '0002_user_remove_playlist_total_duration_and_more'),
+        ('explorer', '0002_user_remove_playlist_total_duration_and_more'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
