@@ -193,8 +193,8 @@ try:
             {"role": "system", "content": "You are an expert code reviewer for Django projects. Provide constructive, specific feedback with clear recommendations."},
             {"role": "user", "content": prompt}
         ],
-        max_completion_tokens=1500,
-        temperature=0.1  # Lower temperature for more consistent reviews
+        max_completion_tokens=3500,
+        temperature=1  # Lower temperature for more consistent reviews
     )
 
     ai_review_content = response.choices[0].message.content
