@@ -175,6 +175,7 @@ def refine_playlist(
     attributes: Dict[str, str],
     debug_steps: Optional[List[str]] = None,
     log_step: Optional[Callable[[str], None]] = None,
+    query_fn: Optional[Callable[[str], str]] = None,
 ) -> List[str]:
     """Ask the LLM for additional tracks based on the current seed list and attributes."""
     track_list = "\n".join(seed_tracks)
@@ -184,7 +185,8 @@ def refine_playlist(
         "Return each song on a new line and prefer artists that match the requested genre."
     )
     _log(debug_steps, log_step, f"LLM prompt (playlist refinement): {query}")
-    response = query_ollama(query)
+    query_llm = query_fn or query_ollama
+    response = query_llm(query)
     snippet = response if len(response) <= 400 else response[:397] + "..."
     _log(debug_steps, log_step, f"LLM raw response (refinement): {snippet}")
     if not response:
