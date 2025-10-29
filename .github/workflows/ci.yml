@@ -111,4 +111,41 @@ jobs:
             echo "pytest not available, running Django tests directly"
             python src/manage.py test
           fi
+  
+  pylint:
+    name: Pylint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+          else
+            echo "requirements.txt not found, installing basic test dependencies"
+            pip install django pylint pylint-django
+          fi
+      
+      - name: Run Pylint Tests with Coverage
+        env:
+          DJANGO_SETTINGS_MODULE: aiplaylist.settings
+        run: |
+          echo "🚀 Setting up Python path and running tests..."
+          export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}/src"
+          echo "PYTHONPATH set to: $PYTHONPATH"
+          python -c "import aiplaylist; print('✅ Django project imported successfully')"
           
+          if command -v pylint &> /dev/null; then
+            pylint --load-plugins pylint_django --django-settings-module=src.aiplaylist.settings src/
+          else
+            echo "pylint not available"
+            exit 1
+          fi
