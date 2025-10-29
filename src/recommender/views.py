@@ -102,6 +102,15 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
                 }
             )
 
+    seed_track_details_raw = payload.get("seed_track_details") or payload.get("resolved_seed_tracks") or []
+    seed_track_details = [item for item in seed_track_details_raw if isinstance(item, dict)]
+
+    similar_track_details_raw = payload.get("similar_tracks_debug") or payload.get("similar_tracks") or []
+    similar_track_details = [item for item in similar_track_details_raw if isinstance(item, dict)]
+    profile_snapshot = payload.get("profile_snapshot")
+    if profile_snapshot and not isinstance(profile_snapshot, dict):
+        profile_snapshot = None
+
     return {
         "playlist": payload.get("playlist", []),
         "prompt": payload.get("prompt", ""),
@@ -115,6 +124,12 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
         "llm_suggestions": payload.get("llm_suggestions", []),
         "seed_tracks": payload.get("seed_track_display") or payload.get("seed_tracks", []),
         "similar_tracks": payload.get("similar_tracks_display") or payload.get("similar_tracks", []),
+        "seed_track_details": seed_track_details,
+        "similar_track_details": similar_track_details,
+        "seed_source_counts": payload.get("seed_sources", {}) if isinstance(payload.get("seed_sources"), dict) else {},
+        "prompt_artist_ids": payload.get("prompt_artist_ids", []),
+        "prompt_artist_candidates": payload.get("prompt_artist_candidates", []),
+        "profile_snapshot": profile_snapshot,
         "cache_key": payload.get("cache_key"),
         "user_preferences": preferences,
         "preference_descriptions": preference_descriptions,
@@ -169,6 +184,103 @@ def generate_playlist(request):
     profile_cache: Optional[Dict[str, object]] = None
     if user_id:
         profile_cache = cache.get(f"recommender:user-profile:{user_id}")
+
+    profile_snapshot: Optional[Dict[str, object]] = None
+    if isinstance(profile_cache, dict):
+        track_map = profile_cache.get("tracks")
+        if isinstance(track_map, dict):
+            top_tracks: List[Dict[str, object]] = []
+            for track_id in (profile_cache.get("top_track_ids") or [])[:10]:
+                track_entry = track_map.get(track_id)
+                if not isinstance(track_entry, dict):
+                    continue
+                top_tracks.append(
+                    {
+                        "id": track_id,
+                        "name": track_entry.get("name"),
+                        "artists": track_entry.get("artists"),
+                        "popularity": track_entry.get("popularity"),
+                        "year": track_entry.get("year"),
+                    }
+                )
+
+            genre_debug: List[Dict[str, object]] = []
+            genre_buckets = profile_cache.get("genre_buckets")
+            if isinstance(genre_buckets, dict):
+                for genre, bucket in genre_buckets.items():
+                    if not isinstance(bucket, dict):
+                        continue
+                    bucket_tracks: List[Dict[str, object]] = []
+                    for track_id in (bucket.get("track_ids") or [])[:5]:
+                        track_entry = track_map.get(track_id)
+                        if not isinstance(track_entry, dict):
+                            continue
+                        bucket_tracks.append(
+                            {
+                                "id": track_id,
+                                "name": track_entry.get("name"),
+                                "artists": track_entry.get("artists"),
+                                "popularity": track_entry.get("popularity"),
+                                "year": track_entry.get("year"),
+                            }
+                        )
+                    avg_popularity = bucket.get("avg_popularity")
+                    if isinstance(avg_popularity, (int, float)):
+                        avg_popularity = round(float(avg_popularity), 2)
+                    avg_year = bucket.get("avg_year")
+                    if isinstance(avg_year, (int, float)):
+                        avg_year = round(float(avg_year), 1)
+
+                    genre_debug.append(
+                        {
+                            "genre": genre,
+                            "track_count": bucket.get("track_count")
+                            or len(bucket.get("track_ids") or []),
+                            "avg_popularity": avg_popularity,
+                            "avg_year": avg_year,
+                            "tracks": bucket_tracks,
+                        }
+                    )
+
+            artist_debug: List[Dict[str, object]] = []
+            artist_counts = profile_cache.get("artist_counts")
+            artist_map = profile_cache.get("artists") if isinstance(profile_cache.get("artists"), dict) else {}
+            if isinstance(artist_counts, dict):
+                top_artists = sorted(
+                    ((artist_id, int(count)) for artist_id, count in artist_counts.items()),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )[:10]
+                for artist_id, play_count in top_artists:
+                    artist_entry = artist_map.get(artist_id, {}) if isinstance(artist_map, dict) else {}
+                    artist_debug.append(
+                        {
+                            "id": artist_id,
+                            "name": artist_entry.get("name", artist_id),
+                            "genres": artist_entry.get("genres", []),
+                            "play_count": play_count,
+                        }
+                    )
+
+            genre_debug.sort(key=lambda item: str(item.get("genre", "")))
+
+            created_at_value = profile_cache.get("created_at")
+            created_at_label: Optional[str] = None
+            if isinstance(created_at_value, (int, float)):
+                try:
+                    created_at_label = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(created_at_value))
+                except (ValueError, OSError):
+                    created_at_label = None
+
+            profile_snapshot = {
+                "source": profile_cache.get("source"),
+                "sample_size": profile_cache.get("sample_size"),
+                "created_at": created_at_label or created_at_value,
+                "created_at_raw": created_at_value,
+                "genres": genre_debug,
+                "top_tracks": top_tracks,
+                "top_artists": artist_debug,
+            }
 
     cache_key = _cache_key(user_id, prompt)
     cached_payload: Optional[Dict[str, object]] = cache.get(cache_key)
@@ -256,6 +368,7 @@ def generate_playlist(request):
             enriched = dict(track)
             if source_label:
                 enriched.setdefault("seed_source", source_label)
+                enriched.setdefault("source", source_label)
             resolved_seed_tracks.append(enriched)
             seed_sources[source_label] = seed_sources.get(source_label, 0) + 1
 
@@ -419,6 +532,8 @@ def generate_playlist(request):
             "seed_track_display": seed_track_display,
             "similar_tracks_display": similar_display if similar_tracks else [],
             "similar_tracks": similar_tracks,
+            "similar_tracks_debug": similar_tracks,
+            "seed_track_details": resolved_seed_tracks,
             "track_ids": track_ids,
             "track_details": ordered_tracks,
             "prompt": prompt,
@@ -429,6 +544,8 @@ def generate_playlist(request):
             "user_preferences": preference_snapshot,
             "preference_descriptions": preference_descriptions,
             "llm_provider": llm_provider,
+            "profile_snapshot": profile_snapshot,
+            "prompt_artist_candidates": prompt_artist_candidates,
         }
         cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
         cache.set(cache_key, payload, timeout=cache_timeout)
@@ -630,6 +747,8 @@ def remix_playlist(request):
             f"{track.get('name', 'Unknown')} - {track.get('artists', 'Unknown')}".strip()
             for track in similar_used
         ],
+        "similar_tracks_debug": similar_used,
+        "seed_track_details": resolved_seed_tracks,
         "debug_steps": debug_steps,
         "errors": errors,
         "llm_provider": llm_provider,

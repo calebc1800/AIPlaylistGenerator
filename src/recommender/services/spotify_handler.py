@@ -253,6 +253,7 @@ def _serialize_track_payload(track: Dict) -> Dict[str, object]:
         "duration_ms": int(track.get("duration_ms") or 0),
         "artist_ids": [artist.get("id") for artist in artists if artist.get("id")],
         "year": _extract_release_year(track),
+        "popularity": int(track.get("popularity") or 0),
     }
 
 
@@ -814,6 +815,7 @@ def discover_top_tracks_for_genre(
                     "artists": ", ".join(artist.get("name", "") for artist in track.get("artists", [])),
                     "artist_ids": artist_ids,
                     "year": _extract_release_year(track),
+                    "popularity": int(track.get("popularity") or 0),
                 }
             )
         return selected
@@ -967,7 +969,12 @@ def resolve_seed_tracks(
             continue
 
         track = tracks[0]
-        resolved.append(_serialize_track_payload(track))
+        payload = _serialize_track_payload(track)
+        suggestion_source = suggestion.get("seed_source") or suggestion.get("source")
+        seed_label = suggestion_source or "resolved_seed"
+        payload.setdefault("seed_source", seed_label)
+        payload.setdefault("source", seed_label)
+        resolved.append(payload)
 
     _log(debug_steps, log_step, f"Resolved {len(resolved)} seed tracks via Spotify search.")
     return resolved
@@ -983,42 +990,66 @@ def _score_track_basic(
     profile_cache: Optional[Dict[str, object]] = None,
     focus_artist_ids: Optional[Set[str]] = None,
     target_genre: Optional[str] = None,
-) -> float:
+) -> tuple[float, Dict[str, float]]:
     """Assign a heuristic score to rank candidates while blending affinity and novelty."""
 
+    breakdown: Dict[str, float] = {}
     popularity = int(track.get("popularity", 40) or 0)
-    score = (popularity / 100.0) * 0.45
+    popularity_score = (popularity / 100.0) * 0.45
+    score = popularity_score
+    breakdown["popularity"] = round(popularity_score, 4)
 
     artists = track.get("artists") or []
     artist_ids = {artist.get("id") for artist in artists if artist.get("id")}
 
     if seed_artist_ids and artist_ids.intersection(seed_artist_ids):
-        score += 0.2
+        seed_bonus = 0.2
+        score += seed_bonus
+        breakdown["seed_overlap"] = round(seed_bonus, 4)
+    else:
+        breakdown["seed_overlap"] = 0.0
 
     if focus_artist_ids and artist_ids.intersection(focus_artist_ids):
-        score += 0.3
+        focus_bonus = 0.3
+        score += focus_bonus
+        breakdown["focus_artist"] = round(focus_bonus, 4)
+    else:
+        breakdown["focus_artist"] = 0.0
 
     name_lower = (track.get("name") or "").lower()
+    keyword_bonus = 0.0
     if prompt_keywords:
         keyword_hits = sum(1 for kw in prompt_keywords if kw in name_lower)
-        score += min(keyword_hits, 2) * 0.05
+        keyword_bonus = min(keyword_hits, 2) * 0.05
+        score += keyword_bonus
+    breakdown["keyword_match"] = round(keyword_bonus, 4)
 
+    year_bonus = 0.0
+    energy_bonus = 0.0
     candidate_year = _extract_release_year(track)
     if seed_year_avg and candidate_year:
         year_diff = abs(candidate_year - seed_year_avg)
-        score += max(0.0, (18 - year_diff) / 36.0) * 0.18
+        year_bonus = max(0.0, (18 - year_diff) / 36.0) * 0.18
+        score += year_bonus
         energy_lower = (energy_label or "").lower()
         if energy_lower == "high" and candidate_year >= seed_year_avg:
-            score += 0.05
+            energy_bonus = 0.05
         elif energy_lower == "low" and candidate_year <= seed_year_avg:
-            score += 0.05
+            energy_bonus = 0.05
+        score += energy_bonus
+    breakdown["year_alignment"] = round(year_bonus, 4)
+    breakdown["energy_bias"] = round(energy_bonus, 4)
 
+    cache_bonus = 0.0
+    cache_genre_bonus = 0.0
+    novelty_bonus = 0.0
     if profile_cache:
         track_lookup = profile_cache.get("tracks")
         if isinstance(track_lookup, dict):
             cached_record = track_lookup.get(track.get("id"))
             if isinstance(cached_record, dict):
-                score += 0.18
+                cache_bonus = 0.18
+                score += cache_bonus
 
         if target_genre:
             genre_buckets = profile_cache.get("genre_buckets")
@@ -1027,11 +1058,11 @@ def _score_track_basic(
                 if isinstance(genre_bucket, dict):
                     track_ids = genre_bucket.get("track_ids") or []
                     if track.get("id") in track_ids:
-                        score += 0.12
+                        cache_genre_bonus = 0.12
+                        score += cache_genre_bonus
 
         artist_counts = profile_cache.get("artist_counts")
         if isinstance(artist_counts, dict) and artist_ids:
-            novelty_bonus = 0.0
             for artist_id in artist_ids:
                 play_count = int(artist_counts.get(artist_id, 0))
                 if play_count == 0:
@@ -1044,7 +1075,13 @@ def _score_track_basic(
                     novelty_bonus -= 0.01
             score += novelty_bonus
 
-    return max(score, 0.0)
+    breakdown["cache_track_hit"] = round(cache_bonus, 4)
+    breakdown["cache_genre_alignment"] = round(cache_genre_bonus, 4)
+    breakdown["novelty"] = round(novelty_bonus, 4)
+
+    total = max(score, 0.0)
+    breakdown["total"] = round(total, 4)
+    return total, breakdown
 
 
 def get_similar_tracks(
@@ -1139,11 +1176,11 @@ def get_similar_tracks(
 
     _log(debug_steps, log_step, f"Local recommender candidate pool size after filtering: {len(unique_candidates)}.")
 
-    scored_tracks: List[tuple[float, Dict]] = []
+    scored_tracks: List[tuple[float, Dict, Dict[str, float]]] = []
     artist_counts: Dict[str, int] = {}
 
     for track in unique_candidates:
-        score = _score_track_basic(
+        score, breakdown = _score_track_basic(
             track,
             seed_artist_ids,
             seed_year_avg,
@@ -1153,14 +1190,14 @@ def get_similar_tracks(
             focus_artist_ids=focus_artist_ids,
             target_genre=normalized_genre,
         )
-        scored_tracks.append((score, track))
+        scored_tracks.append((score, track, breakdown))
 
     _log(debug_steps, log_step, f"Local recommender scored {len(scored_tracks)} candidates.")
 
     scored_tracks.sort(key=lambda item: item[0], reverse=True)
 
     recommendations: List[Dict[str, str]] = []
-    for score, track in scored_tracks:
+    for score, track, breakdown in scored_tracks:
         if len(recommendations) >= limit:
             break
         artists = track.get("artists", [])
@@ -1171,6 +1208,12 @@ def get_similar_tracks(
         serialized = _serialize_track_payload(track)
         if artist_label and not serialized.get("artists"):
             serialized["artists"] = artist_label
+        serialized["score"] = round(score, 4)
+        serialized["score_breakdown"] = breakdown
+        serialized["seed_artist_overlap"] = bool(seed_artist_ids and {artist.get("id") for artist in track.get("artists", []) or []}.intersection(seed_artist_ids))
+        serialized["focus_artist_overlap"] = bool(
+            focus_artist_ids and {artist.get("id") for artist in track.get("artists", []) or []}.intersection(focus_artist_ids)
+        )
         recommendations.append(serialized)
         for name in artist_names:
             if not name:
