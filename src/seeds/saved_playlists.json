@@ -1,0 +1,92 @@
+[
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 1,
+    "fields": {
+      "playlist_id": "6n3ByyRvg7TAy9yAfwe2a8",
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 2,
+    "fields": {
+      "playlist_id": "154Y0yOmSr61Aj8Enfdzwl",
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 3,
+    "fields": {
+      "playlist_id": "5LBeUcLfsjM4Uv0GhiDuBv",
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 4,
+    "fields": {
+      "playlist_id": "1NSb4lrvkXLDjBxHTzZlHt",
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 5,
+    "fields": {
+      "playlist_id": "60sZVp4Ji98FehG76NKLBp",
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 6,
+    "fields": {
+      "playlist_id": "1FTmfv50mRAAgbkMS0H8UD",
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 7,
+    "fields": {
+      "playlist_id": "6l7VzSBucNaJjmzZmkhSDe",
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 8,
+    "fields": {
+      "playlist_id": "2V73cN8GRlHd6bupTLwwsV",
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 9,
+    "fields": {
+      "playlist_id": "65q9zVzx99RlXtYvuPjFik",
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 10,
+    "fields": {
+      "playlist_id": "5D14y7ws4mTPFUziP9FUeF",
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+    }
+  }
+]

@@ -4,12 +4,15 @@ from django.shortcuts import redirect, render
 from django.views import View
 from explorer.models import Playlist
 from explorer.views import SpotifyAPIHelper
+from spotify_auth.session import clear_spotify_session, ensure_valid_spotify_session
 
 
 class DashboardView(View):
     """Display user's Spotify dashboard"""
 
     def get(self, request):
+        if not ensure_valid_spotify_session(request):
+            return redirect('spotify_auth:login')
         access_token = request.session.get('spotify_access_token')
         if not access_token:
             return redirect('spotify_auth:login')
@@ -76,5 +79,6 @@ class DashboardView(View):
 
         except spotipy.exceptions.SpotifyException as e:
             if e.http_status == 401:
+                clear_spotify_session(request.session)
                 return redirect('spotify_auth:login')
             return render(request, 'dashboard/dashboard.html', {'error': f'Error fetching Spotify data: {str(e)}'})
