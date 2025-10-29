@@ -494,7 +494,7 @@ class SpotifyDashboardViewTests(TestCase):
         self.assertIsNotNone(response.context['last_song'])
         self.assertEqual(response.context['last_song']['name'], 'Test Song')
         self.assertEqual(response.context['last_song']['artist'], 'Test Artist')
-        self.assertIn('explore_playlists', response.context)
+        self.assertIn('playlists', response.context)
     
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_without_display_name(self, mock_spotify):

@@ -150,8 +150,8 @@ class SearchViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         # Check for new playlist card structure elements
         self.assertContains(response, 'playlist-card')
-        self.assertContains(response, 'playlist-top')
-        self.assertContains(response, 'playlist-cover')
+        self.assertContains(response, 'playlist-image')
+        self.assertContains(response, 'playlist-info-compact')
 
 
 class ProfileViewTests(TestCase):
@@ -196,7 +196,8 @@ class ProfileViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         # Check for new playlist card structure elements
         self.assertContains(response, 'playlist-card')
-        self.assertContains(response, 'playlist-top')
+        self.assertContains(response, 'playlist-image')
+        self.assertContains(response, 'playlist-info-compact')
 
 
 class LogoutViewTests(TestCase):
@@ -384,9 +385,9 @@ class PlaylistCardTemplateTests(TestCase):
 
         # Check for main structure elements
         self.assertContains(response, 'class="playlist-card"')
-        self.assertContains(response, 'class="playlist-top"')
-        self.assertContains(response, 'class="playlist-cover"')
-        self.assertContains(response, 'class="playlist-info"')
+        self.assertContains(response, 'class="playlist-image"')
+        self.assertContains(response, 'class="playlist-info-compact"')
+        self.assertContains(response, 'class="playlist-title"')
 
     def test_playlist_card_displays_cover_image(self):
         """Test that playlist card displays cover image when available"""
@@ -395,31 +396,37 @@ class PlaylistCardTemplateTests(TestCase):
         self.assertContains(response, 'alt="Test Playlist"')
 
     def test_playlist_card_displays_placeholder_when_no_image(self):
-        """Test that playlist card displays placeholder when no cover image"""
+        """Test that playlist card displays emoji placeholder when no cover image"""
         self.playlist.cover_image = ''
         self.playlist.save()
 
         response = self.client.get(reverse('search') + '?q=Test')
-        self.assertContains(response, 'placeholder-cover')
-        self.assertContains(response, 'Cover Art')
+        # The template shows a music emoji 🎵 when there's no image
+        self.assertContains(response, '🎵')
 
-    def test_playlist_card_displays_sample_songs(self):
-        """Test that playlist card displays sample songs"""
+    def test_playlist_card_displays_creator_username(self):
+        """Test that playlist card displays creator username"""
         response = self.client.get(reverse('search') + '?q=Test')
-        self.assertContains(response, 'Test Song 1')
-        self.assertContains(response, 'Test Song 2')
+        self.assertContains(response, 'testuser')
+        self.assertContains(response, 'creator-name')
 
-    def test_playlist_card_displays_spotify_embed(self):
-        """Test that playlist card includes Spotify embed iframe"""
+    def test_playlist_card_displays_likes(self):
+        """Test that playlist card displays likes count"""
         response = self.client.get(reverse('search') + '?q=Test')
-        self.assertContains(response, 'spotify-embed')
-        self.assertContains(response, f'https://open.spotify.com/embed/playlist/{self.playlist.spotify_id}')
-        self.assertContains(response, '<iframe')
+        self.assertContains(response, 'likes-count')
+        self.assertContains(response, '10')
+        self.assertContains(response, '👍')
 
-    def test_playlist_card_shows_no_embed_message_when_no_spotify_id(self):
-        """Test that playlist card shows message when no Spotify embed available"""
-        self.playlist.spotify_id = ''
+    def test_playlist_card_shows_spotify_link_when_available(self):
+        """Test that playlist card shows Spotify link when spotify_uri is set"""
+        response = self.client.get(reverse('search') + '?q=Test')
+        self.assertContains(response, 'View on Spotify')
+        self.assertContains(response, f'https://open.spotify.com/playlist/{self.playlist.spotify_id}')
+
+    def test_playlist_card_hides_spotify_link_when_not_available(self):
+        """Test that playlist card hides Spotify link when spotify_uri is not set"""
+        self.playlist.spotify_uri = ''
         self.playlist.save()
 
         response = self.client.get(reverse('search') + '?q=Test')
-        self.assertContains(response, 'Spotify embed not available')
+        self.assertNotContains(response, 'View on Spotify')

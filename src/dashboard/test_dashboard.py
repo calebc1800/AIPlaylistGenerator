@@ -266,7 +266,7 @@ class DashboardViewTests(TestCase):
         self.assertIn('Error fetching Spotify data', response.context['error'])
 
     @patch('dashboard.views.spotipy.Spotify')
-    def test_dashboard_displays_explore_playlists(self, mock_spotify):
+    def test_dashboard_displays_playlists(self, mock_spotify):
         """Test that dashboard displays playlists in explore tab"""
         # Create some test playlists
         Playlist.objects.create(
@@ -299,8 +299,8 @@ class DashboardViewTests(TestCase):
         response = self.client.get(self.dashboard_url)
 
         # Check that playlists are in context
-        self.assertIn('explore_playlists', response.context)
-        playlists = response.context['explore_playlists']
+        self.assertIn('playlists', response.context)
+        playlists = response.context['playlists']
         self.assertEqual(playlists.count(), 2)
 
     @patch('dashboard.views.spotipy.Spotify')
@@ -327,7 +327,7 @@ class DashboardViewTests(TestCase):
 
         # Should render successfully even without playlists
         self.assertEqual(response.status_code, 200)
-        self.assertIn('explore_playlists', response.context)
+        self.assertIn('playlists', response.context)
 
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_context_has_all_required_fields(self, mock_spotify):
@@ -358,7 +358,7 @@ class DashboardViewTests(TestCase):
             'followers',
             'last_song',
             'profile_url',
-            'explore_playlists'
+            'playlists'
         ]
 
         for field in required_fields:
@@ -621,7 +621,7 @@ class DashboardIntegrationTests(TestCase):
         self.assertEqual(response.context['last_song']['name'], 'Last Played')
 
         # Verify playlists
-        playlists = response.context['explore_playlists']
+        playlists = response.context['playlists']
         self.assertEqual(playlists.count(), 2)
         # Should be ordered by likes descending
         self.assertEqual(playlists[0].name, 'Top Hits')
