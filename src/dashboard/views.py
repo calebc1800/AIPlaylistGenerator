@@ -66,7 +66,7 @@ class DashboardView(View):
                 'followers': followers,
                 'last_song': last_song,
                 'profile_url': user_profile.get('external_urls', {}).get('spotify'),
-                'explore_playlists': playlists,
+                'playlists': playlists,
                 'debug_enabled': debug_enabled,
                 'llm_toggle_visible': debug_enabled,
                 'llm_provider': session_provider,
