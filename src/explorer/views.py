@@ -1,9 +1,12 @@
 import requests
-from django.shortcuts import render, redirect
-from django.db.models import Q
+from django.shortcuts import render, redirect, get_object_or_404
+from django.db.models import Q, F
 from django.conf import settings
 from django.views import View
 from django.contrib.auth.models import User
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 from .models import Playlist, Song
 
 
@@ -229,3 +232,27 @@ def profile(request, user_id):
 def logout(request):
     """Function-based view wrapper for LogoutView"""
     return LogoutView.as_view()(request)
+
+
+@require_POST
+@csrf_exempt
+def like_playlist(request, spotify_id):
+    """Handle playlist like action"""
+    playlist = get_object_or_404(Playlist, spotify_id=spotify_id)
+
+    # Increment the likes field using F expression for atomic operation
+    playlist.likes = F('likes') + 1
+    playlist.save()
+
+    # Refresh to get the actual value
+    playlist.refresh_from_db()
+
+    # Return JSON response for AJAX requests
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({
+            'success': True,
+            'likes': playlist.likes
+        })
+
+    # For non-AJAX requests, redirect back
+    return redirect(request.META.get('HTTP_REFERER', 'home'))
