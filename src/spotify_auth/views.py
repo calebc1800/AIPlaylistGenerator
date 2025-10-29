@@ -8,6 +8,8 @@ from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.views import View
 
+from .session import ensure_valid_spotify_session, refresh_access_token, store_token
+
 logger = logging.getLogger(__name__)
 SPOTIFY_HTTP_TIMEOUT = int(getattr(settings, "SPOTIFY_HTTP_TIMEOUT", 15))
 
@@ -16,6 +18,9 @@ class SpotifyLoginView(View):
     """Initiates the Spotify OAuth flow"""
     
     def get(self, request):
+        if ensure_valid_spotify_session(request):
+            return redirect('dashboard:dashboard')
+
         # Generate a random state for CSRF protection
         state = secrets.token_urlsafe(16)
         request.session['spotify_auth_state'] = state
@@ -78,9 +83,7 @@ class SpotifyCallbackView(View):
         token_data = response.json()
         
         # Store tokens in session (or save to database)
-        request.session['spotify_access_token'] = token_data.get('access_token')
-        request.session['spotify_refresh_token'] = token_data.get('refresh_token')
-        request.session['spotify_expires_in'] = token_data.get('expires_in')
+        store_token(request.session, token_data)
         
         # Optional: Get user profile data
         user_profile = self.get_user_profile(token_data.get('access_token'))
@@ -119,27 +122,10 @@ class SpotifyRefreshTokenView(View):
         if not refresh_token:
             return JsonResponse({'error': 'No refresh token available'}, status=400)
         
-        token_url = 'https://accounts.spotify.com/api/token'
-        data = {
-            'grant_type': 'refresh_token',
-            'refresh_token': refresh_token,
-            'client_id': settings.SPOTIFY_CLIENT_ID,
-            'client_secret': settings.SPOTIFY_CLIENT_SECRET,
-        }
-        
-        try:
-            response = requests.post(token_url, data=data, timeout=SPOTIFY_HTTP_TIMEOUT)
-        except requests.exceptions.RequestException as exc:
-            logger.exception("Spotify token refresh failed: %s", exc)
-            return JsonResponse({'error': 'Unable to reach Spotify at the moment.'}, status=502)
-        
-        if response.status_code != 200:
+        refreshed, reason = refresh_access_token(request.session)
+        if not refreshed:
+            if reason == "network":
+                return JsonResponse({'error': 'Unable to reach Spotify at the moment.'}, status=502)
             return JsonResponse({'error': 'Failed to refresh token'}, status=400)
-        
-        token_data = response.json()
-        
-        # Update access token in session
-        request.session['spotify_access_token'] = token_data.get('access_token')
-        request.session['spotify_expires_in'] = token_data.get('expires_in')
         
         return JsonResponse({'message': 'Token refreshed successfully'})

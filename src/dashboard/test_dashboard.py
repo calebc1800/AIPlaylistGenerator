@@ -20,6 +20,7 @@ class DashboardViewTests(TestCase):
         # Should redirect to login
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('spotify_auth:login'))
+        self.assertNotIn('spotify_access_token', self.client.session)
 
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_renders_with_valid_token(self, mock_spotify):
