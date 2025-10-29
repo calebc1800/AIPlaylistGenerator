@@ -74,6 +74,7 @@
                             placeholder="E.g., 'Upbeat indie rock for a road trip' or 'Relaxing jazz for studying'"
                             required
                         ></textarea>
+                        <div class="prompt-limit" id="prompt-char-limit">0 / 128 characters</div>
                         {% if llm_toggle_visible %}
                         <input
                             type="hidden"
@@ -207,6 +208,30 @@
         // Tab switching functionality
         const tabs = document.querySelectorAll('.tab');
         const tabContents = document.querySelectorAll('.tab-content');
+        const promptInput = document.getElementById('playlist_prompt');
+        const createButton = document.querySelector('.create-btn');
+        const promptLimit = 128;
+        const charLimitDisplay = document.getElementById('prompt-char-limit');
+
+        const updatePromptState = () => {
+            if (!promptInput || !createButton) {
+                return;
+            }
+            const length = promptInput.value.length;
+            const overLimit = length > promptLimit;
+            if (charLimitDisplay) {
+                const label = `${length} / ${promptLimit} characters`;
+                charLimitDisplay.textContent = label;
+                charLimitDisplay.classList.toggle('error', overLimit);
+            }
+            createButton.disabled = overLimit;
+            createButton.classList.toggle('disabled', overLimit);
+        };
+
+        if (promptInput) {
+            updatePromptState();
+            promptInput.addEventListener('input', updatePromptState);
+        }
 
         const llmProviderInput = document.getElementById('llm_provider_input');
         const llmProviderToggle = document.getElementById('llm_provider_toggle');
@@ -333,7 +358,12 @@
                 animate();
             };
 
-            createForm.addEventListener('submit', () => {
+            createForm.addEventListener('submit', (event) => {
+                if (promptInput && promptInput.value.length > promptLimit) {
+                    event.preventDefault();
+                    updatePromptState();
+                    return;
+                }
                 generationOverlay.classList.add('visible');
                 resetProgress();
                 startProgress();

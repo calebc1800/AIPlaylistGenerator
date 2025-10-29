@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import subprocess
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from openai import OpenAI
 
@@ -318,11 +318,14 @@ def extract_playlist_attributes(
     debug_steps: Optional[List[str]] = None,
     log_step: Optional[Callable[[str], None]] = None,
     provider: Optional[str] = None,
-) -> Dict[str, str]:
+) -> Dict[str, object]:
     """Pull mood, genre, and energy descriptors from a free-form user prompt."""
     query = (
-        "Extract the mood, genre, and energy level from this user playlist request: "
-        f"{prompt}. Return JSON."
+        "Extract the mood, genre, energy level, and any explicitly referenced primary artists or bands "
+        "from this user playlist request. Respond with JSON containing the keys `mood`, `genre`, and `energy`, "
+        "plus optional `artist` (string) and `artists` (array of strings) when specific performers are mentioned. "
+        "If no artist is present, set those fields to null or an empty list. Request: "
+        f"{prompt}"
     )
     _log(debug_steps, log_step, f"LLM prompt (attribute extraction): {query}")
     response = dispatch_llm_query(query, provider=provider)
@@ -341,13 +344,32 @@ def extract_playlist_attributes(
         lowered = {str(key).lower(): value for key, value in parsed.items()}
         attributes = {
             "mood": lowered.get("mood", DEFAULT_ATTRIBUTES["mood"]),
-            "genre": lowered.get("genre") or lowered.get("music_genre", DEFAULT_ATTRIBUTES["genre"]),
+            "genre": lowered.get("genre")
+            or lowered.get("music_genre", DEFAULT_ATTRIBUTES["genre"]),
             "energy": lowered.get("energy")
             or lowered.get("energy_level")
             or lowered.get("energylevel")
             or DEFAULT_ATTRIBUTES["energy"],
         }
+
+        artist_hint = lowered.get("artist") or lowered.get("primary_artist") or ""
+        if isinstance(artist_hint, list):
+            artist_hint = artist_hint[0] if artist_hint else ""
+        artist_hint = str(artist_hint).strip() if artist_hint else ""
+
+        artists_field = lowered.get("artists") or lowered.get("artist_list") or []
+        if isinstance(artists_field, str) and artists_field.strip():
+            artists_list = [artists_field.strip()]
+        elif isinstance(artists_field, list):
+            artists_list = [str(item).strip() for item in artists_field if isinstance(item, (str, int)) and str(item).strip()]
+        else:
+            artists_list = []
+        if artist_hint and artist_hint.lower() not in {name.lower() for name in artists_list}:
+            artists_list.insert(0, artist_hint)
+
         attributes = {key: (value or DEFAULT_ATTRIBUTES[key]) for key, value in attributes.items()}
+        attributes["artist"] = artist_hint
+        attributes["artists"] = artists_list
         _log(debug_steps, log_step, f"LLM parsed attributes: {attributes}")
         return attributes
 
@@ -356,7 +378,10 @@ def extract_playlist_attributes(
         log_step,
         f"Failed to parse LLM attribute response; using defaults. Response snippet: {snippet}",
     )
-    return DEFAULT_ATTRIBUTES.copy()
+    fallback = DEFAULT_ATTRIBUTES.copy()
+    fallback.setdefault("artist", "")
+    fallback.setdefault("artists", [])
+    return fallback
 
 
 def suggest_seed_tracks(
@@ -368,11 +393,12 @@ def suggest_seed_tracks(
     provider: Optional[str] = None,
 ) -> List[Dict[str, str]]:
     """Use the LLM to propose seed tracks as title/artist pairs."""
+    suggestion_cap = max(1, int(max_suggestions or 5))
     query = (
         "You are selecting seed songs for a Spotify playlist.\n"
         f"Playlist request: \"{prompt}\"\n"
         f"Extracted attributes: {attributes}\n"
-        "Return a JSON array with at most five objects, each containing the keys "
+        f"Return a JSON array with at most {suggestion_cap} objects, each containing the keys "
         "\"title\" and \"artist\". Choose well-known songs that fit the mood/genre/"
         "energy and are likely available on Spotify."
     )
@@ -444,7 +470,133 @@ def suggest_seed_tracks(
             f"Provided fallback seed suggestions for genre '{canonical or 'default'}'.",
         )
 
-    return suggestions[:max_suggestions]
+    return suggestions[:suggestion_cap]
+
+
+def suggest_remix_tracks(
+    existing_tracks: List[str],
+    attributes: Dict[str, str],
+    *,
+    prompt: str,
+    target_count: int,
+    debug_steps: Optional[List[str]] = None,
+    log_step: Optional[Callable[[str], None]] = None,
+    provider: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    """Ask the LLM to remix a playlist using the current cached tracks as inspiration."""
+    desired_count = max(int(target_count or 0), 0)
+    if desired_count <= 0:
+        return []
+
+    unique_existing: List[str] = []
+    seen_existing: Set[str] = set()
+    for track in existing_tracks:
+        normalized = (track or "").strip()
+        if not normalized:
+            continue
+        lowered = normalized.lower()
+        if lowered in seen_existing:
+            continue
+        seen_existing.add(lowered)
+        unique_existing.append(normalized)
+    snapshot_limit = max(1, min(desired_count, 25))
+    track_snapshot = unique_existing[:snapshot_limit]
+    if not track_snapshot:
+        track_snapshot = ["(playlist currently empty)"]
+
+    numbered_tracks = "\n".join(f"{index + 1}. {entry}" for index, entry in enumerate(track_snapshot))
+    attribute_label = json.dumps(attributes, ensure_ascii=False)
+    prompt_label = prompt or "Unnamed playlist request"
+    query = (
+        "You are refreshing an existing Spotify playlist for a user.\n"
+        f"Original request: \"{prompt_label}\"\n"
+        f"Target attributes: {attribute_label}\n"
+        "Current playlist tracks:\n"
+        f"{numbered_tracks}\n\n"
+        f"Remix the playlist by returning exactly {desired_count} songs that match the same mood, genre, and energy."
+        " You may keep some of the existing songs, but avoid duplicates overall and ensure the list feels refreshed."
+        " Return a JSON array where each object contains the keys \"title\" and \"artist\"."
+        " Prefer well-known tracks that are likely available on Spotify US."
+    )
+    _log(debug_steps, log_step, f"LLM prompt (remix suggestions): {query}")
+    response = dispatch_llm_query(query, provider=provider)
+    snippet = response if len(response) <= 400 else response[:397] + "..."
+    _log(debug_steps, log_step, f"LLM raw response (remix suggestions): {snippet}")
+
+    suggestions: List[Dict[str, str]] = []
+    seen_pairs: Set[tuple[str, str]] = set()
+
+    def _add_suggestion(title: str, artist: str):
+        title = (title or "").strip()
+        artist = (artist or "").strip()
+        if not title:
+            return
+        key = (title.lower(), artist.lower())
+        if key in seen_pairs:
+            return
+        seen_pairs.add(key)
+        suggestions.append({"title": title, "artist": artist})
+
+    if response:
+        parsed = _parse_json_response(response)
+        if isinstance(parsed, dict):
+            if "tracks" in parsed:
+                parsed = parsed["tracks"]
+            elif "playlist" in parsed:
+                parsed = parsed["playlist"]
+            elif "songs" in parsed:
+                parsed = parsed["songs"]
+        if isinstance(parsed, list):
+            for item in parsed:
+                if isinstance(item, dict):
+                    title = item.get("title") or item.get("song") or item.get("name")
+                    artist = item.get("artist") or item.get("artists") or item.get("singer")
+                    if isinstance(artist, list):
+                        artist = ", ".join(str(part) for part in artist)
+                    if title:
+                        _add_suggestion(str(title), str(artist or ""))
+                elif isinstance(item, str):
+                    if " - " in item:
+                        title, artist = item.split(" - ", 1)
+                    else:
+                        title, artist = item, ""
+                    _add_suggestion(title, artist)
+        else:
+            lines = [line.strip() for line in response.splitlines() if line.strip()]
+            for line in lines:
+                if " - " in line:
+                    title, artist = line.split(" - ", 1)
+                else:
+                    title, artist = line, ""
+                _add_suggestion(title, artist)
+
+    if len(suggestions) < desired_count:
+        _log(
+            debug_steps,
+            log_step,
+            "LLM remix suggestions insufficient; filling with existing playlist tracks.",
+        )
+        for track in unique_existing:
+            if " - " in track:
+                title, artist = track.split(" - ", 1)
+            else:
+                title, artist = track, ""
+            _add_suggestion(title, artist)
+            if len(suggestions) >= desired_count:
+                break
+
+    if not suggestions:
+        _log(
+            debug_steps,
+            log_step,
+            "Remix suggestions unavailable; returning empty list.",
+        )
+
+    if suggestions:
+        preview = suggestions[: min(5, len(suggestions))]
+        _log(debug_steps, log_step, f"LLM parsed remix suggestions: {preview}")
+
+    return suggestions[:desired_count]
 
 
 def refine_playlist(

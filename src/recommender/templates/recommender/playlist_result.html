@@ -45,6 +45,10 @@
             50% { transform: translate(-47%, -46%) rotate(170deg) scale(1.04); }
         }
 
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         header {
             position: sticky;
             top: 0;
@@ -112,6 +116,78 @@
         .message-error {
             border-color: rgba(231, 76, 60, 0.45);
             background: rgba(231, 76, 60, 0.18);
+        }
+
+        .remix-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 10, 10, 0.92);
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .remix-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .remix-modal {
+            width: min(420px, 90%);
+            background: linear-gradient(135deg, rgba(2, 136, 209, 0.18), rgba(66, 165, 245, 0.1));
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            padding: 36px 32px;
+            text-align: center;
+        }
+
+        .remix-modal h3 {
+            font-size: 1.35rem;
+            margin-bottom: 18px;
+            font-weight: 700;
+        }
+
+        .remix-loader-ring {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 4px solid rgba(255, 255, 255, 0.12);
+            border-top-color: #42a5f5;
+            margin: 0 auto 24px;
+            animation: spin 1.2s linear infinite;
+        }
+
+        .remix-progress {
+            position: relative;
+            height: 10px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            overflow: hidden;
+            margin-bottom: 14px;
+        }
+
+        .remix-progress-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: linear-gradient(135deg, #0288D1 0%, #42a5f5 100%);
+            box-shadow: 0 0 18px rgba(66, 165, 245, 0.45);
+            width: 0%;
+            transition: width 0.18s ease;
+        }
+
+        .remix-progress-label {
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.85);
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
         }
 
         .message-warning {
@@ -356,6 +432,183 @@
             font-size: 0.92rem;
         }
 
+        .debug-meta {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .debug-meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: baseline;
+        }
+
+        .debug-meta-label {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: rgba(255, 255, 255, 0.58);
+            min-width: 88px;
+        }
+
+        .debug-meta-value {
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.88);
+        }
+
+        .debug-chip,
+        .flag-chip,
+        .breakdown-pill {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 3px 8px;
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .debug-chip {
+            margin-right: 6px;
+            margin-bottom: 4px;
+        }
+
+        .debug-details {
+            margin-top: 16px;
+            background: rgba(8, 31, 44, 0.7);
+            border: 1px solid rgba(66, 165, 245, 0.22);
+            border-radius: 12px;
+            padding: 16px 18px;
+        }
+
+        .debug-details summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.92);
+            list-style: none;
+        }
+
+        .debug-details summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .debug-details[open] summary {
+            margin-bottom: 12px;
+        }
+
+        .debug-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
+
+        .debug-table th,
+        .debug-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 0.85rem;
+            text-align: left;
+        }
+
+        .debug-table th {
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.68);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 0.78rem;
+        }
+
+        .debug-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .score-cell {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .score-badge {
+            padding: 2px 10px;
+            border-radius: 999px;
+            background: rgba(66, 165, 245, 0.2);
+            color: #42a5f5;
+            font-weight: 600;
+            font-size: 0.78rem;
+        }
+
+        .flag-chip {
+            margin-top: 4px;
+            margin-right: 4px;
+        }
+
+        .flag-chip.seed {
+            background: rgba(76, 175, 80, 0.25);
+            color: #81c784;
+        }
+
+        .flag-chip.focus {
+            background: rgba(2, 136, 209, 0.25);
+            color: #42a5f5;
+        }
+
+        .flag-chip.popularity {
+            background: rgba(255, 255, 255, 0.12);
+            color: rgba(255, 255, 255, 0.78);
+        }
+
+        .breakdown-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .breakdown-pill.breakdown-total {
+            background: rgba(66, 165, 245, 0.18);
+            color: #42a5f5;
+        }
+
+        .debug-empty {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 6px;
+        }
+
+        .debug-list {
+            margin: 8px 0 0;
+            padding-left: 18px;
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.78);
+        }
+
+        .debug-subdetails {
+            margin-top: 12px;
+            background: rgba(12, 34, 48, 0.55);
+            border: 1px solid rgba(66, 165, 245, 0.1);
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+
+        .debug-subdetails summary {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .debug-subdetails[open] summary {
+            margin-bottom: 8px;
+        }
+
+        .debug-track-meta {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.55);
+            margin-top: 2px;
+        }
+
         @media (max-width: 768px) {
             .header-inner {
                 flex-direction: column;
@@ -423,10 +676,11 @@
                             <button
                                 type="submit"
                                 class="btn btn-ghost"
-                                formaction="{% url 'recommender:generate_playlist' %}"
+                                formaction="{% url 'recommender:remix_playlist' %}"
                                 formmethod="post"
-                                {% if not prompt %}disabled{% endif %}>
-                                Remix
+                                id="remix-button"
+                                {% if not cache_key or not playlist_tracks %}disabled{% endif %}>
+                                Remix Playlist
                             </button>
                             <button type="submit" class="btn btn-primary" id="save-playlist-button">
                                 Save to Spotify
@@ -487,17 +741,235 @@
                 </ul>
             </section>
 
-            {% if debug_enabled and debug_steps %}
+            {% if debug_enabled %}
                 <section class="debug-panel">
-                    <h3>Generation Debug Steps</h3>
-                    <ol class="debug-steps">
-                        {% for step in debug_steps %}
-                            <li>{{ step }}</li>
-                        {% endfor %}
-                    </ol>
+                    <h3>Debug Inspector</h3>
+
+                    <div class="debug-meta">
+                        <div class="debug-meta-row">
+                            <span class="debug-meta-label">Prompt</span>
+                            <span class="debug-meta-value">{{ prompt|default:"—" }}</span>
+                        </div>
+                        {% if attributes %}
+                            <div class="debug-meta-row">
+                                <span class="debug-meta-label">Attributes</span>
+                                <span class="debug-meta-value">
+                                    {% for key, value in attributes.items %}
+                                        <span class="debug-chip">{{ key }}: {{ value|default:"—" }}</span>
+                                    {% empty %}
+                                        <span class="debug-meta-value">—</span>
+                                    {% endfor %}
+                                </span>
+                            </div>
+                        {% endif %}
+                        {% if seed_source_counts %}
+                            <div class="debug-meta-row">
+                                <span class="debug-meta-label">Seed Sources</span>
+                                <span class="debug-meta-value">
+                                    {% for source, count in seed_source_counts.items %}
+                                        <span class="debug-chip">{{ source }}: {{ count }}</span>
+                                    {% endfor %}
+                                </span>
+                            </div>
+                        {% endif %}
+                        {% if prompt_artist_candidates %}
+                            <div class="debug-meta-row">
+                                <span class="debug-meta-label">Prompt Artists</span>
+                                <span class="debug-meta-value">{{ prompt_artist_candidates|join:", " }}</span>
+                            </div>
+                        {% endif %}
+                        {% if llm_provider %}
+                            <div class="debug-meta-row">
+                                <span class="debug-meta-label">LLM Provider</span>
+                                <span class="debug-meta-value">{{ llm_provider|capfirst }}</span>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <details class="debug-details" open>
+                        <summary>Seed Inventory ({{ seed_track_details|length }})</summary>
+                        {% if seed_track_details %}
+                            <table class="debug-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Track</th>
+                                        <th>Artists</th>
+                                        <th>Source</th>
+                                        <th>Year</th>
+                                        <th>Popularity</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for track in seed_track_details %}
+                                        <tr>
+                                            <td>{{ forloop.counter }}</td>
+                                            <td>
+                                                <div>{{ track.name|default:"(unknown track)" }}</div>
+                                                {% if track.id %}
+                                                    <div class="debug-track-meta">ID: {{ track.id }}</div>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ track.artists|default:"—" }}</td>
+                                            <td>{{ track.seed_source|default:track.source|default:"—" }}</td>
+                                            <td>{{ track.year|default:"—" }}</td>
+                                            <td>{{ track.popularity|default:"—" }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <p class="debug-empty">No seed tracks recorded.</p>
+                        {% endif %}
+                    </details>
+
+                    <details class="debug-details" open>
+                        <summary>Similarity Scores ({{ similar_track_details|length }})</summary>
+                        {% if similar_track_details %}
+                            <table class="debug-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Track</th>
+                                        <th>Artists</th>
+                                        <th>Score</th>
+                                        <th>Breakdown</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for track in similar_track_details %}
+                                        <tr>
+                                            <td>{{ forloop.counter }}</td>
+                                            <td>
+                                                <div>{{ track.name|default:"(unknown track)" }}</div>
+                                                {% if track.id %}
+                                                    <div class="debug-track-meta">ID: {{ track.id }}</div>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ track.artists|default:"—" }}</td>
+                                            <td>
+                                                <div class="score-cell">
+                                                    <span class="score-badge">{{ track.score|default:0|floatformat:3 }}</span>
+                                                    {% if track.popularity %}
+                                                        <span class="flag-chip popularity">Pop {{ track.popularity }}</span>
+                                                    {% endif %}
+                                                    {% if track.seed_artist_overlap %}
+                                                        <span class="flag-chip seed">Seed overlap</span>
+                                                    {% endif %}
+                                                    {% if track.focus_artist_overlap %}
+                                                        <span class="flag-chip focus">Focus artist</span>
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                {% if track.score_breakdown %}
+                                                    <div class="breakdown-list">
+                                                        {% for key, value in track.score_breakdown.items %}
+                                                            {% if key != 'total' and value %}
+                                                                <span class="breakdown-pill">{{ key }}: {{ value|floatformat:3 }}</span>
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                        {% if track.score_breakdown.total %}
+                                                            <span class="breakdown-pill breakdown-total">total: {{ track.score_breakdown.total|floatformat:3 }}</span>
+                                                        {% endif %}
+                                                    </div>
+                                                {% else %}
+                                                    <span class="debug-empty">No breakdown recorded.</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <p class="debug-empty">No similarity candidates were ranked.</p>
+                        {% endif %}
+                    </details>
+
+                    {% if profile_snapshot %}
+                        <details class="debug-details">
+                            <summary>User Profile Cache Snapshot ({{ profile_snapshot.sample_size|default:0 }} tracks)</summary>
+                            <div class="debug-meta">
+                                <div class="debug-meta-row">
+                                    <span class="debug-meta-label">Source</span>
+                                    <span class="debug-meta-value">{{ profile_snapshot.source|default:"—" }}</span>
+                                </div>
+                                <div class="debug-meta-row">
+                                    <span class="debug-meta-label">Captured</span>
+                                    <span class="debug-meta-value">{{ profile_snapshot.created_at|default:"—" }}</span>
+                                </div>
+                            </div>
+
+                            {% if profile_snapshot.top_tracks %}
+                                <h4 style="margin-top: 12px; font-size: 0.95rem; color: rgba(255, 255, 255, 0.85);">Top Cached Tracks</h4>
+                                <ul class="debug-list">
+                                    {% for track in profile_snapshot.top_tracks %}
+                                        <li>{{ track.name|default:"(unknown)" }} — {{ track.artists|default:"—" }} (pop {{ track.popularity|default:0 }}, {{ track.year|default:"—" }})</li>
+                                    {% endfor %}
+                                </ul>
+                            {% endif %}
+
+                            {% if profile_snapshot.top_artists %}
+                                <h4 style="margin-top: 16px; font-size: 0.95rem; color: rgba(255, 255, 255, 0.85);">Top Artists by Play Count</h4>
+                                <ul class="debug-list">
+                                    {% for artist in profile_snapshot.top_artists %}
+                                        <li>{{ artist.name|default:artist.id }} — {{ artist.play_count|default:0 }} plays{% if artist.genres %} <span class="debug-chip">{{ artist.genres|join:", " }}</span>{% endif %}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% endif %}
+
+                            {% if profile_snapshot.genres %}
+                                <h4 style="margin-top: 16px; font-size: 0.95rem; color: rgba(255, 255, 255, 0.85);">Genre Buckets</h4>
+                                {% for genre in profile_snapshot.genres %}
+                                    <details class="debug-subdetails">
+                                        <summary>{{ genre.genre|default:"(unknown genre)" }} · {{ genre.track_count|default:0 }} tracks</summary>
+                                        <div class="debug-meta-row">
+                                            <span class="debug-meta-label">Avg Popularity</span>
+                                            <span class="debug-meta-value">{{ genre.avg_popularity|default:"—" }}</span>
+                                        </div>
+                                        <div class="debug-meta-row">
+                                            <span class="debug-meta-label">Avg Year</span>
+                                            <span class="debug-meta-value">{{ genre.avg_year|default:"—" }}</span>
+                                        </div>
+                                        {% if genre.tracks %}
+                                            <ul class="debug-list">
+                                                {% for track in genre.tracks %}
+                                                    <li>{{ track.name|default:"(unknown)" }} — {{ track.artists|default:"—" }} (pop {{ track.popularity|default:0 }}, {{ track.year|default:"—" }})</li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% else %}
+                                            <p class="debug-empty">No cached tracks recorded for this genre.</p>
+                                        {% endif %}
+                                    </details>
+                                {% endfor %}
+                            {% endif %}
+                        </details>
+                    {% endif %}
+
+                    {% if debug_steps %}
+                        <details class="debug-details">
+                            <summary>Generation Log ({{ debug_steps|length }})</summary>
+                            <ol class="debug-steps">
+                                {% for step in debug_steps %}
+                                    <li>{{ step }}</li>
+                                {% endfor %}
+                            </ol>
+                        </details>
+                    {% endif %}
                 </section>
             {% endif %}
         </main>
+    </div>
+
+    <div class="remix-overlay" id="remix-overlay" data-total-steps="24">
+        <div class="remix-modal">
+            <div class="remix-loader-ring"></div>
+            <h3>Remixing Your Playlist</h3>
+            <div class="remix-progress">
+                <div class="remix-progress-bar" id="remix-progress-bar"></div>
+            </div>
+            <div class="remix-progress-label" id="remix-progress-label">Preparing remix...</div>
+        </div>
     </div>
 
     <script>
@@ -507,6 +979,121 @@
             const messageStack = document.getElementById('message-stack');
             const cacheKey = trackList ? trackList.dataset.cacheKey : null;
             const updateUrl = trackList ? trackList.dataset.updateUrl : null;
+            const remixOverlay = document.getElementById('remix-overlay');
+            const remixProgressBar = document.getElementById('remix-progress-bar');
+            const remixProgressLabel = document.getElementById('remix-progress-label');
+            const remixButton = document.getElementById('remix-button');
+            const playlistForm = document.getElementById('playlist-save-form');
+
+            if (playlistForm && remixButton && remixOverlay && remixProgressBar && remixProgressLabel) {
+                let remixFrame = null;
+
+                const resetRemixProgress = () => {
+                    if (remixFrame !== null) {
+                        cancelAnimationFrame(remixFrame);
+                        remixFrame = null;
+                    }
+                    remixProgressBar.style.width = '0%';
+                    remixProgressLabel.textContent = 'Preparing remix...';
+                };
+
+                const holdNearCompletion = (label) => {
+                    if (!remixOverlay.classList.contains('visible')) {
+                        resetRemixProgress();
+                        return;
+                    }
+                    const flicker = 94 + Math.random() * 2;
+                    remixProgressBar.style.width = `${flicker}%`;
+                    remixProgressLabel.textContent = `${label} (waiting on Spotify...)`;
+                    remixFrame = requestAnimationFrame(() => holdNearCompletion(label));
+                };
+
+                const startRemixProgress = () => {
+                    const totalSteps = Number(remixOverlay.dataset.totalSteps || 24);
+                    const phaseTimeline = [
+                        { label: 'Studying current mix', duration: 1200, target: 0.08 },
+                        { label: 'Spotlighting standout tracks', duration: 12500, target: 0.2 },
+                        { label: 'Hunting fresh vibes', duration: 58000, target: 0.72 },
+                        { label: 'Resolving Spotify matches', duration: 5500, target: 0.88 },
+                        { label: 'Balancing energy arcs', duration: 4200, target: 0.94 },
+                        { label: 'Sequencing transitions', duration: 2600, target: 0.97 },
+                    ];
+                    const finalLabel = 'Locking in remix order';
+                    const totalDuration = phaseTimeline.reduce((sum, phase) => sum + phase.duration, 0);
+                    const startTime = performance.now();
+
+                    const animate = () => {
+                        if (!remixOverlay.classList.contains('visible')) {
+                            resetRemixProgress();
+                            return;
+                        }
+
+                        const elapsed = performance.now() - startTime;
+                        const clampedElapsed = Math.min(elapsed, totalDuration);
+
+                        let accumulated = 0;
+                        let previousTarget = 0;
+                        let currentLabel = phaseTimeline[phaseTimeline.length - 1].label;
+                        let progressRatio = phaseTimeline[phaseTimeline.length - 1].target;
+
+                        for (const phase of phaseTimeline) {
+                            const phaseStart = accumulated;
+                            const phaseEnd = accumulated + phase.duration;
+                            if (clampedElapsed <= phaseEnd) {
+                                const localProgress = Math.min(
+                                    (clampedElapsed - phaseStart) / phase.duration,
+                                    1
+                                );
+                                progressRatio =
+                                    previousTarget + (phase.target - previousTarget) * (1 - Math.pow(1 - localProgress, 2));
+                                currentLabel = phase.label;
+                                break;
+                            }
+                            accumulated = phaseEnd;
+                            previousTarget = phase.target;
+                        }
+
+                        const percentage = Math.max(1, Math.floor(progressRatio * 100));
+                        remixProgressBar.style.width = `${percentage}%`;
+
+                        const stepNumber = Math.max(
+                            1,
+                            Math.min(totalSteps, Math.round(progressRatio * totalSteps))
+                        );
+                        remixProgressLabel.textContent = `${currentLabel} (${stepNumber}/${totalSteps})`;
+
+                        if (clampedElapsed < totalDuration) {
+                            remixFrame = requestAnimationFrame(animate);
+                        } else {
+                            remixFrame = requestAnimationFrame(() => holdNearCompletion(finalLabel));
+                        }
+                    };
+
+                    animate();
+                };
+
+                remixButton.addEventListener('click', () => {
+                    if (remixButton.disabled) {
+                        return;
+                    }
+                    remixOverlay.classList.add('visible');
+                    resetRemixProgress();
+                    startRemixProgress();
+                });
+
+                playlistForm.addEventListener('submit', (event) => {
+                    const submitter = event.submitter || document.activeElement;
+                    if (submitter !== remixButton) {
+                        remixOverlay.classList.remove('visible');
+                        resetRemixProgress();
+                    }
+                });
+
+                window.addEventListener('pagehide', () => {
+                    resetRemixProgress();
+                    remixOverlay.classList.remove('visible');
+                });
+            }
 
             function formatDuration(ms) {
                 const totalSeconds = Math.max(0, Math.floor(Number(ms) / 1000));

@@ -1,10 +1,12 @@
 import spotipy
 from django.conf import settings
+from django.core.cache import cache
 from django.shortcuts import redirect, render
 from django.views import View
 from explorer.models import Playlist
 from explorer.views import SpotifyAPIHelper
 from spotify_auth.session import clear_spotify_session, ensure_valid_spotify_session
+from recommender.services.spotify_handler import build_user_profile_seed_snapshot
 
 
 class DashboardView(View):
@@ -26,6 +28,14 @@ class DashboardView(View):
             user_id = user_profile.get('id')
             email = user_profile.get('email')
             followers = user_profile.get('followers', {}).get('total', 0)
+
+            if user_id:
+                cache_key = f"recommender:user-profile:{user_id}"
+                if not cache.get(cache_key):
+                    snapshot = build_user_profile_seed_snapshot(sp)
+                    if snapshot:
+                        ttl = getattr(settings, "RECOMMENDER_USER_PROFILE_CACHE_TTL", 3600)
+                        cache.set(cache_key, snapshot, ttl)
 
             last_song = None
             if recently_played and recently_played.get('items'):
