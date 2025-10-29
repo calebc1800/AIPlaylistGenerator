@@ -106,7 +106,7 @@ jobs:
           python -c "import aiplaylist; print('✅ Django project imported successfully')"
           
           if command -v pytest &> /dev/null; then
-            pytest --cov=. --cov-report=term-missing -v
+            pytest --cov=. --cov-report=term-missing --cov-fail-under=80 -v
           else
             echo "pytest not available, running Django tests directly"
             python src/manage.py test
