@@ -17,7 +17,11 @@ from django.views.decorators.http import require_POST
 from spotipy import SpotifyException
 
 from .models import SavedPlaylist
-from .services.llm_handler import extract_playlist_attributes, suggest_seed_tracks
+from .services.llm_handler import (
+    extract_playlist_attributes,
+    suggest_seed_tracks,
+    suggest_remix_tracks,
+)
 from .services.spotify_handler import (
     discover_top_tracks_for_genre,
     get_similar_tracks,
@@ -347,6 +351,214 @@ def generate_playlist(request):
         log("Playlist cached for 15 minutes.")
 
     context = _build_context_from_payload(payload)
+    return render(request, "recommender/playlist_result.html", context)
+
+
+@require_POST
+def remix_playlist(request):
+    """Regenerate the cached playlist using the current tracks as seeds."""
+    cache_key = request.POST.get("cache_key", "").strip()
+    if not cache_key:
+        messages.error(request, "Playlist session expired. Please generate a new playlist.")
+        return redirect("dashboard:dashboard")
+
+    cached_payload = cache.get(cache_key)
+    if not isinstance(cached_payload, dict):
+        messages.error(request, "Playlist session expired. Please generate a new playlist.")
+        return redirect("dashboard:dashboard")
+
+    track_details = cached_payload.get("track_details")
+    if not isinstance(track_details, list) or not track_details:
+        messages.error(request, "No tracks available to remix yet. Generate a playlist first.")
+        context = _build_context_from_payload(cached_payload)
+        context.setdefault("cache_key", cache_key)
+        return render(request, "recommender/playlist_result.html", context, status=409)
+
+    access_token = request.session.get("spotify_access_token")
+    if not access_token:
+        messages.error(request, "Spotify authentication required.")
+        return redirect("spotify_auth:login")
+
+    debug_steps: List[str] = []
+    errors: List[str] = []
+    log = _make_logger(debug_steps, errors)
+
+    prompt = (cached_payload.get("prompt") or request.POST.get("prompt") or "").strip()
+
+    debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
+    default_provider = str(
+        getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
+    ).lower()
+    provider_choices = {"openai", "ollama"}
+    requested_provider = (request.POST.get("llm_provider") or "").strip().lower()
+    session_provider = (request.session.get("llm_provider") or "").strip().lower()
+    if debug_enabled and requested_provider in provider_choices:
+        llm_provider = requested_provider
+    elif session_provider in provider_choices:
+        llm_provider = session_provider
+    else:
+        llm_provider = default_provider if default_provider in provider_choices else "openai"
+    if not debug_enabled and llm_provider != (
+        default_provider if default_provider in provider_choices else "openai"
+    ):
+        llm_provider = default_provider if default_provider in provider_choices else "openai"
+    request.session["llm_provider"] = llm_provider
+
+    raw_attributes = cached_payload.get("attributes")
+    attributes = raw_attributes if isinstance(raw_attributes, dict) else None
+    if not attributes:
+        log("Cached attributes missing; extracting again from prompt.")
+        attributes = extract_playlist_attributes(
+            prompt,
+            debug_steps=debug_steps,
+            log_step=log,
+            provider=llm_provider,
+        )
+
+    target_count = sum(1 for entry in track_details if isinstance(entry, dict))
+    seed_snapshot = [
+        f"{entry.get('name', 'Unknown')} - {entry.get('artists', 'Unknown')}".strip()
+        for entry in track_details
+        if isinstance(entry, dict)
+    ]
+    log(f"Remix target track count: {target_count}")
+
+    remix_suggestions = suggest_remix_tracks(
+        seed_snapshot,
+        attributes,
+        prompt=prompt,
+        target_count=target_count,
+        debug_steps=debug_steps,
+        log_step=log,
+        provider=llm_provider,
+    )
+
+    resolved_seed_tracks = resolve_seed_tracks(
+        remix_suggestions,
+        access_token,
+        debug_steps=debug_steps,
+        log_step=log,
+        limit=target_count,
+    )
+    log(f"Resolved {len(resolved_seed_tracks)} remix tracks via Spotify search.")
+
+    ordered_tracks: List[Dict[str, object]] = []
+    similar_used: List[Dict[str, object]] = []
+    seen_keys: Set[str] = set()
+
+    def _append_track(entry: Dict[str, object], *, force: bool = False) -> bool:
+        track_id = str(entry.get("id") or "")
+        dedupe_key = track_id or f"{entry.get('name')}::{entry.get('artists')}"
+        if not dedupe_key:
+            dedupe_key = f"anon::{entry.get('name')}::{entry.get('artists')}"
+        if not force and dedupe_key in seen_keys:
+            return False
+        unique_key = dedupe_key
+        if force and unique_key in seen_keys:
+            unique_key = f"{dedupe_key}::{len(ordered_tracks)}::force"
+        seen_keys.add(unique_key)
+        ordered_tracks.append(
+            {
+                "id": track_id,
+                "name": entry.get("name", "Unknown"),
+                "artists": entry.get("artists", "Unknown"),
+                "album_name": entry.get("album_name", ""),
+                "album_image_url": entry.get("album_image_url", ""),
+                "duration_ms": int(entry.get("duration_ms") or 0),
+                "artist_ids": entry.get("artist_ids", []),
+                "year": entry.get("year"),
+            }
+        )
+        return True
+
+    for track in resolved_seed_tracks:
+        _append_track(track)
+
+    seed_track_ids = [track.get("id") for track in resolved_seed_tracks if track.get("id")]
+    seed_artist_ids = {
+        artist_id
+        for track in resolved_seed_tracks
+        for artist_id in (track.get("artist_ids") or [])
+        if artist_id
+    }
+    seed_years = [track.get("year") for track in resolved_seed_tracks if track.get("year")]
+    seed_year_avg = sum(seed_years) / len(seed_years) if seed_years else None
+    prompt_keywords = {
+        kw
+        for kw in re.findall(r"[a-z0-9]+", prompt.lower())
+        if len(kw) > 2
+    }
+
+    if len(ordered_tracks) < target_count and seed_track_ids:
+        log("Resolved remix seeds below target; fetching Spotify similarity tracks.")
+        similarity_candidates = get_similar_tracks(
+            seed_track_ids,
+            seed_artist_ids,
+            seed_year_avg,
+            access_token,
+            attributes,
+            prompt_keywords,
+            debug_steps=debug_steps,
+            log_step=log,
+            limit=max(target_count - len(ordered_tracks), 5),
+        )
+        for candidate in similarity_candidates:
+            if len(ordered_tracks) >= target_count:
+                break
+            if _append_track(candidate):
+                similar_used.append(candidate)
+
+    if len(ordered_tracks) < target_count:
+        log("Falling back to original playlist tracks to maintain length.")
+        for entry in track_details:
+            if not isinstance(entry, dict):
+                continue
+            if len(ordered_tracks) >= target_count:
+                break
+            fallback_entry = {
+                "id": entry.get("id"),
+                "name": entry.get("name", "Unknown"),
+                "artists": entry.get("artists", "Unknown"),
+                "album_name": entry.get("album_name", ""),
+                "album_image_url": entry.get("album_image_url", ""),
+                "duration_ms": int(entry.get("duration_ms") or 0),
+            }
+            _append_track(fallback_entry, force=True)
+
+    playlist_strings = [
+        f"{entry.get('name', 'Unknown')} - {entry.get('artists', 'Unknown')}".strip()
+        for entry in ordered_tracks
+    ]
+    track_ids = [entry.get("id") for entry in ordered_tracks if entry.get("id")]
+
+    payload = {
+        **cached_payload,
+        "playlist": playlist_strings,
+        "track_details": ordered_tracks,
+        "track_ids": track_ids,
+        "resolved_seed_tracks": resolved_seed_tracks,
+        "llm_suggestions": remix_suggestions,
+        "seed_track_display": seed_snapshot,
+        "similar_tracks": similar_used,
+        "similar_tracks_display": [
+            f"{track.get('name', 'Unknown')} - {track.get('artists', 'Unknown')}".strip()
+            for track in similar_used
+        ],
+        "debug_steps": debug_steps,
+        "errors": errors,
+        "llm_provider": llm_provider,
+        "prompt": prompt,
+        "cache_key": cache_key,
+    }
+
+    cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
+    cache.set(cache_key, payload, timeout=cache_timeout)
+    log("Remixed playlist cached for 15 minutes.")
+
+    context = _build_context_from_payload(payload)
+    context.setdefault("cache_key", cache_key)
+
+    messages.success(request, "Playlist remixed with fresh recommendations.")
     return render(request, "recommender/playlist_result.html", context)
 
 

@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import subprocess
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from openai import OpenAI
 
@@ -368,11 +368,12 @@ def suggest_seed_tracks(
     provider: Optional[str] = None,
 ) -> List[Dict[str, str]]:
     """Use the LLM to propose seed tracks as title/artist pairs."""
+    suggestion_cap = max(1, int(max_suggestions or 5))
     query = (
         "You are selecting seed songs for a Spotify playlist.\n"
         f"Playlist request: \"{prompt}\"\n"
         f"Extracted attributes: {attributes}\n"
-        "Return a JSON array with at most five objects, each containing the keys "
+        f"Return a JSON array with at most {suggestion_cap} objects, each containing the keys "
         "\"title\" and \"artist\". Choose well-known songs that fit the mood/genre/"
         "energy and are likely available on Spotify."
     )
@@ -444,7 +445,133 @@ def suggest_seed_tracks(
             f"Provided fallback seed suggestions for genre '{canonical or 'default'}'.",
         )
 
-    return suggestions[:max_suggestions]
+    return suggestions[:suggestion_cap]
+
+
+def suggest_remix_tracks(
+    existing_tracks: List[str],
+    attributes: Dict[str, str],
+    *,
+    prompt: str,
+    target_count: int,
+    debug_steps: Optional[List[str]] = None,
+    log_step: Optional[Callable[[str], None]] = None,
+    provider: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    """Ask the LLM to remix a playlist using the current cached tracks as inspiration."""
+    desired_count = max(int(target_count or 0), 0)
+    if desired_count <= 0:
+        return []
+
+    unique_existing: List[str] = []
+    seen_existing: Set[str] = set()
+    for track in existing_tracks:
+        normalized = (track or "").strip()
+        if not normalized:
+            continue
+        lowered = normalized.lower()
+        if lowered in seen_existing:
+            continue
+        seen_existing.add(lowered)
+        unique_existing.append(normalized)
+    snapshot_limit = max(1, min(desired_count, 25))
+    track_snapshot = unique_existing[:snapshot_limit]
+    if not track_snapshot:
+        track_snapshot = ["(playlist currently empty)"]
+
+    numbered_tracks = "\n".join(f"{index + 1}. {entry}" for index, entry in enumerate(track_snapshot))
+    attribute_label = json.dumps(attributes, ensure_ascii=False)
+    prompt_label = prompt or "Unnamed playlist request"
+    query = (
+        "You are refreshing an existing Spotify playlist for a user.\n"
+        f"Original request: \"{prompt_label}\"\n"
+        f"Target attributes: {attribute_label}\n"
+        "Current playlist tracks:\n"
+        f"{numbered_tracks}\n\n"
+        f"Remix the playlist by returning exactly {desired_count} songs that match the same mood, genre, and energy."
+        " You may keep some of the existing songs, but avoid duplicates overall and ensure the list feels refreshed."
+        " Return a JSON array where each object contains the keys \"title\" and \"artist\"."
+        " Prefer well-known tracks that are likely available on Spotify US."
+    )
+    _log(debug_steps, log_step, f"LLM prompt (remix suggestions): {query}")
+    response = dispatch_llm_query(query, provider=provider)
+    snippet = response if len(response) <= 400 else response[:397] + "..."
+    _log(debug_steps, log_step, f"LLM raw response (remix suggestions): {snippet}")
+
+    suggestions: List[Dict[str, str]] = []
+    seen_pairs: Set[tuple[str, str]] = set()
+
+    def _add_suggestion(title: str, artist: str):
+        title = (title or "").strip()
+        artist = (artist or "").strip()
+        if not title:
+            return
+        key = (title.lower(), artist.lower())
+        if key in seen_pairs:
+            return
+        seen_pairs.add(key)
+        suggestions.append({"title": title, "artist": artist})
+
+    if response:
+        parsed = _parse_json_response(response)
+        if isinstance(parsed, dict):
+            if "tracks" in parsed:
+                parsed = parsed["tracks"]
+            elif "playlist" in parsed:
+                parsed = parsed["playlist"]
+            elif "songs" in parsed:
+                parsed = parsed["songs"]
+        if isinstance(parsed, list):
+            for item in parsed:
+                if isinstance(item, dict):
+                    title = item.get("title") or item.get("song") or item.get("name")
+                    artist = item.get("artist") or item.get("artists") or item.get("singer")
+                    if isinstance(artist, list):
+                        artist = ", ".join(str(part) for part in artist)
+                    if title:
+                        _add_suggestion(str(title), str(artist or ""))
+                elif isinstance(item, str):
+                    if " - " in item:
+                        title, artist = item.split(" - ", 1)
+                    else:
+                        title, artist = item, ""
+                    _add_suggestion(title, artist)
+        else:
+            lines = [line.strip() for line in response.splitlines() if line.strip()]
+            for line in lines:
+                if " - " in line:
+                    title, artist = line.split(" - ", 1)
+                else:
+                    title, artist = line, ""
+                _add_suggestion(title, artist)
+
+    if len(suggestions) < desired_count:
+        _log(
+            debug_steps,
+            log_step,
+            "LLM remix suggestions insufficient; filling with existing playlist tracks.",
+        )
+        for track in unique_existing:
+            if " - " in track:
+                title, artist = track.split(" - ", 1)
+            else:
+                title, artist = track, ""
+            _add_suggestion(title, artist)
+            if len(suggestions) >= desired_count:
+                break
+
+    if not suggestions:
+        _log(
+            debug_steps,
+            log_step,
+            "Remix suggestions unavailable; returning empty list.",
+        )
+
+    if suggestions:
+        preview = suggestions[: min(5, len(suggestions))]
+        _log(debug_steps, log_step, f"LLM parsed remix suggestions: {preview}")
+
+    return suggestions[:desired_count]
 
 
 def refine_playlist(

@@ -423,10 +423,10 @@
                             <button
                                 type="submit"
                                 class="btn btn-ghost"
-                                formaction="{% url 'recommender:generate_playlist' %}"
+                                formaction="{% url 'recommender:remix_playlist' %}"
                                 formmethod="post"
-                                {% if not prompt %}disabled{% endif %}>
-                                Remix
+                                {% if not cache_key or not playlist_tracks %}disabled{% endif %}>
+                                Remix Playlist
                             </button>
                             <button type="submit" class="btn btn-primary" id="save-playlist-button">
                                 Save to Spotify

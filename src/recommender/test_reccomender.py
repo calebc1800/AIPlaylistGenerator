@@ -247,6 +247,109 @@ class GeneratePlaylistViewTests(TestCase):
         self.assertIn("Generation Debug Steps", response.content.decode())
 
 
+class RemixPlaylistViewTests(TestCase):
+    """Tests for the playlist remix endpoint."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse("recommender:remix_playlist")
+        cache.clear()
+
+    def _seed_cached_playlist(self, cache_key: str, track_count: int = 3):
+        tracks = []
+        playlist = []
+        for index in range(track_count):
+            track_id = f"old-{index}"
+            track_name = f"Old Track {index + 1}"
+            artist_name = f"Old Artist {index + 1}"
+            tracks.append(
+                {
+                    "id": track_id,
+                    "name": track_name,
+                    "artists": artist_name,
+                    "album_name": "",
+                    "album_image_url": "",
+                    "duration_ms": 180000,
+                }
+            )
+            playlist.append(f"{track_name} - {artist_name}")
+
+        cache.set(
+            cache_key,
+            {
+                "playlist": playlist,
+                "track_details": tracks,
+                "track_ids": [entry["id"] for entry in tracks],
+                "prompt": "lofi coding mix",
+                "attributes": {"mood": "chill", "genre": "lo-fi", "energy": "low"},
+                "suggested_playlist_name": "Lofi Coding Mix",
+            },
+            timeout=60,
+        )
+
+    @patch("recommender.views.get_similar_tracks")
+    @patch("recommender.views.resolve_seed_tracks")
+    @patch("recommender.views.suggest_remix_tracks")
+    def test_remix_updates_cached_playlist(
+        self,
+        mock_suggest,
+        mock_resolve,
+        mock_similar,
+    ):
+        session = self.client.session
+        session["spotify_access_token"] = "token"
+        session["spotify_user_id"] = "remix-user"
+        session.save()
+
+        cache_key = _cache_key("remix-user", "lofi coding mix")
+        self._seed_cached_playlist(cache_key)
+
+        mock_suggest.return_value = [
+            {"title": "Remix Track 1", "artist": "Remix Artist 1"},
+            {"title": "Remix Track 2", "artist": "Remix Artist 2"},
+            {"title": "Remix Track 3", "artist": "Remix Artist 3"},
+        ]
+        mock_resolve.return_value = [
+            {
+                "id": f"remix-{index}",
+                "name": f"Remix Track {index}",
+                "artists": f"Remix Artist {index}",
+                "album_name": "",
+                "album_image_url": "",
+                "duration_ms": 200000,
+                "artist_ids": [f"artist-{index}"],
+                "year": 2020,
+            }
+            for index in range(1, 4)
+        ]
+        mock_similar.return_value = []
+
+        response = self.client.post(self.url, {"cache_key": cache_key})
+
+        self.assertEqual(response.status_code, 200)
+        mock_suggest.assert_called_once()
+        mock_resolve.assert_called_once()
+        mock_similar.assert_not_called()
+
+        cached = cache.get(cache_key)
+        self.assertIsInstance(cached, dict)
+        self.assertIn("playlist", cached)
+        self.assertEqual(len(cached["playlist"]), 3)
+        self.assertTrue(all(item.startswith("Remix Track") for item in cached["playlist"]))
+
+        messages_list = list(get_messages(response.wsgi_request))
+        self.assertTrue(any("remixed" in str(message).lower() for message in messages_list))
+
+    def test_remix_requires_spotify_auth(self):
+        cache_key = _cache_key("remix-user", "lofi coding mix")
+        self._seed_cached_playlist(cache_key)
+
+        response = self.client.post(self.url, {"cache_key": cache_key})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("spotify_auth:login"))
+
+
 class SpotifyHandlerTests(TestCase):
     """Unit tests for Spotify service helpers."""
 
