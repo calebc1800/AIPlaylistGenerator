@@ -1,10 +1,13 @@
 # spotify_auth/tests.py
 
-from django.test import TestCase, Client
-from django.urls import reverse
-from django.conf import settings
-from unittest.mock import patch, Mock
 import json
+import time
+from unittest.mock import Mock, patch
+
+from django.conf import settings
+from django.test import Client, TestCase
+from django.urls import reverse
+from requests.exceptions import RequestException
 
 
 class SpotifyLoginViewTests(TestCase):
@@ -52,6 +55,45 @@ class SpotifyLoginViewTests(TestCase):
         
         if settings.SPOTIFY_CLIENT_ID:
             self.assertIn(f'client_id={settings.SPOTIFY_CLIENT_ID}', response.url)
+
+    def test_login_redirects_to_dashboard_when_session_valid(self):
+        """Existing Spotify session should skip new authorization"""
+        session = self.client.session
+        session['spotify_access_token'] = 'cached_token'
+        session['spotify_token_expires_at'] = int(time.time()) + 3600
+        session.save()
+
+        response = self.client.get(self.login_url)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dashboard:dashboard'))
+
+    @patch('spotify_auth.session.requests.post')
+    def test_login_refreshes_expired_token(self, mock_post):
+        """Expired access token should refresh automatically before redirecting"""
+        session = self.client.session
+        session['spotify_access_token'] = 'expired_token'
+        session['spotify_refresh_token'] = 'refresh_token'
+        session['spotify_token_expires_at'] = int(time.time()) - 5
+        session.save()
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'access_token': 'new_access_token',
+            'refresh_token': 'new_refresh_token',
+            'expires_in': 3600,
+        }
+        mock_post.return_value = mock_response
+
+        response = self.client.get(self.login_url)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dashboard:dashboard'))
+        self.assertEqual(self.client.session['spotify_access_token'], 'new_access_token')
+        self.assertEqual(self.client.session['spotify_refresh_token'], 'new_refresh_token')
+        self.assertIn('spotify_token_expires_at', self.client.session)
+        mock_post.assert_called_once()
 
 
 class SpotifyCallbackViewTests(TestCase):
@@ -141,6 +183,7 @@ class SpotifyCallbackViewTests(TestCase):
         self.assertEqual(self.client.session['spotify_access_token'], 'test_access_token')
         self.assertEqual(self.client.session['spotify_refresh_token'], 'test_refresh_token')
         self.assertEqual(self.client.session['spotify_expires_in'], 3600)
+        self.assertIn('spotify_token_expires_at', self.client.session)
         
         # User info should be stored in session
         self.assertEqual(self.client.session['spotify_user_id'], 'test_user_id')
@@ -256,6 +299,7 @@ class SpotifyRefreshTokenViewTests(TestCase):
         # New access token should be in session
         self.assertEqual(self.client.session['spotify_access_token'], 'new_access_token')
         self.assertEqual(self.client.session['spotify_expires_in'], 3600)
+        self.assertIn('spotify_token_expires_at', self.client.session)
     
     @patch('spotify_auth.views.requests.post')
     def test_failed_token_refresh(self, mock_post):
@@ -312,6 +356,21 @@ class SpotifyRefreshTokenViewTests(TestCase):
         self.assertEqual(data['client_id'], settings.SPOTIFY_CLIENT_ID)
         self.assertEqual(data['client_secret'], settings.SPOTIFY_CLIENT_SECRET)
 
+    @patch('spotify_auth.session.requests.post')
+    def test_refresh_network_failure_returns_502(self, mock_post):
+        """Network failures should bubble up as a 502 response"""
+        session = self.client.session
+        session['spotify_refresh_token'] = 'test_refresh_token'
+        session.save()
+
+        mock_post.side_effect = RequestException("timeout")
+
+        response = self.client.post(self.refresh_url)
+
+        self.assertEqual(response.status_code, 502)
+        data = json.loads(response.content)
+        self.assertIn('Unable to reach Spotify', data['error'])
+
 
 class SpotifyIntegrationTests(TestCase):
     """Integration tests for the full OAuth flow"""
@@ -364,6 +423,7 @@ class SpotifyIntegrationTests(TestCase):
         self.assertIn('spotify_access_token', self.client.session)
         self.assertIn('spotify_refresh_token', self.client.session)
         self.assertIn('spotify_user_id', self.client.session)
+        self.assertIn('spotify_token_expires_at', self.client.session)
 
 
 class SpotifyDashboardViewTests(TestCase):
