@@ -23,7 +23,10 @@ from .services.llm_handler import (
     suggest_remix_tracks,
 )
 from .services.spotify_handler import (
+    cached_tracks_for_genre,
+    ensure_artist_seed,
     discover_top_tracks_for_genre,
+    normalize_genre,
     get_similar_tracks,
     resolve_seed_tracks,
     create_playlist_with_tracks,
@@ -163,6 +166,10 @@ def generate_playlist(request):
     else:
         user_id = request.session.get("spotify_user_id", user_id)
 
+    profile_cache: Optional[Dict[str, object]] = None
+    if user_id:
+        profile_cache = cache.get(f"recommender:user-profile:{user_id}")
+
     cache_key = _cache_key(user_id, prompt)
     cached_payload: Optional[Dict[str, object]] = cache.get(cache_key)
     preferences = get_preferences_for_request(request)
@@ -217,6 +224,71 @@ def generate_playlist(request):
         )
         log(f"Attributes after normalization: {attributes}")
 
+        normalized_genre = normalize_genre(attributes.get("genre", "pop") or "pop")
+
+        prompt_artist_candidates: List[str] = []
+        primary_artist = attributes.get("artist")
+        if isinstance(primary_artist, str) and primary_artist.strip():
+            prompt_artist_candidates.append(primary_artist.strip())
+        additional_artists = attributes.get("artists")
+        if isinstance(additional_artists, list):
+            for candidate in additional_artists:
+                if isinstance(candidate, str) and candidate.strip():
+                    normalized = candidate.strip()
+                    if normalized.lower() not in {name.lower() for name in prompt_artist_candidates}:
+                        prompt_artist_candidates.append(normalized)
+
+        prompt_artist_ids: Set[str] = set()
+        resolved_seed_tracks: List[Dict[str, object]] = []
+        seed_seen: Set[str] = set()
+        seed_sources: Dict[str, int] = {}
+
+        def _append_seed_entry(track: Dict[str, object], source_label: str) -> None:
+            if not isinstance(track, dict):
+                return
+            track_id = track.get("id")
+            dedupe_key = track_id or f"{track.get('name')}::{track.get('artists')}"
+            if not dedupe_key:
+                return
+            if dedupe_key in seed_seen:
+                return
+            seed_seen.add(dedupe_key)
+            enriched = dict(track)
+            if source_label:
+                enriched.setdefault("seed_source", source_label)
+            resolved_seed_tracks.append(enriched)
+            seed_sources[source_label] = seed_sources.get(source_label, 0) + 1
+
+        primary_artist_hint = prompt_artist_candidates[0] if prompt_artist_candidates else ""
+        artist_seed_info = None
+        if primary_artist_hint:
+            artist_seed_info = ensure_artist_seed(
+                primary_artist_hint,
+                access_token,
+                profile_cache=profile_cache,
+                debug_steps=debug_steps,
+                log_step=log,
+            )
+            if artist_seed_info:
+                artist_id = artist_seed_info.get("artist_id")
+                if isinstance(artist_id, str) and artist_id:
+                    prompt_artist_ids.add(artist_id)
+                artist_tracks = artist_seed_info.get("tracks", [])
+                for track in artist_tracks:
+                    _append_seed_entry(track, artist_seed_info.get("source", "artist_seed"))
+                log(
+                    f"Artist seed ensured {len(artist_tracks)} tracks for '{artist_seed_info.get('artist_name', primary_artist_hint)}'."
+                )
+
+        if profile_cache and normalized_genre:
+            cached_genre_tracks = cached_tracks_for_genre(profile_cache, normalized_genre, limit=5)
+            if cached_genre_tracks:
+                for track in cached_genre_tracks:
+                    _append_seed_entry(track, "user_genre_cache")
+                log(
+                    f"User cache contributed {len(cached_genre_tracks)} seed tracks for genre '{normalized_genre}'."
+                )
+
         llm_suggestions = suggest_seed_tracks(
             prompt,
             attributes,
@@ -224,26 +296,34 @@ def generate_playlist(request):
             log_step=log,
             provider=llm_provider,
         )
-        resolved_seed_tracks = resolve_seed_tracks(
+        llm_seed_tracks = resolve_seed_tracks(
             llm_suggestions,
             access_token,
             debug_steps=debug_steps,
             log_step=log,
         )
+        for track in llm_seed_tracks:
+            _append_seed_entry(track, "llm_seed")
+        if llm_seed_tracks:
+            log(f"LLM resolved {len(llm_seed_tracks)} seed tracks via Spotify search.")
 
-        if not resolved_seed_tracks:
-            log("No LLM seeds resolved; discovering top tracks from Spotify.")
-            resolved_seed_tracks = discover_top_tracks_for_genre(
+        seed_limit = getattr(settings, "RECOMMENDER_SEED_LIMIT", 5)
+        if len(resolved_seed_tracks) < seed_limit:
+            log("Seed count below threshold; discovering top tracks from Spotify.")
+            fallback_tracks = discover_top_tracks_for_genre(
                 attributes,
                 access_token,
                 debug_steps=debug_steps,
                 log_step=log,
             )
-            if resolved_seed_tracks:
-                llm_suggestions = [
-                    {"title": track["name"], "artist": track["artists"]}
-                    for track in resolved_seed_tracks
-                ]
+            if fallback_tracks:
+                for track in fallback_tracks:
+                    _append_seed_entry(track, "genre_discovery")
+                if not llm_seed_tracks:
+                    llm_suggestions = [
+                        {"title": track["name"], "artist": track["artists"]}
+                        for track in fallback_tracks
+                    ]
 
         seed_track_display = [
             f"{track['name']} - {track['artists']}" for track in resolved_seed_tracks
@@ -306,6 +386,8 @@ def generate_playlist(request):
                 prompt_keywords,
                 debug_steps=debug_steps,
                 log_step=log,
+                profile_cache=profile_cache,
+                focus_artist_ids=prompt_artist_ids,
             )
             log(f"Similarity engine produced {len(similar_tracks)} tracks.")
 
@@ -332,6 +414,8 @@ def generate_playlist(request):
             "attributes": attributes,
             "llm_suggestions": llm_suggestions,
             "resolved_seed_tracks": resolved_seed_tracks,
+            "seed_sources": seed_sources,
+            "prompt_artist_ids": list(prompt_artist_ids),
             "seed_track_display": seed_track_display,
             "similar_tracks_display": similar_display if similar_tracks else [],
             "similar_tracks": similar_tracks,
@@ -501,6 +585,8 @@ def remix_playlist(request):
             debug_steps=debug_steps,
             log_step=log,
             limit=max(target_count - len(ordered_tracks), 5),
+            profile_cache=profile_cache,
+            focus_artist_ids=set(),
         )
         for candidate in similarity_candidates:
             if len(ordered_tracks) >= target_count:

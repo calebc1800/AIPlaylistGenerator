@@ -318,11 +318,14 @@ def extract_playlist_attributes(
     debug_steps: Optional[List[str]] = None,
     log_step: Optional[Callable[[str], None]] = None,
     provider: Optional[str] = None,
-) -> Dict[str, str]:
+) -> Dict[str, object]:
     """Pull mood, genre, and energy descriptors from a free-form user prompt."""
     query = (
-        "Extract the mood, genre, and energy level from this user playlist request: "
-        f"{prompt}. Return JSON."
+        "Extract the mood, genre, energy level, and any explicitly referenced primary artists or bands "
+        "from this user playlist request. Respond with JSON containing the keys `mood`, `genre`, and `energy`, "
+        "plus optional `artist` (string) and `artists` (array of strings) when specific performers are mentioned. "
+        "If no artist is present, set those fields to null or an empty list. Request: "
+        f"{prompt}"
     )
     _log(debug_steps, log_step, f"LLM prompt (attribute extraction): {query}")
     response = dispatch_llm_query(query, provider=provider)
@@ -341,13 +344,32 @@ def extract_playlist_attributes(
         lowered = {str(key).lower(): value for key, value in parsed.items()}
         attributes = {
             "mood": lowered.get("mood", DEFAULT_ATTRIBUTES["mood"]),
-            "genre": lowered.get("genre") or lowered.get("music_genre", DEFAULT_ATTRIBUTES["genre"]),
+            "genre": lowered.get("genre")
+            or lowered.get("music_genre", DEFAULT_ATTRIBUTES["genre"]),
             "energy": lowered.get("energy")
             or lowered.get("energy_level")
             or lowered.get("energylevel")
             or DEFAULT_ATTRIBUTES["energy"],
         }
+
+        artist_hint = lowered.get("artist") or lowered.get("primary_artist") or ""
+        if isinstance(artist_hint, list):
+            artist_hint = artist_hint[0] if artist_hint else ""
+        artist_hint = str(artist_hint).strip() if artist_hint else ""
+
+        artists_field = lowered.get("artists") or lowered.get("artist_list") or []
+        if isinstance(artists_field, str) and artists_field.strip():
+            artists_list = [artists_field.strip()]
+        elif isinstance(artists_field, list):
+            artists_list = [str(item).strip() for item in artists_field if isinstance(item, (str, int)) and str(item).strip()]
+        else:
+            artists_list = []
+        if artist_hint and artist_hint.lower() not in {name.lower() for name in artists_list}:
+            artists_list.insert(0, artist_hint)
+
         attributes = {key: (value or DEFAULT_ATTRIBUTES[key]) for key, value in attributes.items()}
+        attributes["artist"] = artist_hint
+        attributes["artists"] = artists_list
         _log(debug_steps, log_step, f"LLM parsed attributes: {attributes}")
         return attributes
 
@@ -356,7 +378,10 @@ def extract_playlist_attributes(
         log_step,
         f"Failed to parse LLM attribute response; using defaults. Response snippet: {snippet}",
     )
-    return DEFAULT_ATTRIBUTES.copy()
+    fallback = DEFAULT_ATTRIBUTES.copy()
+    fallback.setdefault("artist", "")
+    fallback.setdefault("artists", [])
+    return fallback
 
 
 def suggest_seed_tracks(

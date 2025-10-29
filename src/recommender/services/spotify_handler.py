@@ -1,7 +1,10 @@
 """Spotify helper utilities for the recommender app."""
 
+import random
 import re
+import time
 import unicodedata
+from collections import Counter
 from typing import Callable, Dict, Iterable, List, Optional, Set
 
 import requests
@@ -45,6 +48,20 @@ def _normalize_genre(raw_genre: str) -> str:
     normalized = unicodedata.normalize("NFKD", raw_genre)
     ascii_clean = normalized.encode("ascii", "ignore").decode("ascii")
     return ascii_clean.strip().lower().replace(" ", "-")
+
+
+def normalize_genre(raw_genre: str) -> str:
+    """Convenience wrapper to expose genre normalization to other modules."""
+    return _normalize_genre(raw_genre)
+
+
+def _normalize_artist_key(name: str) -> str:
+    """Return a simplified key for fuzzy artist name matching."""
+    if not name:
+        return ""
+    normalized = unicodedata.normalize("NFKD", name)
+    ascii_clean = normalized.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]", "", ascii_clean.lower())
 
 
 def _genre_variants(normalized_genre: str) -> Set[str]:
@@ -239,6 +256,431 @@ def _serialize_track_payload(track: Dict) -> Dict[str, object]:
     }
 
 
+def build_user_profile_seed_snapshot(
+    sp: spotipy.Spotify,
+    *,
+    limit: int = 50,
+    recent_limit: int = 50,
+    market: str = "US",
+    debug_steps: Optional[List[str]] = None,
+    log_step: Optional[Callable[[str], None]] = None,
+) -> Optional[Dict[str, object]]:
+    """Collect the user's top tracks/artists to prime recommendation seeds."""
+
+    try:
+        response = sp.current_user_top_tracks(limit=limit, time_range="medium_term")
+        raw_tracks = response.get("items", []) if isinstance(response, dict) else []
+        source_label = "top_tracks"
+        if raw_tracks:
+            _log(debug_steps, log_step, f"Seed snapshot fetched {len(raw_tracks)} top tracks.")
+    except SpotifyException as exc:
+        _log(debug_steps, log_step, f"Spotify top tracks call failed: {exc}.")
+        raw_tracks = []
+        source_label = "top_tracks"
+    except requests.exceptions.RequestException as exc:
+        _log(debug_steps, log_step, f"Network error fetching top tracks: {exc}.")
+        raw_tracks = []
+        source_label = "top_tracks"
+
+    if not raw_tracks:
+        try:
+            response = sp.current_user_recently_played(limit=recent_limit)
+            items = response.get("items", []) if isinstance(response, dict) else []
+            raw_tracks = [entry.get("track") for entry in items if isinstance(entry, dict) and entry.get("track")]
+            raw_tracks = [track for track in raw_tracks if track]
+            source_label = "recently_played"
+            if raw_tracks:
+                _log(debug_steps, log_step, f"Seed snapshot fell back to {len(raw_tracks)} recent tracks.")
+        except SpotifyException as exc:
+            _log(debug_steps, log_step, f"Spotify recently played call failed: {exc}.")
+            raw_tracks = []
+        except requests.exceptions.RequestException as exc:
+            _log(debug_steps, log_step, f"Network error fetching recent tracks: {exc}.")
+            raw_tracks = []
+
+    if not raw_tracks:
+        _log(debug_steps, log_step, "Seed snapshot unavailable; no tracks retrieved.")
+        return None
+
+    seen_track_ids: Set[str] = set()
+    track_payloads: List[Dict[str, object]] = []
+    artist_counts: Counter[str] = Counter()
+    artist_order: List[str] = []
+
+    for track in raw_tracks:
+        if not isinstance(track, dict):
+            continue
+        track_id = track.get("id")
+        if not track_id or track_id in seen_track_ids:
+            continue
+        seen_track_ids.add(track_id)
+        payload = _serialize_track_payload(track)
+        payload["popularity"] = int(track.get("popularity") or 0)
+        payload["source"] = source_label
+        payload["genres"] = []  # populated after artist lookup
+        track_payloads.append(payload)
+        for artist in track.get("artists", []) or []:
+            artist_id = artist.get("id")
+            if artist_id:
+                artist_counts[artist_id] += 1
+                artist_order.append(artist_id)
+
+    if not track_payloads:
+        _log(debug_steps, log_step, "Seed snapshot stopped; no eligible tracks after dedupe.")
+        return None
+
+    unique_artist_ids = list(dict.fromkeys(artist_order))
+    if not unique_artist_ids:
+        _log(debug_steps, log_step, "Seed snapshot stopped; no artist identifiers available.")
+        return None
+
+    artist_details: Dict[str, Dict[str, object]] = {}
+    for start in range(0, len(unique_artist_ids), 50):
+        batch = unique_artist_ids[start : start + 50]
+        try:
+            response = sp.artists(batch)
+        except SpotifyException as exc:
+            _log(debug_steps, log_step, f"Failed to fetch artist metadata: {exc}.")
+            continue
+        except requests.exceptions.RequestException as exc:
+            _log(debug_steps, log_step, f"Network error fetching artist metadata: {exc}.")
+            continue
+
+        for artist in response.get("artists", []) or []:
+            if not isinstance(artist, dict):
+                continue
+            artist_id = artist.get("id")
+            if not artist_id:
+                continue
+            normalized_genres = [
+                genre
+                for genre in {normalize_genre(raw) for raw in artist.get("genres", []) or []}
+                if genre
+            ]
+            artist_details[artist_id] = {
+                "id": artist_id,
+                "name": artist.get("name", ""),
+                "genres": normalized_genres,
+            }
+
+    if not artist_details:
+        _log(debug_steps, log_step, "Seed snapshot stopped; artist metadata unavailable.")
+        return None
+
+    genre_buckets: Dict[str, Dict[str, object]] = {}
+    track_lookup: Dict[str, Dict[str, object]] = {}
+
+    for payload in track_payloads:
+        track_id = payload.get("id")
+        if not track_id:
+            continue
+        artist_ids = payload.get("artist_ids") or []
+        genre_set: Set[str] = set()
+        for artist_id in artist_ids:
+            artist_info = artist_details.get(artist_id)
+            if not artist_info:
+                continue
+            for genre in artist_info.get("genres", []):
+                if genre:
+                    genre_set.add(genre)
+        payload["genres"] = sorted(genre_set)
+        track_lookup[track_id] = payload
+
+        for genre in payload["genres"]:
+            if not genre:
+                continue
+            bucket = genre_buckets.setdefault(
+                genre,
+                {
+                    "track_ids": [],
+                    "artist_ids": [],
+                    "popularity_total": 0,
+                    "year_total": 0,
+                    "year_count": 0,
+                },
+            )
+            bucket["track_ids"].append(track_id)
+            bucket["artist_ids"].extend(artist_ids)
+            bucket["popularity_total"] += payload.get("popularity", 0)
+            year = payload.get("year")
+            if isinstance(year, int):
+                bucket["year_total"] += year
+                bucket["year_count"] += 1
+
+    formatted_buckets: Dict[str, Dict[str, object]] = {}
+    per_genre_limit = 12
+    for genre, bucket in genre_buckets.items():
+        track_ids = bucket.get("track_ids", [])
+        track_ids = [track_id for track_id in track_ids if track_id in track_lookup]
+        sorted_ids = sorted(
+            track_ids,
+            key=lambda track_id: (
+                track_lookup[track_id].get("popularity", 0),
+                track_lookup[track_id].get("year") or 0,
+            ),
+            reverse=True,
+        )
+        artist_ids = [aid for aid in bucket.get("artist_ids", []) if aid]
+        formatted_buckets[genre] = {
+            "track_ids": sorted_ids[:per_genre_limit],
+            "artist_ids": list(dict.fromkeys(artist_ids))[: per_genre_limit * 2],
+            "avg_popularity": bucket["popularity_total"] / max(len(track_ids), 1),
+            "avg_year": (
+                bucket["year_total"] / bucket["year_count"] if bucket["year_count"] else None
+            ),
+            "track_count": len(track_ids),
+        }
+
+    artist_snapshot: Dict[str, Dict[str, object]] = {}
+    artist_name_map: Dict[str, str] = {}
+    for artist_id, info in artist_details.items():
+        artist_snapshot[artist_id] = {
+            "id": artist_id,
+            "name": info.get("name", ""),
+            "genres": info.get("genres", []),
+            "play_count": int(artist_counts.get(artist_id, 0)),
+        }
+        normalized_key = _normalize_artist_key(info.get("name", ""))
+        if normalized_key:
+            artist_name_map[normalized_key] = artist_id
+
+    top_tracks_sorted = sorted(
+        [payload for payload in track_lookup.values()],
+        key=lambda item: (item.get("popularity", 0), item.get("year") or 0),
+        reverse=True,
+    )
+    top_track_ids = [item.get("id") for item in top_tracks_sorted if item.get("id")]
+
+    snapshot: Dict[str, object] = {
+        "created_at": time.time(),
+        "source": source_label,
+        "sample_size": len(track_lookup),
+        "tracks": track_lookup,
+        "genre_buckets": formatted_buckets,
+        "artist_counts": {artist_id: int(count) for artist_id, count in artist_counts.items()},
+        "artists": artist_snapshot,
+        "artist_name_map": artist_name_map,
+        "top_track_ids": top_track_ids[:50],
+    }
+
+    return snapshot
+
+
+def cached_tracks_for_genre(
+    profile_cache: Optional[Dict[str, object]],
+    normalized_genre: str,
+    *,
+    limit: int = 5,
+) -> List[Dict[str, object]]:
+    """Retrieve cached top tracks for a genre from the user profile snapshot."""
+
+    if not profile_cache or not normalized_genre:
+        return []
+
+    genre_buckets = profile_cache.get("genre_buckets")
+    if not isinstance(genre_buckets, dict):
+        return []
+    bucket = genre_buckets.get(normalized_genre)
+    if not isinstance(bucket, dict):
+        return []
+
+    track_ids = bucket.get("track_ids") or []
+    track_lookup = profile_cache.get("tracks")
+    if not isinstance(track_lookup, dict):
+        return []
+
+    results: List[Dict[str, object]] = []
+    for track_id in track_ids:
+        track = track_lookup.get(track_id)
+        if not isinstance(track, dict):
+            continue
+        results.append(dict(track))
+        if len(results) >= limit:
+            break
+
+    return results
+
+
+def cached_tracks_for_artist(
+    profile_cache: Optional[Dict[str, object]],
+    artist_id: Optional[str],
+    *,
+    limit: int = 5,
+) -> List[Dict[str, object]]:
+    """Return cached tracks for a specific artist from the profile snapshot."""
+
+    if not profile_cache or not artist_id:
+        return []
+
+    track_lookup = profile_cache.get("tracks")
+    if not isinstance(track_lookup, dict):
+        return []
+
+    matches: List[Dict[str, object]] = []
+    for track in track_lookup.values():
+        if not isinstance(track, dict):
+            continue
+        artist_ids = track.get("artist_ids") or []
+        if artist_id in artist_ids:
+            matches.append(track)
+
+    matches.sort(key=lambda item: (item.get("popularity", 0), item.get("year") or 0), reverse=True)
+    return [dict(track) for track in matches[:limit]]
+
+
+def cached_artist_id_for_hint(
+    profile_cache: Optional[Dict[str, object]],
+    artist_hint: str,
+) -> Optional[str]:
+    """Attempt to resolve an artist identifier using the cached snapshot."""
+
+    if not profile_cache or not artist_hint:
+        return None
+
+    normalized_hint = _normalize_artist_key(artist_hint)
+    if not normalized_hint:
+        return None
+
+    name_map = profile_cache.get("artist_name_map")
+    if isinstance(name_map, dict):
+        artist_id = name_map.get(normalized_hint)
+        if artist_id:
+            return artist_id
+
+    artists = profile_cache.get("artists")
+    if isinstance(artists, dict):
+        for artist_id, info in artists.items():
+            name = _normalize_artist_key((info or {}).get("name", ""))
+            if name and normalized_hint == name:
+                return artist_id
+            if name and normalized_hint in name:
+                return artist_id
+
+    return None
+
+
+def ensure_artist_seed(
+    artist_hint: str,
+    token: str,
+    *,
+    profile_cache: Optional[Dict[str, object]] = None,
+    market: str = "US",
+    seed_limit: int = 5,
+    debug_steps: Optional[List[str]] = None,
+    log_step: Optional[Callable[[str], None]] = None,
+) -> Optional[Dict[str, object]]:
+    """Guarantee that an explicitly requested artist contributes seeds."""
+
+    if not artist_hint:
+        return None
+
+    sp = spotipy.Spotify(auth=token)
+    cached_artist_id = cached_artist_id_for_hint(profile_cache, artist_hint)
+    resolved_artist_id: Optional[str] = cached_artist_id
+    resolved_artist_name: Optional[str] = None
+
+    if cached_artist_id and profile_cache:
+        artists = profile_cache.get("artists") or {}
+        cached_record = artists.get(cached_artist_id) if isinstance(artists, dict) else None
+        if isinstance(cached_record, dict):
+            resolved_artist_name = cached_record.get("name")
+
+    if not resolved_artist_id:
+        query = f'artist:"{artist_hint}"'
+        try:
+            search_result = sp.search(q=query, type="artist", limit=3)
+            artist_items = search_result.get("artists", {}).get("items", [])
+        except SpotifyException as exc:
+            _log(debug_steps, log_step, f"Spotify artist search failed for '{artist_hint}': {exc}.")
+            artist_items = []
+        except requests.exceptions.RequestException as exc:
+            _log(debug_steps, log_step, f"Network error during artist search for '{artist_hint}': {exc}.")
+            artist_items = []
+
+        for candidate in artist_items:
+            if not isinstance(candidate, dict):
+                continue
+            candidate_id = candidate.get("id")
+            candidate_name = candidate.get("name", "")
+            if not candidate_id:
+                continue
+            candidate_key = _normalize_artist_key(candidate_name)
+            hint_key = _normalize_artist_key(artist_hint)
+            if candidate_key == hint_key or hint_key in candidate_key:
+                resolved_artist_id = candidate_id
+                resolved_artist_name = candidate_name
+                break
+
+        if not resolved_artist_id and artist_items:
+            fallback = artist_items[0]
+            resolved_artist_id = fallback.get("id")
+            resolved_artist_name = fallback.get("name", "")
+
+    if not resolved_artist_id:
+        _log(debug_steps, log_step, f"Unable to resolve artist for hint '{artist_hint}'.")
+        return None
+
+    cached_tracks = cached_tracks_for_artist(profile_cache, resolved_artist_id, limit=seed_limit)
+    if cached_tracks:
+        _log(
+            debug_steps,
+            log_step,
+            f"Using {len(cached_tracks)} cached tracks for artist '{resolved_artist_name or artist_hint}'.",
+        )
+        return {
+            "artist_id": resolved_artist_id,
+            "artist_name": resolved_artist_name or artist_hint,
+            "tracks": cached_tracks,
+            "source": "profile_cache",
+        }
+
+    try:
+        top_tracks_response = sp.artist_top_tracks(resolved_artist_id, country=market)
+        top_tracks = top_tracks_response.get("tracks", []) if isinstance(top_tracks_response, dict) else []
+    except SpotifyException as exc:
+        _log(debug_steps, log_step, f"Spotify top tracks failed for artist '{resolved_artist_id}': {exc}.")
+        top_tracks = []
+    except requests.exceptions.RequestException as exc:
+        _log(debug_steps, log_step, f"Network error fetching top tracks for artist '{resolved_artist_id}': {exc}.")
+        top_tracks = []
+
+    if not top_tracks:
+        _log(debug_steps, log_step, f"No top tracks returned for artist '{resolved_artist_id}'.")
+        return None
+
+    payloads: List[Dict[str, object]] = []
+    seen_ids: Set[str] = set()
+    for track in top_tracks:
+        if not isinstance(track, dict):
+            continue
+        track_id = track.get("id")
+        if not track_id or track_id in seen_ids:
+            continue
+        seen_ids.add(track_id)
+        payload = _serialize_track_payload(track)
+        payload["popularity"] = int(track.get("popularity") or 0)
+        payload["seed_source"] = "artist_top_tracks"
+        payloads.append(payload)
+        if len(payloads) >= seed_limit:
+            break
+
+    if not payloads:
+        return None
+
+    _log(
+        debug_steps,
+        log_step,
+        f"Collected {len(payloads)} top tracks for artist '{resolved_artist_name or artist_hint}'.",
+    )
+
+    return {
+        "artist_id": resolved_artist_id,
+        "artist_name": resolved_artist_name or artist_hint,
+        "tracks": payloads,
+        "source": "artist_top_tracks",
+    }
+
+
 def _discover_playlist_seeds(
     sp: spotipy.Spotify,
     normalized_genre: str,
@@ -250,7 +692,14 @@ def _discover_playlist_seeds(
     track_limit: int = 40,
 ) -> List[Dict]:
     """Harvest candidate seed tracks by scanning popular Spotify playlists."""
-    query = f"{normalized_genre.replace('-', ' ')} hits"
+    base_label = normalized_genre.replace("-", " ").strip() or "popular"
+    playlist_queries = [
+        f"{base_label} hits",
+        f"top {base_label}",
+        f"best of {base_label}",
+        f"{base_label} mix",
+    ]
+    query = random.choice(playlist_queries)
     _log(debug_steps, log_step, f"Spotify API → search playlists: q='{query}', limit={playlist_limit}")
     try:
         playlists = sp.search(q=query, type="playlist", limit=playlist_limit)
@@ -267,6 +716,9 @@ def _discover_playlist_seeds(
             continue
         playlist_id = playlist.get("id")
         if not playlist_id:
+            continue
+        owner = (playlist.get("owner") or {}).get("id")
+        if owner and owner.lower() == "spotify":
             continue
         _log(
             debug_steps,
@@ -375,12 +827,19 @@ def discover_top_tracks_for_genre(
     if len(selected) < seed_limit:
         tracks: List[Dict] = []
         try:
+            offset = random.randint(0, max(0, 100 - search_limit)) if search_limit < 100 else 0
             _log(
                 debug_steps,
                 log_step,
-                f"Spotify API → search tracks (genre seed): q='{query}', limit={search_limit}, market={market}",
+                f"Spotify API → search tracks (genre seed): q='{query}', limit={search_limit}, market={market}, offset={offset}",
             )
-            tracks = sp.search(q=query, type="track", limit=search_limit, market=market).get("tracks", {}).get("items", [])
+            tracks = sp.search(
+                q=query,
+                type="track",
+                limit=search_limit,
+                market=market,
+                offset=offset,
+            ).get("tracks", {}).get("items", [])
             tracks = _filter_by_market(tracks, market)
         except SpotifyException as exc:
             _log(debug_steps, log_step, f"Spotify search for genre seeds failed: {exc}.")
@@ -394,7 +853,13 @@ def discover_top_tracks_for_genre(
                     log_step,
                     f"Spotify API → search tracks (no market): q='{query}', limit={search_limit}",
                 )
-                tracks = sp.search(q=query, type="track", limit=search_limit).get("tracks", {}).get("items", [])
+                fallback_offset = random.randint(0, max(0, 100 - search_limit)) if search_limit < 100 else 0
+                tracks = sp.search(
+                    q=query,
+                    type="track",
+                    limit=search_limit,
+                    offset=fallback_offset,
+                ).get("tracks", {}).get("items", [])
             except SpotifyException as exc:
                 _log(debug_steps, log_step, f"Spotify search without market failed: {exc}.")
                 tracks = []
@@ -514,13 +979,24 @@ def _score_track_basic(
     seed_year_avg: Optional[float],
     energy_label: Optional[str],
     prompt_keywords: Set[str],
+    *,
+    profile_cache: Optional[Dict[str, object]] = None,
+    focus_artist_ids: Optional[Set[str]] = None,
+    target_genre: Optional[str] = None,
 ) -> float:
-    """Assign a heuristic score to a candidate track to rank recommendations."""
-    score = (track.get("popularity", 40) or 0) / 100.0 * 0.5
+    """Assign a heuristic score to rank candidates while blending affinity and novelty."""
+
+    popularity = int(track.get("popularity", 40) or 0)
+    score = (popularity / 100.0) * 0.45
 
     artists = track.get("artists") or []
-    if seed_artist_ids and any(artist.get("id") in seed_artist_ids for artist in artists):
-        score += 0.25
+    artist_ids = {artist.get("id") for artist in artists if artist.get("id")}
+
+    if seed_artist_ids and artist_ids.intersection(seed_artist_ids):
+        score += 0.2
+
+    if focus_artist_ids and artist_ids.intersection(focus_artist_ids):
+        score += 0.3
 
     name_lower = (track.get("name") or "").lower()
     if prompt_keywords:
@@ -530,14 +1006,45 @@ def _score_track_basic(
     candidate_year = _extract_release_year(track)
     if seed_year_avg and candidate_year:
         year_diff = abs(candidate_year - seed_year_avg)
-        score += max(0.0, (20 - year_diff) / 40.0) * 0.2
+        score += max(0.0, (18 - year_diff) / 36.0) * 0.18
         energy_lower = (energy_label or "").lower()
         if energy_lower == "high" and candidate_year >= seed_year_avg:
             score += 0.05
         elif energy_lower == "low" and candidate_year <= seed_year_avg:
             score += 0.05
 
-    return score
+    if profile_cache:
+        track_lookup = profile_cache.get("tracks")
+        if isinstance(track_lookup, dict):
+            cached_record = track_lookup.get(track.get("id"))
+            if isinstance(cached_record, dict):
+                score += 0.18
+
+        if target_genre:
+            genre_buckets = profile_cache.get("genre_buckets")
+            if isinstance(genre_buckets, dict):
+                genre_bucket = genre_buckets.get(target_genre)
+                if isinstance(genre_bucket, dict):
+                    track_ids = genre_bucket.get("track_ids") or []
+                    if track.get("id") in track_ids:
+                        score += 0.12
+
+        artist_counts = profile_cache.get("artist_counts")
+        if isinstance(artist_counts, dict) and artist_ids:
+            novelty_bonus = 0.0
+            for artist_id in artist_ids:
+                play_count = int(artist_counts.get(artist_id, 0))
+                if play_count == 0:
+                    novelty_bonus += 0.05
+                elif play_count <= 2:
+                    novelty_bonus += 0.02
+                elif play_count >= 6:
+                    novelty_bonus -= 0.03
+                else:
+                    novelty_bonus -= 0.01
+            score += novelty_bonus
+
+    return max(score, 0.0)
 
 
 def get_similar_tracks(
@@ -552,6 +1059,8 @@ def get_similar_tracks(
     log_step: Optional[Callable[[str], None]] = None,
     market: str = "US",
     limit: int = 10,
+    profile_cache: Optional[Dict[str, object]] = None,
+    focus_artist_ids: Optional[Set[str]] = None,
 ) -> List[Dict[str, str]]:
     """Return a ranked list of tracks similar to the provided seed set."""
     if not seed_track_ids:
@@ -582,13 +1091,21 @@ def get_similar_tracks(
         search_queries.append(f'"{mood}" {normalized_genre}')
 
     for search_query in search_queries:
-        _log(debug_steps, log_step, f"Spotify API → search tracks: q='{search_query}', limit={min(limit * 4, 50)}, market={market}")
+        search_limit = min(limit * 4, 50)
+        offset_cap = max(0, 100 - search_limit)
+        offset = random.randint(0, offset_cap) if offset_cap else 0
+        _log(
+            debug_steps,
+            log_step,
+            f"Spotify API → search tracks: q='{search_query}', limit={search_limit}, market={market}, offset={offset}",
+        )
         try:
             tracks = sp.search(
                 q=search_query,
                 type="track",
-                limit=min(limit * 4, 50),
+                limit=search_limit,
                 market=market,
+                offset=offset,
             ).get("tracks", {}).get("items", [])
             tracks = _filter_by_market(tracks, market)
             tracks = _filter_tracks_by_artist_genre(
@@ -626,7 +1143,16 @@ def get_similar_tracks(
     artist_counts: Dict[str, int] = {}
 
     for track in unique_candidates:
-        score = _score_track_basic(track, seed_artist_ids, seed_year_avg, energy_label, prompt_keywords)
+        score = _score_track_basic(
+            track,
+            seed_artist_ids,
+            seed_year_avg,
+            energy_label,
+            prompt_keywords,
+            profile_cache=profile_cache,
+            focus_artist_ids=focus_artist_ids,
+            target_genre=normalized_genre,
+        )
         scored_tracks.append((score, track))
 
     _log(debug_steps, log_step, f"Local recommender scored {len(scored_tracks)} candidates.")
