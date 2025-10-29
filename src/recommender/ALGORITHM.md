@@ -1,5 +1,13 @@
 # Recommender Pipeline Overview
 
+## Quick Flow (Shareable)
+- Warm the cache when the dashboard opens: pull the user’s top/recent Spotify tracks, normalize genres, and stash them for later seeds.
+- Parse each prompt with the LLM to grab mood/genre/energy plus any explicit artist names.
+- Build the seed list in priority order: explicit artist top tracks → cached user tracks for the target genre → resolved LLM suggestions → genre fallback playlists.
+- Harvest additional candidates by mixing curated playlists with randomized Spotify searches while filtering for market/genre fit.
+- Score every candidate locally (popularity, seed overlap, prompt keywords, year/energy alignment, user cache affinity, novelty) and keep the top results.
+- Merge seeds + ranked candidates, cache the full payload, and expose verbose debug data (steps, scores, cache snapshot) when debug mode is on.
+
 The current pipeline blends what the user just asked for with what they already listen to. We still avoid Spotify’s recommendations endpoint; instead we hydrate a user-specific cache, stitch together seed tracks, and locally rank every candidate with a transparent scoring breakdown.
 
 ## 0. Login Warm-Up (Dashboard)

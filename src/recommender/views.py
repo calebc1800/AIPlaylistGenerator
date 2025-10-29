@@ -103,7 +103,20 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
             )
 
     seed_track_details_raw = payload.get("seed_track_details") or payload.get("resolved_seed_tracks") or []
-    seed_track_details = [item for item in seed_track_details_raw if isinstance(item, dict)]
+    seed_track_details: List[Dict[str, object]] = []
+    for item in seed_track_details_raw:
+        if not isinstance(item, dict):
+            continue
+        normalized = dict(item)
+        seed_label = (
+            normalized.get("seed_source")
+            or normalized.get("source")
+            or normalized.get("origin")
+            or ""
+        )
+        normalized.setdefault("seed_source", seed_label)
+        normalized.setdefault("source", seed_label)
+        seed_track_details.append(normalized)
 
     similar_track_details_raw = payload.get("similar_tracks_debug") or payload.get("similar_tracks") or []
     similar_track_details = [item for item in similar_track_details_raw if isinstance(item, dict)]
@@ -421,22 +434,28 @@ def generate_playlist(request):
             log(f"LLM resolved {len(llm_seed_tracks)} seed tracks via Spotify search.")
 
         seed_limit = getattr(settings, "RECOMMENDER_SEED_LIMIT", 5)
-        if len(resolved_seed_tracks) < seed_limit:
-            log("Seed count below threshold; discovering top tracks from Spotify.")
-            fallback_tracks = discover_top_tracks_for_genre(
-                attributes,
-                access_token,
-                debug_steps=debug_steps,
-                log_step=log,
-            )
-            if fallback_tracks:
-                for track in fallback_tracks:
-                    _append_seed_entry(track, "genre_discovery")
-                if not llm_seed_tracks:
-                    llm_suggestions = [
-                        {"title": track["name"], "artist": track["artists"]}
-                        for track in fallback_tracks
-                    ]
+        seed_count = len(resolved_seed_tracks)
+        if seed_count < seed_limit:
+            if seed_count:
+                log(
+                    "Seed count below threshold but primary sources provided seeds; skipping genre discovery."
+                )
+            else:
+                log("Seed count below threshold; discovering top tracks from Spotify.")
+                fallback_tracks = discover_top_tracks_for_genre(
+                    attributes,
+                    access_token,
+                    debug_steps=debug_steps,
+                    log_step=log,
+                )
+                if fallback_tracks:
+                    for track in fallback_tracks:
+                        _append_seed_entry(track, "genre_discovery")
+                    if not llm_seed_tracks:
+                        llm_suggestions = [
+                            {"title": track["name"], "artist": track["artists"]}
+                            for track in fallback_tracks
+                        ]
 
         seed_track_display = [
             f"{track['name']} - {track['artists']}" for track in resolved_seed_tracks
@@ -549,9 +568,11 @@ def generate_playlist(request):
         }
         cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
         cache.set(cache_key, payload, timeout=cache_timeout)
+        request.session["recommender_last_cache_key"] = cache_key
         log("Playlist cached for 15 minutes.")
 
     context = _build_context_from_payload(payload)
+    context["cache_key"] = cache_key
     return render(request, "recommender/playlist_result.html", context)
 
 
@@ -560,10 +581,17 @@ def remix_playlist(request):
     """Regenerate the cached playlist using the current tracks as seeds."""
     cache_key = request.POST.get("cache_key", "").strip()
     if not cache_key:
+        cache_key = str(request.session.get("recommender_last_cache_key", "") or "").strip()
+    if not cache_key:
         messages.error(request, "Playlist session expired. Please generate a new playlist.")
         return redirect("dashboard:dashboard")
 
     cached_payload = cache.get(cache_key)
+    if not isinstance(cached_payload, dict):
+        fallback_key = str(request.session.get("recommender_last_cache_key", "") or "").strip()
+        if fallback_key and fallback_key != cache_key:
+            cache_key = fallback_key
+            cached_payload = cache.get(cache_key)
     if not isinstance(cached_payload, dict):
         messages.error(request, "Playlist session expired. Please generate a new playlist.")
         return redirect("dashboard:dashboard")
@@ -579,6 +607,16 @@ def remix_playlist(request):
     if not access_token:
         messages.error(request, "Spotify authentication required.")
         return redirect("spotify_auth:login")
+
+    user_id = "anonymous"
+    if request.user.is_authenticated:
+        user_id = str(request.user.pk)
+    else:
+        user_id = request.session.get("spotify_user_id", user_id)
+
+    profile_cache: Optional[Dict[str, object]] = None
+    if user_id:
+        profile_cache = cache.get(f"recommender:user-profile:{user_id}")
 
     debug_steps: List[str] = []
     errors: List[str] = []
@@ -758,10 +796,11 @@ def remix_playlist(request):
 
     cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
     cache.set(cache_key, payload, timeout=cache_timeout)
+    request.session["recommender_last_cache_key"] = cache_key
     log("Remixed playlist cached for 15 minutes.")
 
     context = _build_context_from_payload(payload)
-    context.setdefault("cache_key", cache_key)
+    context["cache_key"] = cache_key
 
     messages.success(request, "Playlist remixed with fresh recommendations.")
     return render(request, "recommender/playlist_result.html", context)
@@ -780,6 +819,8 @@ def update_cached_playlist(request):
 
     action = (request_payload.get("action") or "").strip().lower()
     cache_key = (request_payload.get("cache_key") or "").strip()
+    if not cache_key:
+        cache_key = request.session.get("recommender_last_cache_key", "")
     if not cache_key or action not in {"remove"}:
         return JsonResponse({"error": "Invalid request."}, status=400)
 

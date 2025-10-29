@@ -1,6 +1,8 @@
 """Unit tests for the recommender app services and views."""
 
 import json
+import subprocess
+from types import SimpleNamespace
 
 from django.conf import settings
 from django.contrib.messages import get_messages
@@ -11,21 +13,40 @@ from unittest.mock import patch
 
 from recommender.models import SavedPlaylist
 from recommender.services.spotify_handler import (
+    _extract_release_year,
+    _filter_by_market,
+    _filter_non_latin_tracks,
+    _filter_tracks_by_artist_genre,
+    _genre_variants,
+    _normalize_artist_key,
+    _normalize_genre,
+    _primary_image_url,
+    _serialize_track_payload,
+    _tracks_to_strings,
     discover_top_tracks_for_genre,
     get_similar_tracks,
     resolve_seed_tracks,
     create_playlist_with_tracks,
+    _score_track_basic,
+    _is_mostly_latin,
 )
 from recommender.services.user_preferences import (
     describe_pending_options,
     get_default_preferences,
 )
 from recommender.services.llm_handler import (
+    _json_candidates,
+    _parse_json_response,
+    _resolve_provider,
+    dispatch_llm_query,
     extract_playlist_attributes,
+    query_ollama,
+    query_openai,
     refine_playlist,
+    suggest_remix_tracks,
     suggest_seed_tracks,
 )
-from recommender.views import _cache_key
+from recommender.views import _cache_key, _build_context_from_payload, _make_logger
 
 
 class GeneratePlaylistViewTests(TestCase):
@@ -212,7 +233,7 @@ class GeneratePlaylistViewTests(TestCase):
 
         response = self.client.post(self.url, {"prompt": "prompt"})
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn("Generation Debug Steps", response.content.decode())
+        self.assertNotIn("Debug Inspector", response.content.decode())
 
     @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=True)
     def test_debug_panel_visible_when_flag_enabled(self):
@@ -244,7 +265,7 @@ class GeneratePlaylistViewTests(TestCase):
 
         response = self.client.post(self.url, {"prompt": "prompt"})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Generation Debug Steps", response.content.decode())
+        self.assertIn("Debug Inspector", response.content.decode())
 
 
 class RemixPlaylistViewTests(TestCase):
@@ -569,6 +590,152 @@ class SpotifyHandlerTests(TestCase):
             create_playlist_with_tracks(token="token", track_ids=[], playlist_name="Empty")
 
 
+class SpotifyUtilityFunctionTests(TestCase):
+    """Coverage for low-level Spotify helper functions."""
+
+    def test_normalize_helpers_handle_unicode(self):
+        self.assertEqual(_normalize_genre("Lo-Fi ✨ Beats"), "lo-fi--beats")
+        self.assertEqual(_normalize_artist_key("HΔppen!ng Artist"), "hppenngartist")
+
+    def test_genre_variants_expands_aliases(self):
+        variants = _genre_variants("r-b")
+        self.assertIn("r&b", variants)
+        self.assertIn("rb", variants)
+
+    def test_tracks_to_strings_and_market_filter(self):
+        tracks = [
+            {"name": "Song One", "artists": [{"name": "Artist A"}], "available_markets": ["US", "GB"]},
+            {"name": "Song Two", "artists": [{"name": "Artist B"}], "available_markets": []},
+            {"name": "Song Three", "artists": [{"name": "Artist C"}], "available_markets": ["CA"]},
+        ]
+        filtered = _filter_by_market(tracks, "US")
+        self.assertEqual(len(filtered), 2)
+        strings = _tracks_to_strings(filtered)
+        self.assertEqual(strings, ["Song One - Artist A", "Song Two - Artist B"])
+
+    def test_non_latin_detection_filters_tracks(self):
+        self.assertTrue(_is_mostly_latin("Café Society"))
+        self.assertFalse(_is_mostly_latin("東京の夜"))
+        tracks = [
+            {"name": "Café Society"},
+            {"name": "東京の夜"},
+        ]
+        kept = _filter_non_latin_tracks(tracks)
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["name"], "Café Society")
+
+    def test_filter_tracks_by_artist_genre_matches_aliases(self):
+        class DummySpotify:
+            def artists(self, ids):
+                return {
+                    "artists": [
+                        {"id": "artist1", "genres": ["Synth Pop", "Alt Pop"]},
+                        {"id": "artist2", "genres": ["Classical"]},
+                    ]
+                }
+
+        tracks = [
+            {"id": "track1", "artists": [{"id": "artist1"}], "popularity": 65},
+            {"id": "track2", "artists": [{"id": "artist2"}], "popularity": 70},
+        ]
+        filtered = _filter_tracks_by_artist_genre(DummySpotify(), tracks, "synth-pop", popularity_threshold=60)
+        self.assertEqual([track["id"] for track in filtered], ["track1"])
+
+    def test_release_year_and_primary_image_extraction(self):
+        track = {"album": {"release_date": "2019-10-31"}}
+        self.assertEqual(_extract_release_year(track), 2019)
+        self.assertIsNone(_extract_release_year({"album": {"release_date": "unknown"}}))
+        images = [{"url": ""}, {"url": "http://example.com/img.jpg"}]
+        self.assertEqual(_primary_image_url(images), "http://example.com/img.jpg")
+        self.assertEqual(_primary_image_url([]), "")
+
+    def test_serialize_track_payload_compiles_metadata(self):
+        track = {
+            "id": "track-123",
+            "name": "Moments",
+            "artists": [{"name": "Artist A", "id": "artistA"}, {"name": "Artist B", "id": "artistB"}],
+            "album": {
+                "name": "Moments LP",
+                "images": [{"url": "http://example.com/img.jpg"}],
+                "release_date": "2020-05-01",
+            },
+            "duration_ms": 210000,
+            "popularity": 70,
+        }
+        payload = _serialize_track_payload(track)
+        self.assertEqual(payload["artists"], "Artist A, Artist B")
+        self.assertEqual(payload["album_name"], "Moments LP")
+        self.assertEqual(payload["album_image_url"], "http://example.com/img.jpg")
+        self.assertEqual(payload["year"], 2020)
+        self.assertEqual(payload["duration_ms"], 210000)
+        self.assertEqual(payload["artist_ids"], ["artistA", "artistB"])
+
+
+class SpotifyScoringUnitTests(TestCase):
+    """Unit coverage for local similarity scoring helpers."""
+
+    def test_score_track_basic_includes_multiple_bonuses(self):
+        track = {
+            "id": "track-1",
+            "name": "Happy Energy",
+            "popularity": 80,
+            "artists": [{"id": "artistA", "name": "Artist A"}],
+            "album": {"release_date": "2022-05-01"},
+        }
+        profile_cache = {
+            "tracks": {"track-1": {"name": "Happy Energy"}},
+            "genre_buckets": {"pop": {"track_ids": ["track-1"]}},
+            "artist_counts": {"artistA": 0},
+        }
+
+        score, breakdown = _score_track_basic(
+            track,
+            {"artistA"},
+            2020.0,
+            "high",
+            {"happy", "energy"},
+            profile_cache=profile_cache,
+            focus_artist_ids={"artistA"},
+            target_genre="pop",
+        )
+
+        self.assertGreater(score, 0.45)
+        self.assertGreater(breakdown["seed_overlap"], 0)
+        self.assertGreater(breakdown["focus_artist"], 0)
+        self.assertGreater(breakdown["keyword_match"], 0)
+        self.assertGreater(breakdown["year_alignment"], 0)
+        self.assertGreater(breakdown["energy_bias"], 0)
+        self.assertGreater(breakdown["cache_track_hit"], 0)
+        self.assertGreater(breakdown["cache_genre_alignment"], 0)
+        self.assertGreater(breakdown["novelty"], 0)
+
+    def test_score_track_basic_handles_sparse_metadata(self):
+        track = {
+            "id": "track-2",
+            "name": "Unknown Track",
+            "popularity": 5,
+            "artists": [{"id": "artistB", "name": "Artist B"}],
+            "album": {"release_date": "1980"},
+        }
+        profile_cache = {"artist_counts": {"artistB": 10}}
+
+        score, breakdown = _score_track_basic(
+            track,
+            set(),
+            None,
+            None,
+            set(),
+            profile_cache=profile_cache,
+            focus_artist_ids=set(),
+            target_genre=None,
+        )
+
+        self.assertGreaterEqual(score, 0.0)
+        self.assertEqual(breakdown["year_alignment"], 0.0)
+        self.assertEqual(breakdown["energy_bias"], 0.0)
+        self.assertLessEqual(breakdown["novelty"], 0.0)
+
+
 class LLMHandlerTests(TestCase):
     """Unit tests for LLM helper behaviour."""
 
@@ -635,6 +802,119 @@ class LLMHandlerTests(TestCase):
         )
         self.assertTrue(suggestions)
         self.assertEqual(suggestions[0]["title"], "Blinding Lights")
+
+    def test_json_candidates_extracts_code_fences(self):
+        raw = "Intro\n```json\n{\"title\": \"Song\"}\n```\nTrailing text"
+        candidates = _json_candidates(raw)
+        self.assertIn('{"title": "Song"}', candidates)
+        self.assertIn("Intro", candidates[-1])
+
+    def test_parse_json_response_handles_embedded_objects(self):
+        payload = "Some info {\"tracks\": [1, 2]} extra text"
+        parsed = _parse_json_response(payload)
+        self.assertIsInstance(parsed, dict)
+        self.assertEqual(parsed["tracks"], [1, 2])
+
+    @override_settings(RECOMMENDER_LLM_DEFAULT_PROVIDER="ollama")
+    def test_resolve_provider_defaults_for_invalid_option(self):
+        self.assertEqual(_resolve_provider("anthropic"), "ollama")
+        with override_settings(RECOMMENDER_LLM_DEFAULT_PROVIDER="invalid"):
+            self.assertEqual(_resolve_provider(None), "openai")
+
+    @patch("recommender.services.llm_handler.query_openai", return_value="openai-response")
+    @patch("recommender.services.llm_handler.query_ollama", return_value="ollama-response")
+    def test_dispatch_llm_query_routes_to_ollama(self, mock_ollama, mock_openai):
+        result = dispatch_llm_query("prompt", provider="ollama", model="tiny", timeout=15)
+        self.assertEqual(result, "ollama-response")
+        mock_ollama.assert_called_once()
+        mock_openai.assert_not_called()
+
+    @override_settings(DEBUG=False, RECOMMENDER_OLLAMA_TIMEOUT_SECONDS=45)
+    @patch("recommender.services.llm_handler.subprocess.run")
+    def test_query_ollama_returns_trimmed_output(self, mock_run):
+        mock_run.return_value = SimpleNamespace(stdout=" result \n", stderr="", returncode=0)
+        output = query_ollama("hi there", model="llama3")
+        self.assertEqual(output, "result")
+        mock_run.assert_called_once()
+
+    @override_settings(DEBUG=False)
+    @patch(
+        "recommender.services.llm_handler.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd="ollama", timeout=60),
+    )
+    def test_query_ollama_handles_timeout(self, mock_run):
+        self.assertEqual(query_ollama("slow prompt"), "")
+        mock_run.assert_called_once()
+
+    @patch("recommender.services.llm_handler._get_openai_client")
+    def test_query_openai_returns_output_text(self, mock_get_client):
+        class DummyResponses:
+            def create(self, **kwargs):
+                return SimpleNamespace(output_text="  final answer  ")
+
+        mock_get_client.return_value = SimpleNamespace(responses=DummyResponses())
+        output = query_openai("prompt", model="gpt-4", temperature=0.2, max_output_tokens=123)
+        self.assertEqual(output, "final answer")
+        mock_get_client.assert_called_once()
+
+    @patch("recommender.services.llm_handler._get_openai_client")
+    def test_query_openai_collects_segmented_output(self, mock_get_client):
+        class DummyContent:
+            def __init__(self, value):
+                self.text = SimpleNamespace(value=value)
+
+        class DummyResponse:
+            output_text = ""
+            output = [SimpleNamespace(content=[DummyContent("Line1"), DummyContent("Line2")])]
+
+        class DummyResponses:
+            def create(self, **kwargs):
+                return DummyResponse()
+
+        mock_get_client.return_value = SimpleNamespace(responses=DummyResponses())
+        output = query_openai("prompt")
+        self.assertEqual(output, "Line1Line2")
+
+    @patch("recommender.services.llm_handler.query_openai", return_value="openai-response")
+    def test_dispatch_llm_query_defaults_to_openai(self, mock_openai):
+        result = dispatch_llm_query("prompt", provider="unknown", temperature=0.5, max_output_tokens=256)
+        self.assertEqual(result, "openai-response")
+        mock_openai.assert_called_once()
+
+    @patch(
+        "recommender.services.llm_handler.dispatch_llm_query",
+        return_value=json.dumps(
+            [
+                {"title": "Fresh Track", "artist": "Artist X"},
+                "Existing Song - Artist Y",
+            ]
+        ),
+    )
+    def test_suggest_remix_tracks_parses_mixed_responses(self, mock_dispatch):
+        existing = ["Existing Song - Artist Y", "Another Song - Artist Z"]
+        suggestions = suggest_remix_tracks(
+            existing,
+            {"genre": "pop"},
+            prompt="refresh",
+            target_count=3,
+            debug_steps=[],
+        )
+        self.assertEqual(len(suggestions), 3)
+        self.assertEqual(suggestions[0]["title"], "Fresh Track")
+        self.assertEqual(suggestions[1]["title"], "Existing Song")
+        mock_dispatch.assert_called_once()
+
+    @patch("recommender.services.llm_handler.dispatch_llm_query", return_value="")
+    def test_suggest_remix_tracks_falls_back_to_existing(self, mock_dispatch):
+        existing = ["Song One - Artist A", "Song Two - Artist B"]
+        suggestions = suggest_remix_tracks(
+            existing,
+            {"genre": "pop"},
+            prompt="refresh",
+            target_count=2,
+        )
+        self.assertEqual([item["title"] for item in suggestions], ["Song One", "Song Two"])
+        mock_dispatch.assert_called_once()
 
 
 class SavePlaylistViewTests(TestCase):
@@ -837,3 +1117,110 @@ class UserPreferencePlaceholderTests(TestCase):
         self.assertIn("track_count", keys)
         self.assertIn("enforce_unique_tracks", keys)
         self.assertIn("allow_seed_only_playlists", keys)
+
+
+class ViewHelperTests(TestCase):
+    """Focused tests for view helper utilities."""
+
+    def test_make_logger_tracks_errors_and_debug_steps(self):
+        debug_steps = []
+        errors = []
+        log = _make_logger(debug_steps, errors)
+
+        log("Seed pipeline started.")
+        log("Error: missing artist metadata.")
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("missing artist metadata", errors[0].lower())
+        self.assertEqual(len(debug_steps), 2)
+        self.assertTrue(debug_steps[0].endswith("Seed pipeline started."))
+        self.assertTrue(debug_steps[1].endswith("Error: missing artist metadata."))
+
+    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=False, RECOMMENDER_LLM_DEFAULT_PROVIDER="openai")
+    def test_build_context_from_payload_converts_legacy_fields(self):
+        payload = {
+            "playlist": ["Track 1 - Artist 1", "Track 2 - Artist 2"],
+            "track_ids": ["track-1", "track-2"],
+            "track_details": "legacy",
+            "seed_track_details": [
+                {"id": "seed-1", "name": "Seed 1", "artists": "Seed Artist"},
+                "invalid-seed",
+            ],
+            "similar_tracks_debug": [
+                {"id": "sim-1", "name": "Sim 1", "artists": "Sim Artist"},
+                "invalid-similar",
+            ],
+            "seed_track_display": ["Seed 1 - Seed Artist"],
+            "similar_tracks_display": ["Sim 1 - Sim Artist"],
+            "preference_descriptions": {"track_count": "Keep between 10 and 30."},
+            "user_preferences": {"track_count": 15},
+            "prompt": "test prompt",
+            "cache_key": "cache-key",
+            "attributes": {"mood": "happy"},
+            "debug_steps": ["[0.00s] Legacy entry."],
+            "profile_snapshot": "not-a-dict",
+            "llm_provider": "Ollama",
+        }
+
+        context = _build_context_from_payload(payload)
+
+        self.assertEqual(len(context["playlist_tracks"]), 2)
+        self.assertEqual(context["playlist_tracks"][0]["id"], "track-1")
+        self.assertEqual(context["playlist_tracks"][0]["name"], "Track 1")
+        self.assertEqual(context["playlist_tracks"][0]["artists"], "Artist 1")
+        self.assertEqual(len(context["seed_track_details"]), 1)
+        self.assertEqual(context["seed_track_details"][0]["id"], "seed-1")
+        self.assertIn("seed_source", context["seed_track_details"][0])
+        self.assertIn("source", context["seed_track_details"][0])
+        self.assertEqual(
+            context["seed_track_details"][0]["seed_source"],
+            context["seed_track_details"][0]["source"],
+        )
+        self.assertEqual(len(context["similar_track_details"]), 1)
+        self.assertEqual(context["similar_track_details"][0]["id"], "sim-1")
+        self.assertEqual(context["preference_descriptions"], [
+            {
+                "key": "track_count",
+                "label": "Track Count",
+                "description": "Keep between 10 and 30.",
+            }
+        ])
+        self.assertEqual(context["seed_tracks"], ["Seed 1 - Seed Artist"])
+        self.assertEqual(context["similar_tracks"], ["Sim 1 - Sim Artist"])
+        self.assertEqual(context["llm_provider"], "Ollama")
+        self.assertEqual(context["llm_provider_default"], "openai")
+        self.assertEqual(context["debug_steps"], [])
+        self.assertIsNone(context["profile_snapshot"])
+
+    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=True, RECOMMENDER_LLM_DEFAULT_PROVIDER="ollama")
+    def test_build_context_from_payload_preserves_debug_when_enabled(self):
+        payload = {
+            "playlist": ["Existing Track - Artist"],
+            "track_details": [
+                {
+                    "id": "existing",
+                    "name": "Existing Track",
+                    "artists": "Artist",
+                    "album_name": "Album",
+                    "album_image_url": "http://example.com/img.jpg",
+                    "duration_ms": 180000,
+                }
+            ],
+            "seed_track_details": [{"id": "seed", "name": "Seed", "artists": "Seed Artist"}],
+            "similar_tracks_debug": [{"id": "similar", "name": "Similar", "artists": "Similar Artist"}],
+            "debug_steps": ["[0.01s] Already logged."],
+            "attributes": {"genre": "pop"},
+            "user_preferences": {},
+            "preference_descriptions": [
+                {"key": "track_count", "label": "Track Count", "description": "Number of tracks."}
+            ],
+        }
+
+        context = _build_context_from_payload(payload)
+
+        self.assertEqual(context["debug_steps"], ["[0.01s] Already logged."])
+        self.assertEqual(context["playlist_tracks"][0]["album_name"], "Album")
+        self.assertEqual(context["llm_provider"], "ollama")
+        self.assertEqual(context["llm_provider_default"], "ollama")
+        self.assertEqual(context["seed_track_details"][0]["name"], "Seed")
+        self.assertEqual(context["similar_track_details"][0]["name"], "Similar")
