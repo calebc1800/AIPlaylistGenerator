@@ -144,7 +144,7 @@ jobs:
           python -c "import aiplaylist; print('✅ Django project imported successfully')"
           
           if command -v pylint &> /dev/null; then
-            pylint --load-plugins pylint_django --django-settings-module=src.aiplaylist.settings src/
+            pylint --load-plugins pylint_django --django-settings-module=src.aiplaylist.settings --fail-under=8.0 src/
           else
             echo "pylint not available"
             exit 1
