@@ -10,5 +10,37 @@
 <body>
     {% block content %}
     {% endblock %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const likeForms = document.querySelectorAll('.like-form');
+
+        likeForms.forEach(form => {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+
+                const button = this.querySelector('.like-button');
+                const playlistId = button.dataset.playlistId;
+                const likesCount = button.querySelector('.likes-count');
+
+                fetch(`/explorer/playlist/${playlistId}/like/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        likesCount.textContent = data.likes;
+                        button.classList.add('liked');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            });
+        });
+    });
+    </script>
 </body>
 </html>

@@ -1,5 +1,3 @@
-{% extends 'explorer/base.html' %}
-{% block content %}
 <div class="playlist-card">
     <div class="playlist-image">
         {% if playlist.cover_image %}
@@ -12,11 +10,14 @@
         <div class="playlist-title">{{ playlist.name }}</div>
         <div class="playlist-meta">
             <span class="creator-name">👤 {{ playlist.creator.username }}</span>
-            <span class="playlist-likes">{{ playlist.likes }} 👍</span>
+            <form method="POST" action="{% url 'like_playlist' playlist.spotify_id %}" class="like-form" style="display: inline;">
+                <button type="submit" class="like-button" data-playlist-id="{{ playlist.spotify_id }}">
+                    <span class="likes-count">{{ playlist.likes }}</span> 👍
+                </button>
+            </form>
         </div>
         {% if playlist.spotify_uri %}
         <a href="https://open.spotify.com/playlist/{{ playlist.spotify_id }}" target="_blank" class="spotify-link">View on Spotify →</a>
         {% endif %}
     </div>
 </div>
-{% endblock %}
