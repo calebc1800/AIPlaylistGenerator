@@ -20,6 +20,7 @@ class DashboardViewTests(TestCase):
         # Should redirect to login
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('spotify_auth:login'))
+        self.assertNotIn('spotify_access_token', self.client.session)
 
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_renders_with_valid_token(self, mock_spotify):
@@ -412,6 +413,66 @@ class DashboardViewTests(TestCase):
         self.assertContains(response, 'Stats')
         self.assertContains(response, 'Account')
 
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_has_tab_navigation(self, mock_spotify):
+        """Test that dashboard includes tab navigation structure"""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user',
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        response = self.client.get(self.dashboard_url)
+
+        # Check for tab navigation elements
+        self.assertContains(response, 'class="nav-tabs"')
+        self.assertContains(response, 'class="tab')
+        self.assertContains(response, 'data-tab="explore"')
+        self.assertContains(response, 'data-tab="create"')
+        self.assertContains(response, 'data-tab="stats"')
+        self.assertContains(response, 'data-tab="account"')
+
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_displays_inline_playlist_cards(self, mock_spotify):
+        """Test that dashboard displays playlists with inline card structure"""
+        Playlist.objects.create(
+            name='Test Playlist',
+            creator=self.user,
+            likes=10,
+            spotify_id='test123',
+            spotify_uri='spotify:playlist:test123'
+        )
+
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user',
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        response = self.client.get(self.dashboard_url)
+
+        # Check for inline playlist card structure
+        self.assertContains(response, 'playlist-card')
+        self.assertContains(response, 'playlist-image')
+        self.assertContains(response, 'playlist-title')
+        self.assertContains(response, 'Test Playlist')
+
     @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=False)
     @patch('dashboard.views.spotipy.Spotify')
     def test_llm_toggle_hidden_when_debug_disabled(self, mock_spotify):
@@ -570,3 +631,55 @@ class DashboardIntegrationTests(TestCase):
         self.assertContains(response, 'Spotify User')
         self.assertContains(response, 'Top Hits')
         self.assertContains(response, 'Chill Vibes')
+
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_playlist_generation_form(self, mock_spotify):
+        """Test that dashboard includes playlist generation form"""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user',
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        response = self.client.get(self.dashboard_url)
+
+        # Check for playlist generation form elements
+        self.assertContains(response, 'class="create-form"')
+        self.assertContains(response, 'id="playlist_prompt"')
+        self.assertContains(response, 'name="prompt"')
+        self.assertContains(response, 'id="playlist_name"')
+        self.assertContains(response, 'name="playlist_name"')
+        self.assertContains(response, 'class="create-btn"')
+
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_stats_section(self, mock_spotify):
+        """Test that dashboard includes stats section with follower count"""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user',
+            'display_name': 'Test User',
+            'followers': {'total': 123}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        response = self.client.get(self.dashboard_url)
+
+        # Check for stats content
+        self.assertContains(response, 'Your Music Stats')
+        self.assertContains(response, '123')
+        self.assertContains(response, 'Followers')
+        self.assertContains(response, 'stat-card')

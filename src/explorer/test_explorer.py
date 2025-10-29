@@ -119,7 +119,8 @@ class SearchViewTests(TestCase):
                 'description': 'From Spotify',
                 'images': [{'url': 'http://image.url'}],
                 'followers': {'total': 100},
-                'tracks': {'href': 'http://tracks'}
+                'tracks': {'href': 'http://tracks'},
+                'uri': 'spotify:playlist:abc'
             }
         ]
         mock_import.return_value = Playlist.objects.create(
@@ -142,6 +143,15 @@ class SearchViewTests(TestCase):
         response = self.client.get(reverse('search') + '?q=rock')
         self.assertIn('results_count', response.context)
         self.assertEqual(response.context['results_count'], 1)
+
+    def test_search_displays_playlist_card_structure(self):
+        """Test that search results use the new playlist card structure"""
+        response = self.client.get(reverse('search') + '?q=rock')
+        self.assertEqual(response.status_code, 200)
+        # Check for new playlist card structure elements
+        self.assertContains(response, 'playlist-card')
+        self.assertContains(response, 'playlist-top')
+        self.assertContains(response, 'playlist-cover')
 
 
 class ProfileViewTests(TestCase):
@@ -179,6 +189,14 @@ class ProfileViewTests(TestCase):
         response = self.client.get(reverse('profile', args=[self.user.id]))
         self.assertContains(response, 'User Playlist 1')
         self.assertNotContains(response, 'Other Playlist')
+
+    def test_profile_displays_playlist_card_structure(self):
+        """Test that profile page uses the new playlist card structure"""
+        response = self.client.get(reverse('profile', args=[self.user.id]))
+        self.assertEqual(response.status_code, 200)
+        # Check for new playlist card structure elements
+        self.assertContains(response, 'playlist-card')
+        self.assertContains(response, 'playlist-top')
 
 
 class LogoutViewTests(TestCase):
@@ -339,3 +357,69 @@ class SpotifyAPIHelperTests(TestCase):
         songs = playlist.sample_songs.all()
         self.assertEqual(songs[0].name, 'Song 1')
         self.assertEqual(songs[1].artist, 'Artist 2, Artist 3')
+
+
+class PlaylistCardTemplateTests(TestCase):
+    """Tests for the new playlist card template structure"""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.playlist = Playlist.objects.create(
+            name='Test Playlist',
+            description='Test Description',
+            creator=self.user,
+            likes=10,
+            spotify_id='test123',
+            spotify_uri='spotify:playlist:test123',
+            cover_image='http://example.com/image.jpg'
+        )
+        Song.objects.create(playlist=self.playlist, name='Test Song 1', artist='Test Artist 1')
+        Song.objects.create(playlist=self.playlist, name='Test Song 2', artist='Test Artist 2')
+
+    def test_playlist_card_has_correct_structure(self):
+        """Test that playlist card has the new structure with all elements"""
+        response = self.client.get(reverse('search') + '?q=Test')
+        self.assertEqual(response.status_code, 200)
+
+        # Check for main structure elements
+        self.assertContains(response, 'class="playlist-card"')
+        self.assertContains(response, 'class="playlist-top"')
+        self.assertContains(response, 'class="playlist-cover"')
+        self.assertContains(response, 'class="playlist-info"')
+
+    def test_playlist_card_displays_cover_image(self):
+        """Test that playlist card displays cover image when available"""
+        response = self.client.get(reverse('search') + '?q=Test')
+        self.assertContains(response, 'http://example.com/image.jpg')
+        self.assertContains(response, 'alt="Test Playlist"')
+
+    def test_playlist_card_displays_placeholder_when_no_image(self):
+        """Test that playlist card displays placeholder when no cover image"""
+        self.playlist.cover_image = ''
+        self.playlist.save()
+
+        response = self.client.get(reverse('search') + '?q=Test')
+        self.assertContains(response, 'placeholder-cover')
+        self.assertContains(response, 'Cover Art')
+
+    def test_playlist_card_displays_sample_songs(self):
+        """Test that playlist card displays sample songs"""
+        response = self.client.get(reverse('search') + '?q=Test')
+        self.assertContains(response, 'Test Song 1')
+        self.assertContains(response, 'Test Song 2')
+
+    def test_playlist_card_displays_spotify_embed(self):
+        """Test that playlist card includes Spotify embed iframe"""
+        response = self.client.get(reverse('search') + '?q=Test')
+        self.assertContains(response, 'spotify-embed')
+        self.assertContains(response, f'https://open.spotify.com/embed/playlist/{self.playlist.spotify_id}')
+        self.assertContains(response, '<iframe')
+
+    def test_playlist_card_shows_no_embed_message_when_no_spotify_id(self):
+        """Test that playlist card shows message when no Spotify embed available"""
+        self.playlist.spotify_id = ''
+        self.playlist.save()
+
+        response = self.client.get(reverse('search') + '?q=Test')
+        self.assertContains(response, 'Spotify embed not available')
