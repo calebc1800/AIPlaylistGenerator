@@ -43,56 +43,6 @@ AI Playlist Generator is a web application that empowers users to create persona
 - **Busy Professionals** who need quick, personalized playlist creation
 - **Music Explorers** looking to discover new artists and genres
 
-## Getting Started
-
-### Prerequisites
-
-```bash
-# List your requirements here, for example:
-- Node.js (v16 or higher)
-- npm or yarn
-- Spotify Developer Account (for API access)
-```
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/calebc1800/AIPlaylistGenerator.git
-
-# Navigate to the project directory
-cd AIPlaylistGenerator
-
-# Install dependencies
-npm install
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your API keys and configuration
-```
-
-### Configuration
-
-1. Create a Spotify Developer account at [developer.spotify.com](https://developer.spotify.com)
-2. Register your application and obtain API credentials
-3. Add your credentials to the `.env` file:
-
-```env
-SPOTIFY_CLIENT_ID=your_client_id
-SPOTIFY_CLIENT_SECRET=your_client_secret
-SPOTIFY_REDIRECT_URI=your_redirect_uri
-```
-
-### Running the Application
-
-```bash
-# Development mode
-npm run dev
-
-# Production build
-npm run build
-npm start
-```
 
 ## Usage
 
@@ -114,37 +64,6 @@ npm start
 - Explore **Friends' Playlists** for personalized recommendations
 - Search by **mood**, **genre**, or **activity**
 
-## Technology Stack
-
-*Add your tech stack here, for example:*
-
-- **Frontend:** React, Next.js, Tailwind CSS
-- **Backend:** Node.js, Express
-- **Database:** PostgreSQL, Redis
-- **AI/ML:** OpenAI API, LangChain
-- **Music APIs:** Spotify Web API
-- **Authentication:** OAuth 2.0
-
-## Contributing
-
-We welcome contributions from the community! Please read our [Contributing Guidelines](CONTRIBUTING.md) before submitting pull requests.
-
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## Roadmap
-
-- [ ] Support for additional music services (Apple Music, YouTube Music)
-- [ ] Advanced AI models for better music recommendations
-- [ ] Collaborative playlist creation
-- [ ] Mobile application (iOS & Android)
-- [ ] Playlist analytics and insights
-- [ ] Integration with social media platforms
 
 ## License
 
