@@ -46,7 +46,7 @@ if not SECRET_KEY:
 
 _raw_allowed_hosts = os.getenv(
     "DJANGO_ALLOWED_HOSTS",
-    "0.0.0.0,localhost,127.0.0.1,192.168.1.111",
+    "0.0.0.0,localhost,127.0.0.1,192.168.1.111,aiplaylistgenerator.app,aiplaylistgenerator-not-docker.onrender.com",
 )
 ALLOWED_HOSTS = [host.strip() for host in _raw_allowed_hosts.split(",") if host.strip()]
 
