@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 import warnings
+from ipaddress import ip_address
 from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
@@ -29,6 +30,44 @@ def _bool_env(var_name: str, default: bool = False) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _split_env_tokens(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [
+        token.strip()
+        for token in raw.replace(",", " ").split()
+        if token.strip()
+    ]
+
+
+def _normalize_csrf_origins(entries: list[str]) -> list[str]:
+    origins: list[str] = []
+    seen: set[str] = set()
+
+    for entry in entries:
+        value = entry.strip()
+        if not value or value == "*":
+            continue
+
+        if value.startswith(("http://", "https://")):
+            candidates = [value]
+        else:
+            candidates = [f"https://{value}"]
+            try:
+                ip_address(value)
+                candidates.insert(0, f"http://{value}")
+            except ValueError:
+                if value in {"localhost"}:
+                    candidates.insert(0, f"http://{value}")
+
+        for candidate in candidates:
+            if candidate not in seen:
+                origins.append(candidate)
+                seen.add(candidate)
+
+    return origins
 
 
 DEBUG = _bool_env("DJANGO_DEBUG", default=True)
@@ -49,6 +88,11 @@ _raw_allowed_hosts = os.getenv(
     "0.0.0.0,localhost,127.0.0.1,192.168.1.111,aiplaylistgenerator.app,aiplaylistgenerator-not-docker.onrender.com",
 )
 ALLOWED_HOSTS = [host.strip() for host in _raw_allowed_hosts.split(",") if host.strip()]
+_raw_csrf_trusted_origins = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS")
+if _raw_csrf_trusted_origins:
+    CSRF_TRUSTED_ORIGINS = _normalize_csrf_origins(_split_env_tokens(_raw_csrf_trusted_origins))
+else:
+    CSRF_TRUSTED_ORIGINS = _normalize_csrf_origins(ALLOWED_HOSTS)
 
 
 # Application definition
