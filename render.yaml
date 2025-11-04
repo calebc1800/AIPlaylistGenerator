@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: ai-playlist-generator
+    env: docker
+    repo: https://github.com/calebc1800/AIPlaylistGenerator
+    branch: main
+    dockerfilePath: ./Dockerfile # specify path if needed
+    autoDeploy: true
+    plan: starter
+    # add build/start commands, env vars, etc as needed
