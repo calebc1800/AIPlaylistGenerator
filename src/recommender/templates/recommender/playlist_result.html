@@ -70,43 +70,112 @@
                 </div>
 
                 {% if playlist_stats %}
-                    <section class="playlist-stats">
-                        <h3>Playlist Analytics</h3>
-                        <div class="stats-grid">
-                            <div class="stat-card">
-                                <span class="stat-label">Total Tracks</span>
-                                <span class="stat-value">{{ playlist_stats.total_tracks }}</span>
+                    <section class="playlist-stats" data-has-stats>
+                        <div class="playlist-stats__intro">
+                            <div>
+                                <h3 class="playlist-stats__title">Playlist Insights</h3>
+                                <p class="playlist-stats__tagline">
+                                    A quick snapshot of the vibe you just generated.
+                                </p>
                             </div>
-                            <div class="stat-card">
-                                <span class="stat-label">Total Duration</span>
-                                <span class="stat-value">{{ playlist_stats.total_duration }}</span>
-                            </div>
-                            <div class="stat-card">
-                                <span class="stat-label">Average Popularity</span>
-                                <span class="stat-value">
-                                    {% if playlist_stats.avg_popularity is not None %}
-                                        {{ playlist_stats.avg_popularity }}
-                                    {% else %}
-                                        —
-                                    {% endif %}
+                            <div class="playlist-stats__totals">
+                                <span class="analytics-chip">
+                                    <span class="analytics-chip__value">{{ playlist_stats.total_tracks }}</span>
+                                    <span class="analytics-chip__label">Tracks</span>
+                                </span>
+                                <span class="analytics-chip">
+                                    <span class="analytics-chip__value">{{ playlist_stats.total_duration }}</span>
+                                    <span class="analytics-chip__label">Duration</span>
                                 </span>
                             </div>
-                            <div class="stat-card">
-                                <span class="stat-label">Novelty</span>
-                                <span class="stat-value">{{ playlist_stats.novelty }}%</span>
-                            </div>
                         </div>
-                        {% if playlist_stats.genre_distribution %}
-                            <h4>Genre Distribution</h4>
-                            <ul class="genre-breakdown">
-                                {% for genre, pct in playlist_stats.genre_distribution.items %}
-                                    <li>
-                                        <span class="genre-label">{{ genre|title }}</span>
-                                        <span class="genre-value">{{ pct }}%</span>
-                                    </li>
-                                {% endfor %}
-                            </ul>
-                        {% endif %}
+
+                        <div class="playlist-stats__grid">
+                            <article class="analytics-card analytics-card--overview">
+                                <h4 class="analytics-card__title">Quick Stats</h4>
+                                <div class="analytics-overview">
+                                    <div class="overview-row">
+                                        <span class="overview-label">Average Popularity</span>
+                                        <span class="overview-value">
+                                            {% if playlist_stats.avg_popularity is not None %}
+                                                {{ playlist_stats.avg_popularity }}
+                                            {% else %}
+                                                —
+                                            {% endif %}
+                                        </span>
+                                    </div>
+                                    <div class="overview-row">
+                                        <span class="overview-label">Fresh Finds</span>
+                                        <span class="overview-value">{{ playlist_stats.novelty }}%</span>
+                                    </div>
+                                </div>
+                                <p class="analytics-card__note">
+                                    Based on your latest AI-generated mix.
+                                </p>
+                            </article>
+
+                            <article class="analytics-card analytics-card--meter">
+                                <h4 class="analytics-card__title">Average Popularity</h4>
+                                <div class="analytics-meter">
+                                    <div class="stat-value--meter">
+                                        <span class="stat-value">
+                                            {% if playlist_stats.avg_popularity is not None %}
+                                                {{ playlist_stats.avg_popularity }}
+                                            {% else %}
+                                                —
+                                            {% endif %}
+                                        </span>
+                                        <div class="stat-meter">
+                                            <div
+                                                class="stat-meter__fill"
+                                                style="width: {{ playlist_stats.avg_popularity|default:0 }}%;"
+                                                aria-hidden="true"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="analytics-card__note">Spotify popularity score (0-100).</p>
+                            </article>
+
+                            <article class="analytics-card analytics-card--novelty">
+                                <div class="analytics-card__header">
+                                    <h4 class="analytics-card__title">Freshness Gauge</h4>
+                                    <span class="stat-caption">Shows how much of the playlist is new to you</span>
+                                </div>
+                                <div class="analytics-chart analytics-chart--doughnut">
+                                    <canvas id="novelty-doughnut-chart" data-chart="novelty"></canvas>
+                                    <div class="chart-center">
+                                        <span class="detail-value">{{ playlist_stats.novelty }}%</span>
+                                        <span class="detail-label">New discoveries</span>
+                                    </div>
+                                </div>
+                            </article>
+
+                            <article class="analytics-card analytics-card--wide">
+                                <div class="analytics-card__header">
+                                    <h4 class="analytics-card__title">Genre Mix</h4>
+                                    {% if playlist_stats.genre_distribution %}
+                                        <span class="stat-caption">Tap a slice to reveal the percentage</span>
+                                    {% else %}
+                                        <span class="stat-caption">Genre data unavailable for this playlist</span>
+                                    {% endif %}
+                                </div>
+                                <div class="analytics-chart">
+                                    <canvas id="genre-distribution-chart" data-chart="genre"></canvas>
+                                </div>
+                                <ul class="genre-legend">
+                                    {% for genre, pct in playlist_stats.genre_distribution.items %}
+                                        <li data-genre="{{ genre }}">
+                                            <span class="genre-label">{{ genre|title }}</span>
+                                            <span class="genre-value">{{ pct }}%</span>
+                                        </li>
+                                    {% empty %}
+                                        <li class="genre-empty">We need a bit more listening history to map genres.</li>
+                                    {% endfor %}
+                                </ul>
+                            </article>
+                        </div>
+
+                        {{ playlist_stats|json_script:"playlist-stats-data" }}
                     </section>
                 {% endif %}
 
@@ -383,6 +452,11 @@
             <div class="remix-progress-label" id="remix-progress-label">Preparing remix...</div>
         </div>
     </div>
+
+    {% if playlist_stats %}
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js" integrity="sha384-Sse/HDqcypGpyTDpvZOJNnG0TT3feGQUkF9H+mnRvic+LjR+K1NhTt8f51KIQ3v3" crossorigin="anonymous"></script>
+        <script src="{% static 'recommender_stats.js' %}"></script>
+    {% endif %}
 
     <script>
         (function () {

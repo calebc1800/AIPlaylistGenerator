@@ -73,6 +73,7 @@ class GeneratePlaylistViewTests(TestCase):
         self.assertEqual(response.url, reverse("spotify_auth:login"))
 
     @patch("recommender.views.extract_playlist_attributes")
+    @patch("recommender.views.compute_playlist_statistics")
     @patch("recommender.views.suggest_seed_tracks")
     @patch("recommender.views.resolve_seed_tracks")
     @patch("recommender.views.get_similar_tracks")
@@ -83,6 +84,7 @@ class GeneratePlaylistViewTests(TestCase):
         mock_similar,
         mock_resolve,
         mock_suggest,
+        mock_stats,
         mock_extract,
     ):
         session = self.client.session
@@ -91,6 +93,14 @@ class GeneratePlaylistViewTests(TestCase):
         session.save()
 
         mock_extract.return_value = {"mood": "upbeat", "genre": "pop", "energy": "high"}
+        mock_stats.return_value = {
+            "total_tracks": 3,
+            "total_duration": "00:09:15",
+            "avg_popularity": 64.5,
+            "novelty": 72.0,
+            "genre_distribution": {"synth-pop": 60.0, "alt-pop": 40.0},
+            "novelty_reference_ids": [],
+        }
         mock_suggest.return_value = [
             {"title": "Song A", "artist": "Artist A"},
             {"title": "Song B", "artist": "Artist B"},
@@ -112,12 +122,18 @@ class GeneratePlaylistViewTests(TestCase):
         mock_resolve.assert_called_once()
         mock_similar.assert_called_once()
         mock_discover.assert_not_called()
+        mock_stats.assert_called_once()
         page = response.content.decode()
         self.assertIn('class="track-name">Song A', page)
         self.assertIn('class="track-name">Song C', page)
         self.assertIn('class="track-artist">Artist A', page)
+        self.assertIn('id="playlist-stats-data"', page)
+        self.assertIn('data-chart="genre"', page)
+        self.assertIn('Freshness Gauge', page)
+        self.assertIn('recommender_stats.js', page)
 
     @patch("recommender.views.extract_playlist_attributes")
+    @patch("recommender.views.compute_playlist_statistics")
     @patch("recommender.views.suggest_seed_tracks")
     @patch("recommender.views.resolve_seed_tracks")
     @patch("recommender.views.get_similar_tracks")
@@ -128,6 +144,7 @@ class GeneratePlaylistViewTests(TestCase):
         mock_similar,
         mock_resolve,
         mock_suggest,
+        mock_stats,
         mock_extract,
     ):
         session = self.client.session
@@ -135,6 +152,14 @@ class GeneratePlaylistViewTests(TestCase):
         session.save()
 
         mock_extract.return_value = {"mood": "calm", "genre": "ambient", "energy": "low"}
+        mock_stats.return_value = {
+            "total_tracks": 2,
+            "total_duration": "00:08:00",
+            "avg_popularity": 55.0,
+            "novelty": 80.0,
+            "genre_distribution": {"ambient": 70.0, "chill": 30.0},
+            "novelty_reference_ids": [],
+        }
         mock_suggest.return_value = [{"title": "Ambient Song", "artist": "Someone"}]
         mock_resolve.return_value = []
         mock_discover.return_value = [
@@ -152,6 +177,7 @@ class GeneratePlaylistViewTests(TestCase):
         mock_resolve.assert_called_once()
         mock_discover.assert_called_once()
         mock_similar.assert_called_once()
+        mock_stats.assert_called_once()
         page = response.content.decode()
         self.assertIn('class="track-name">Fallback Song', page)
         self.assertIn('class="track-name">Similar Song', page)
@@ -309,6 +335,7 @@ class RemixPlaylistViewTests(TestCase):
             timeout=60,
         )
 
+    @patch("recommender.views.compute_playlist_statistics")
     @patch("recommender.views.get_similar_tracks")
     @patch("recommender.views.resolve_seed_tracks")
     @patch("recommender.views.suggest_remix_tracks")
@@ -317,6 +344,7 @@ class RemixPlaylistViewTests(TestCase):
         mock_suggest,
         mock_resolve,
         mock_similar,
+        mock_stats,
     ):
         session = self.client.session
         session["spotify_access_token"] = "token"
@@ -345,6 +373,14 @@ class RemixPlaylistViewTests(TestCase):
             for index in range(1, 4)
         ]
         mock_similar.return_value = []
+        mock_stats.return_value = {
+            "total_tracks": 3,
+            "total_duration": "00:10:00",
+            "avg_popularity": 62.0,
+            "novelty": 68.0,
+            "genre_distribution": {"lo-fi": 50.0, "jazz": 30.0, "ambient": 20.0},
+            "novelty_reference_ids": [],
+        }
 
         response = self.client.post(self.url, {"cache_key": cache_key})
 
@@ -352,6 +388,7 @@ class RemixPlaylistViewTests(TestCase):
         mock_suggest.assert_called_once()
         mock_resolve.assert_called_once()
         mock_similar.assert_not_called()
+        mock_stats.assert_called_once()
 
         cached = cache.get(cache_key)
         self.assertIsInstance(cached, dict)
