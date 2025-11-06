@@ -30,6 +30,7 @@ from .services.spotify_handler import (
     get_similar_tracks,
     resolve_seed_tracks,
     create_playlist_with_tracks,
+    compute_playlist_statistics,
 )
 from .services.user_preferences import (
     describe_pending_options,
@@ -124,6 +125,10 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
     if profile_snapshot and not isinstance(profile_snapshot, dict):
         profile_snapshot = None
 
+    playlist_stats = payload.get("playlist_stats")
+    if playlist_stats and not isinstance(playlist_stats, dict):
+        playlist_stats = None
+
     return {
         "playlist": payload.get("playlist", []),
         "prompt": payload.get("prompt", ""),
@@ -149,6 +154,7 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
         "playlist_tracks": track_details,
         "suggested_playlist_name": payload.get("suggested_playlist_name", ""),
         "playlist_name": payload.get("suggested_playlist_name", ""),
+        "playlist_stats": playlist_stats,
     }
 
 
@@ -496,6 +502,9 @@ def generate_playlist(request):
                     "album_name": track_dict.get("album_name", ""),
                     "album_image_url": track_dict.get("album_image_url", ""),
                     "duration_ms": track_dict.get("duration_ms", 0),
+                    "popularity": track_dict.get("popularity"),
+                    "artist_ids": track_dict.get("artist_ids", []),
+                    "year": track_dict.get("year"),
                 }
             )
 
@@ -530,13 +539,28 @@ def generate_playlist(request):
             for track in similar_tracks:
                 _append_track(track)
 
-            playlist = [
-                f"{track['name']} - {track['artists']}" for track in ordered_tracks
-            ]
+        playlist = [
+            f"{track['name']} - {track['artists']}" for track in ordered_tracks
+        ]
 
-            log(f"Final playlist ({len(playlist)} tracks) compiled from seeds and similar tracks.")
+        log(f"Final playlist ({len(playlist)} tracks) compiled from seeds and similar tracks.")
 
         track_ids: List[str] = [track["id"] for track in ordered_tracks if track.get("id")]
+
+        previous_stats = None
+        if isinstance(cached_payload, dict):
+            previous_stats = cached_payload.get("playlist_stats")
+        novelty_reference_ids = None
+        if isinstance(previous_stats, dict):
+            novelty_reference_ids = previous_stats.get("novelty_reference_ids")
+
+        playlist_stats = compute_playlist_statistics(
+            access_token,
+            ordered_tracks,
+            profile_cache=profile_cache,
+            cached_track_ids=novelty_reference_ids,
+            log_step=log,
+        )
 
         prompt_label = prompt.strip()
         suggested_playlist_name = prompt_label.title()[:100] if prompt_label else "AI Playlist"
@@ -565,6 +589,7 @@ def generate_playlist(request):
             "llm_provider": llm_provider,
             "profile_snapshot": profile_snapshot,
             "prompt_artist_candidates": prompt_artist_candidates,
+            "playlist_stats": playlist_stats,
         }
         cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
         cache.set(cache_key, payload, timeout=cache_timeout)
@@ -704,6 +729,7 @@ def remix_playlist(request):
                 "album_name": entry.get("album_name", ""),
                 "album_image_url": entry.get("album_image_url", ""),
                 "duration_ms": int(entry.get("duration_ms") or 0),
+                "popularity": entry.get("popularity"),
                 "artist_ids": entry.get("artist_ids", []),
                 "year": entry.get("year"),
             }
@@ -772,6 +798,19 @@ def remix_playlist(request):
     ]
     track_ids = [entry.get("id") for entry in ordered_tracks if entry.get("id")]
 
+    existing_playlist_stats = cached_payload.get("playlist_stats")
+    remix_novelty_reference = None
+    if isinstance(existing_playlist_stats, dict):
+        remix_novelty_reference = existing_playlist_stats.get("novelty_reference_ids")
+
+    playlist_stats = compute_playlist_statistics(
+        access_token,
+        ordered_tracks,
+        profile_cache=profile_cache,
+        cached_track_ids=remix_novelty_reference,
+        log_step=log,
+    )
+
     payload = {
         **cached_payload,
         "playlist": playlist_strings,
@@ -792,6 +831,7 @@ def remix_playlist(request):
         "llm_provider": llm_provider,
         "prompt": prompt,
         "cache_key": cache_key,
+        "playlist_stats": playlist_stats,
     }
 
     cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
@@ -867,6 +907,29 @@ def update_cached_playlist(request):
         f"{entry.get('name', 'Unknown')} - {entry.get('artists', 'Unknown')}".strip()
         for entry in updated_tracks
     ]
+
+    access_token = request.session.get("spotify_access_token") or ""
+    user_id = "anonymous"
+    if request.user.is_authenticated:
+        user_id = str(request.user.pk)
+    else:
+        user_id = request.session.get("spotify_user_id", user_id)
+
+    profile_cache: Optional[Dict[str, object]] = None
+    if user_id:
+        profile_cache = cache.get(f"recommender:user-profile:{user_id}")
+
+    existing_stats = payload.get("playlist_stats")
+    novelty_reference_ids = None
+    if isinstance(existing_stats, dict):
+        novelty_reference_ids = existing_stats.get("novelty_reference_ids")
+
+    payload["playlist_stats"] = compute_playlist_statistics(
+        access_token,
+        updated_tracks,
+        profile_cache=profile_cache,
+        cached_track_ids=novelty_reference_ids,
+    )
 
     cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
     cache.set(cache_key, payload, timeout=cache_timeout)

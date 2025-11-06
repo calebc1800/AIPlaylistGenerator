@@ -257,6 +257,134 @@ def _serialize_track_payload(track: Dict) -> Dict[str, object]:
     }
 
 
+def _format_duration_label(total_ms: int) -> str:
+    """Return a hh:mm:ss formatted label for a millisecond duration."""
+    total_seconds = max(int(total_ms // 1000), 0)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def compute_playlist_statistics(
+    token: str,
+    tracks: List[Dict[str, object]],
+    *,
+    profile_cache: Optional[Dict[str, object]] = None,
+    cached_track_ids: Optional[Iterable[str]] = None,
+    log_step: Optional[Callable[[str], None]] = None,
+) -> Dict[str, object]:
+    """Compute aggregate statistics for a playlist using cached metadata."""
+    valid_tracks = [
+        track
+        for track in tracks
+        if isinstance(track, dict) and track.get("id")
+    ]
+    total_tracks = len(valid_tracks)
+    if total_tracks == 0:
+        return {
+            "total_tracks": 0,
+            "total_duration": "00:00:00",
+            "total_duration_ms": 0,
+            "avg_popularity": None,
+            "novelty": 100.0,
+            "genre_distribution": {},
+            "novelty_reference_ids": [],
+        }
+
+    total_duration_ms = sum(int(track.get("duration_ms") or 0) for track in valid_tracks)
+    popularity_values: List[int] = [
+        int(track.get("popularity")) for track in valid_tracks if isinstance(track.get("popularity"), (int, float))
+    ]
+    avg_popularity: Optional[float] = None
+    if popularity_values:
+        avg_popularity = round(sum(popularity_values) / len(popularity_values), 1)
+
+    novelty_reference_ids: Set[str] = set()
+    if cached_track_ids:
+        novelty_reference_ids.update(str(track_id) for track_id in cached_track_ids if track_id)
+
+    if isinstance(profile_cache, dict):
+        tracks_map = profile_cache.get("tracks")
+        if isinstance(tracks_map, dict):
+            novelty_reference_ids.update(track_id for track_id in tracks_map.keys() if isinstance(track_id, str))
+        top_track_ids = profile_cache.get("top_track_ids")
+        if isinstance(top_track_ids, (list, tuple, set)):
+            novelty_reference_ids.update(str(track_id) for track_id in top_track_ids if track_id)
+
+    if not novelty_reference_ids:
+        novelty_score = 100.0
+    else:
+        novel_count = sum(1 for track in valid_tracks if track.get("id") not in novelty_reference_ids)
+        novelty_score = round((novel_count / total_tracks) * 100, 1)
+
+    artist_ids: List[str] = []
+    track_artist_map: Dict[str, List[str]] = {}
+    for track in valid_tracks:
+        artist_list = [artist_id for artist_id in track.get("artist_ids", []) if artist_id]
+        if artist_list:
+            track_artist_map[track["id"]] = artist_list
+            artist_ids.extend(artist_list)
+
+    genre_distribution: Dict[str, float] = {}
+    if artist_ids and token:
+        unique_artist_ids = list(dict.fromkeys(artist_ids))
+        artist_genre_map: Dict[str, List[str]] = {}
+        sp = spotipy.Spotify(auth=token)
+        for start in range(0, len(unique_artist_ids), 50):
+            batch = unique_artist_ids[start : start + 50]
+            try:
+                response = sp.artists(batch)
+            except SpotifyException as exc:
+                _log(None, log_step, f"Spotify artist lookup failed while computing stats: {exc}.")
+                continue
+            except requests.exceptions.RequestException as exc:
+                _log(None, log_step, f"Network error during artist lookup for stats: {exc}.")
+                continue
+
+            for artist in response.get("artists", []) or []:
+                artist_id = artist.get("id")
+                if not artist_id:
+                    continue
+                normalized_genres = [
+                    genre
+                    for genre in {_normalize_genre(raw) for raw in artist.get("genres", []) or []}
+                    if genre
+                ]
+                artist_genre_map[artist_id] = normalized_genres
+
+        if artist_genre_map:
+            genre_weights: Dict[str, float] = {}
+            for track in valid_tracks:
+                track_id = track.get("id")
+                associated_artists = track_artist_map.get(track_id, [])
+                track_genres: Set[str] = set()
+                for artist_id in associated_artists:
+                    for genre in artist_genre_map.get(artist_id, []):
+                        if genre:
+                            track_genres.add(genre)
+                if not track_genres:
+                    continue
+                weight = 1.0 / len(track_genres)
+                for genre in track_genres:
+                    genre_weights[genre] = genre_weights.get(genre, 0.0) + weight
+
+            genre_distribution = {
+                genre: round((weight / total_tracks) * 100, 1)
+                for genre, weight in sorted(genre_weights.items(), key=lambda item: item[1], reverse=True)
+            }
+
+    stats = {
+        "total_tracks": total_tracks,
+        "total_duration": _format_duration_label(total_duration_ms),
+        "total_duration_ms": total_duration_ms,
+        "avg_popularity": avg_popularity,
+        "novelty": novelty_score,
+        "genre_distribution": genre_distribution,
+        "novelty_reference_ids": sorted(novelty_reference_ids),
+    }
+    return stats
+
+
 def build_user_profile_seed_snapshot(
     sp: spotipy.Spotify,
     *,

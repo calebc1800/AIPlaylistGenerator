@@ -29,6 +29,7 @@ from recommender.services.spotify_handler import (
     create_playlist_with_tracks,
     _score_track_basic,
     _is_mostly_latin,
+    compute_playlist_statistics,
 )
 from recommender.services.user_preferences import (
     describe_pending_options,
@@ -373,6 +374,102 @@ class RemixPlaylistViewTests(TestCase):
 
 class SpotifyHandlerTests(TestCase):
     """Unit tests for Spotify service helpers."""
+
+    def test_compute_playlist_statistics_empty_playlist(self):
+        stats = compute_playlist_statistics("token", [])
+
+        self.assertEqual(stats["total_tracks"], 0)
+        self.assertEqual(stats["total_duration"], "00:00:00")
+        self.assertIsNone(stats["avg_popularity"])
+        self.assertEqual(stats["novelty"], 100.0)
+        self.assertEqual(stats["genre_distribution"], {})
+        self.assertEqual(stats["novelty_reference_ids"], [])
+
+    def test_compute_playlist_statistics_with_cached_overlap(self):
+        tracks = [
+            {
+                "id": "track-1",
+                "name": "First",
+                "artists": "Artist One",
+                "duration_ms": 60000,
+                "popularity": 50,
+                "artist_ids": ["artist-1"],
+            },
+            {
+                "id": "track-2",
+                "name": "Second",
+                "artists": "Artist Two",
+                "duration_ms": 120000,
+                "popularity": 70,
+                "artist_ids": ["artist-2"],
+            },
+        ]
+        profile_cache = {
+            "tracks": {"track-1": {"id": "track-1"}},
+            "top_track_ids": ["track-3"],
+        }
+
+        stats = compute_playlist_statistics(
+            "",
+            tracks,
+            profile_cache=profile_cache,
+            cached_track_ids=["track-2"],
+        )
+
+        self.assertEqual(stats["total_tracks"], 2)
+        self.assertEqual(stats["total_duration"], "00:03:00")
+        self.assertEqual(stats["avg_popularity"], 60.0)
+        self.assertEqual(stats["novelty"], 0.0)
+        self.assertIn("track-1", stats["novelty_reference_ids"])
+        self.assertIn("track-2", stats["novelty_reference_ids"])
+        self.assertIn("track-3", stats["novelty_reference_ids"])
+
+    @patch("recommender.services.spotify_handler.spotipy.Spotify")
+    def test_compute_playlist_statistics_populates_genre_distribution(self, mock_spotify):
+        mock_instance = mock_spotify.return_value
+        mock_instance.artists.return_value = {
+            "artists": [
+                {"id": "artist-1", "genres": ["Synth Pop", "Pop"]},
+                {"id": "artist-2", "genres": ["Indie Rock"]},
+            ]
+        }
+
+        tracks = [
+            {
+                "id": "track-1",
+                "name": "First",
+                "artists": "Artist One",
+                "duration_ms": 90000,
+                "popularity": 80,
+                "artist_ids": ["artist-1"],
+            },
+            {
+                "id": "track-2",
+                "name": "Second",
+                "artists": "Artist Two",
+                "duration_ms": 90000,
+                "popularity": 70,
+                "artist_ids": ["artist-2"],
+            },
+        ]
+
+        stats = compute_playlist_statistics(
+            "token",
+            tracks,
+        )
+
+        self.assertEqual(stats["total_tracks"], 2)
+        self.assertAlmostEqual(stats["avg_popularity"], 75.0)
+        self.assertAlmostEqual(stats["novelty"], 100.0)
+        self.assertEqual(
+            stats["genre_distribution"],
+            {
+                "indie-rock": 50.0,
+                "pop": 25.0,
+                "synth-pop": 25.0,
+            },
+        )
+        mock_instance.artists.assert_called_once()
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_resolve_seed_tracks_includes_metadata(self, mock_spotify):

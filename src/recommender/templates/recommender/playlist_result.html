@@ -69,6 +69,47 @@
                     <span class="coming-soon-note">Manual additions will arrive in a future update.</span>
                 </div>
 
+                {% if playlist_stats %}
+                    <section class="playlist-stats">
+                        <h3>Playlist Analytics</h3>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <span class="stat-label">Total Tracks</span>
+                                <span class="stat-value">{{ playlist_stats.total_tracks }}</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Total Duration</span>
+                                <span class="stat-value">{{ playlist_stats.total_duration }}</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Average Popularity</span>
+                                <span class="stat-value">
+                                    {% if playlist_stats.avg_popularity is not None %}
+                                        {{ playlist_stats.avg_popularity }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Novelty</span>
+                                <span class="stat-value">{{ playlist_stats.novelty }}%</span>
+                            </div>
+                        </div>
+                        {% if playlist_stats.genre_distribution %}
+                            <h4>Genre Distribution</h4>
+                            <ul class="genre-breakdown">
+                                {% for genre, pct in playlist_stats.genre_distribution.items %}
+                                    <li>
+                                        <span class="genre-label">{{ genre|title }}</span>
+                                        <span class="genre-value">{{ pct }}%</span>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </section>
+                {% endif %}
+
                 <ul
                     class="track-list"
                     id="track-list"
