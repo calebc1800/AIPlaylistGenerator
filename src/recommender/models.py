@@ -9,6 +9,7 @@ class SavedPlaylist(models.Model):
     playlist_id = models.CharField(max_length=64, unique=True)
     like_count = models.PositiveIntegerField(default=0)
     creator_user_id = models.CharField(max_length=64)
+    creator_display_name = models.CharField(max_length=64)
 
     def __str__(self) -> str:
         return f"{self.playlist_id} ({self.creator_user_id})"
