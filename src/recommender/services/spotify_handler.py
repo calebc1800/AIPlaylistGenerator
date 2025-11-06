@@ -373,14 +373,53 @@ def compute_playlist_statistics(
                 for genre, weight in sorted(genre_weights.items(), key=lambda item: item[1], reverse=True)
             }
 
+    def _select_popularity_tracks(items: List[Dict[str, object]]) -> List[Dict[str, object]]:
+        preview: List[Dict[str, object]] = []
+        for track in items[:3]:
+            preview.append(
+                {
+                    "id": track.get("id"),
+                    "name": track.get("name", "Unknown"),
+                    "artists": track.get("artists", "Unknown"),
+                    "popularity": int(track.get("popularity") or 0),
+                    "album_image_url": track.get("album_image_url", ""),
+                }
+            )
+        return preview
+
+    popularity_sorted_desc = sorted(
+        valid_tracks,
+        key=lambda track: int(track.get("popularity") or 0),
+        reverse=True,
+    )
+    popularity_sorted_asc = list(reversed(popularity_sorted_desc)) if popularity_sorted_desc else []
+
+    top_popular_tracks = _select_popularity_tracks(popularity_sorted_desc)
+    least_popular_tracks = _select_popularity_tracks(popularity_sorted_asc)
+
+    genre_items = sorted(genre_distribution.items(), key=lambda item: item[1], reverse=True)
+    top_genre_items = genre_items[:3]
+    remaining_genre_items = genre_items[3:]
+    top_distribution = {genre: pct for genre, pct in top_genre_items}
+    top_genres_list = [
+        {"genre": genre, "percentage": pct} for genre, pct in top_genre_items
+    ]
+    remaining_genres_list = [
+        {"genre": genre, "percentage": pct} for genre, pct in remaining_genre_items
+    ]
+
     stats = {
         "total_tracks": total_tracks,
         "total_duration": _format_duration_label(total_duration_ms),
         "total_duration_ms": total_duration_ms,
         "avg_popularity": avg_popularity,
         "novelty": novelty_score,
-        "genre_distribution": genre_distribution,
+        "genre_distribution": top_distribution,
+        "genre_top": top_genres_list,
+        "genre_remaining": remaining_genres_list,
         "novelty_reference_ids": sorted(novelty_reference_ids),
+        "top_popular_tracks": top_popular_tracks,
+        "least_popular_tracks": least_popular_tracks,
     }
     return stats
 

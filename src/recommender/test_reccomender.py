@@ -98,8 +98,23 @@ class GeneratePlaylistViewTests(TestCase):
             "total_duration": "00:09:15",
             "avg_popularity": 64.5,
             "novelty": 72.0,
-            "genre_distribution": {"synth-pop": 60.0, "alt-pop": 40.0},
+            "genre_distribution": {"synth-pop": 40.0, "alt-pop": 25.0, "indie": 20.0},
+            "genre_top": [
+                {"genre": "synth-pop", "percentage": 40.0},
+                {"genre": "alt-pop", "percentage": 25.0},
+                {"genre": "indie", "percentage": 20.0},
+            ],
+            "genre_remaining": [
+                {"genre": "dream-pop", "percentage": 15.0},
+            ],
             "novelty_reference_ids": [],
+            "top_popular_tracks": [
+                {"id": "1", "name": "Song A", "artists": "Artist A", "popularity": 80, "album_image_url": ""},
+                {"id": "2", "name": "Song B", "artists": "Artist B", "popularity": 50, "album_image_url": ""},
+            ],
+            "least_popular_tracks": [
+                {"id": "4", "name": "Song D", "artists": "Artist D", "popularity": 20, "album_image_url": ""},
+            ],
         }
         mock_suggest.return_value = [
             {"title": "Song A", "artist": "Artist A"},
@@ -131,6 +146,10 @@ class GeneratePlaylistViewTests(TestCase):
         self.assertIn('data-chart="genre"', page)
         self.assertIn('Freshness Gauge', page)
         self.assertIn('recommender_stats.js', page)
+        self.assertIn('Popularity Highlights', page)
+        self.assertIn('Most Popular', page)
+        self.assertIn('Least Popular', page)
+        self.assertIn('Show All Genres', page)
 
     @patch("recommender.views.extract_playlist_attributes")
     @patch("recommender.views.compute_playlist_statistics")
@@ -157,8 +176,22 @@ class GeneratePlaylistViewTests(TestCase):
             "total_duration": "00:08:00",
             "avg_popularity": 55.0,
             "novelty": 80.0,
-            "genre_distribution": {"ambient": 70.0, "chill": 30.0},
+            "genre_distribution": {"ambient": 50.0, "chill": 30.0, "downtempo": 20.0},
+            "genre_top": [
+                {"genre": "ambient", "percentage": 50.0},
+                {"genre": "chill", "percentage": 30.0},
+                {"genre": "downtempo", "percentage": 20.0},
+            ],
+            "genre_remaining": [
+                {"genre": "lofi", "percentage": 10.0},
+            ],
             "novelty_reference_ids": [],
+            "top_popular_tracks": [
+                {"id": "3", "name": "Fallback Song", "artists": "Fallback Artist", "popularity": 65, "album_image_url": ""},
+            ],
+            "least_popular_tracks": [
+                {"id": "4", "name": "Similar Song", "artists": "Artist", "popularity": 45, "album_image_url": ""},
+            ],
         }
         mock_suggest.return_value = [{"title": "Ambient Song", "artist": "Someone"}]
         mock_resolve.return_value = []
@@ -181,6 +214,10 @@ class GeneratePlaylistViewTests(TestCase):
         page = response.content.decode()
         self.assertIn('class="track-name">Fallback Song', page)
         self.assertIn('class="track-name">Similar Song', page)
+        self.assertIn('Popularity Highlights', page)
+        self.assertIn('Most Popular', page)
+        self.assertIn('Least Popular', page)
+        self.assertIn('Show All Genres', page)
 
     @patch("recommender.views.extract_playlist_attributes")
     @patch("recommender.views.suggest_seed_tracks")
@@ -378,8 +415,24 @@ class RemixPlaylistViewTests(TestCase):
             "total_duration": "00:10:00",
             "avg_popularity": 62.0,
             "novelty": 68.0,
-            "genre_distribution": {"lo-fi": 50.0, "jazz": 30.0, "ambient": 20.0},
+            "genre_distribution": {"lo-fi": 40.0, "jazz": 30.0, "ambient": 20.0},
+            "genre_top": [
+                {"genre": "lo-fi", "percentage": 40.0},
+                {"genre": "jazz", "percentage": 30.0},
+                {"genre": "ambient", "percentage": 20.0},
+            ],
+            "genre_remaining": [
+                {"genre": "chillhop", "percentage": 10.0},
+            ],
             "novelty_reference_ids": [],
+            "top_popular_tracks": [
+                {"id": "remix-1", "name": "Remix Track 1", "artists": "Remix Artist 1", "popularity": 70, "album_image_url": ""},
+                {"id": "remix-2", "name": "Remix Track 2", "artists": "Remix Artist 2", "popularity": 60, "album_image_url": ""},
+                {"id": "remix-3", "name": "Remix Track 3", "artists": "Remix Artist 3", "popularity": 55, "album_image_url": ""},
+            ],
+            "least_popular_tracks": [
+                {"id": "old-1", "name": "Old Track 1", "artists": "Old Artist 1", "popularity": 40, "album_image_url": ""},
+            ],
         }
 
         response = self.client.post(self.url, {"cache_key": cache_key})
@@ -398,6 +451,11 @@ class RemixPlaylistViewTests(TestCase):
 
         messages_list = list(get_messages(response.wsgi_request))
         self.assertTrue(any("remixed" in str(message).lower() for message in messages_list))
+        content = response.content.decode()
+        self.assertIn('Popularity Highlights', content)
+        self.assertIn('Most Popular', content)
+        self.assertIn('Least Popular', content)
+        self.assertIn('Show All Genres', content)
 
     def test_remix_requires_spotify_auth(self):
         cache_key = _cache_key("remix-user", "lofi coding mix")
@@ -420,7 +478,11 @@ class SpotifyHandlerTests(TestCase):
         self.assertIsNone(stats["avg_popularity"])
         self.assertEqual(stats["novelty"], 100.0)
         self.assertEqual(stats["genre_distribution"], {})
+        self.assertEqual(stats["genre_top"], [])
+        self.assertEqual(stats["genre_remaining"], [])
         self.assertEqual(stats["novelty_reference_ids"], [])
+        self.assertEqual(stats["top_popular_tracks"], [])
+        self.assertEqual(stats["least_popular_tracks"], [])
 
     def test_compute_playlist_statistics_with_cached_overlap(self):
         tracks = [
@@ -457,9 +519,14 @@ class SpotifyHandlerTests(TestCase):
         self.assertEqual(stats["total_duration"], "00:03:00")
         self.assertEqual(stats["avg_popularity"], 60.0)
         self.assertEqual(stats["novelty"], 0.0)
+        self.assertEqual(stats["genre_top"], [])
+        self.assertEqual(stats["genre_remaining"], [])
         self.assertIn("track-1", stats["novelty_reference_ids"])
         self.assertIn("track-2", stats["novelty_reference_ids"])
         self.assertIn("track-3", stats["novelty_reference_ids"])
+        self.assertEqual(len(stats["top_popular_tracks"]), 2)
+        self.assertEqual(stats["top_popular_tracks"][0]["id"], "track-2")
+        self.assertEqual(stats["least_popular_tracks"][0]["id"], "track-1")
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_compute_playlist_statistics_populates_genre_distribution(self, mock_spotify):
@@ -498,15 +565,15 @@ class SpotifyHandlerTests(TestCase):
         self.assertEqual(stats["total_tracks"], 2)
         self.assertAlmostEqual(stats["avg_popularity"], 75.0)
         self.assertAlmostEqual(stats["novelty"], 100.0)
-        self.assertEqual(
-            stats["genre_distribution"],
-            {
-                "indie-rock": 50.0,
-                "pop": 25.0,
-                "synth-pop": 25.0,
-            },
-        )
+        self.assertEqual(len(stats["genre_top"]), 3)
+        self.assertTrue(any(item["genre"] == "indie-rock" for item in stats["genre_top"]))
+        self.assertTrue(any(item["genre"] == "pop" for item in stats["genre_top"]))
+        self.assertTrue(any(item["genre"] == "synth-pop" for item in stats["genre_top"]))
+        self.assertEqual(stats["genre_remaining"], [])
         mock_instance.artists.assert_called_once()
+        self.assertEqual(len(stats["top_popular_tracks"]), 2)
+        self.assertEqual(stats["top_popular_tracks"][0]["id"], "track-1")
+        self.assertEqual(stats["least_popular_tracks"][0]["id"], "track-2")
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_resolve_seed_tracks_includes_metadata(self, mock_spotify):

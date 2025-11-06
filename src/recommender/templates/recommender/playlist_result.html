@@ -136,6 +136,117 @@
                                 <p class="analytics-card__note">Spotify popularity score (0-100).</p>
                             </article>
 
+                            <article class="analytics-card analytics-card--wide">
+                                <div class="analytics-card__header analytics-card__header--row">
+                                    <div>
+                                        <h4 class="analytics-card__title">Genre Mix</h4>
+                                        {% if playlist_stats.genre_top %}
+                                            <span class="stat-caption">Tap a slice to reveal the percentage</span>
+                                        {% else %}
+                                            <span class="stat-caption">Genre data unavailable for this playlist</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if playlist_stats.genre_remaining %}
+                                        <button
+                                            type="button"
+                                            class="analytics-toggle"
+                                            data-role="genre-toggle"
+                                            aria-expanded="false"
+                                            aria-controls="genre-legend-top genre-legend-remaining">
+                                            Show All Genres
+                                        </button>
+                                    {% endif %}
+                                </div>
+                                <div class="analytics-chart">
+                                    <canvas id="genre-distribution-chart" data-chart="genre"></canvas>
+                                </div>
+                                <ul class="genre-legend" id="genre-legend-top" data-genre-list="top">
+                                    {% for item in playlist_stats.genre_top %}
+                                        <li data-genre="{{ item.genre }}">
+                                            <span class="genre-label">{{ item.genre|title }}</span>
+                                            <span class="genre-value">{{ item.percentage }}%</span>
+                                        </li>
+                                    {% empty %}
+                                        <li class="genre-empty">We need a bit more listening history to map genres.</li>
+                                    {% endfor %}
+                                </ul>
+                                {% if playlist_stats.genre_remaining %}
+                                    <ul class="genre-legend genre-legend--hidden" id="genre-legend-remaining" data-genre-list="remaining">
+                                        {% for item in playlist_stats.genre_remaining %}
+                                            <li data-genre="{{ item.genre }}">
+                                                <span class="genre-label">{{ item.genre|title }}</span>
+                                                <span class="genre-value">{{ item.percentage }}%</span>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                {% endif %}
+                            </article>
+
+                            <article class="analytics-card analytics-card--popularity">
+                                <div class="analytics-card__header">
+                                    <h4 class="analytics-card__title">Popularity Highlights</h4>
+                                    <span class="stat-caption">Based on Spotify popularity scores</span>
+                                </div>
+
+                                <div class="popularity-columns">
+                                    <div class="popularity-column">
+                                        <h5 class="popularity-heading">Most Popular</h5>
+                                        <ul class="analytics-list">
+                                            {% for track in playlist_stats.top_popular_tracks %}
+                                                <li class="analytics-list__item">
+                                                    <div class="list-track">
+                                                        {% if track.album_image_url %}
+                                                            <img src="{{ track.album_image_url }}" alt="Album art for {{ track.name|default:'Unknown Track' }}" class="list-track__art">
+                                                        {% else %}
+                                                            <div class="list-track__art list-track__art--placeholder">
+                                                                {{ track.name|default:"?"|slice:":1" }}
+                                                            </div>
+                                                        {% endif %}
+                                                        <div class="list-track__meta">
+                                                            <span class="list-track__name">{{ track.name|default:"Unknown Track" }}</span>
+                                                            <span class="list-track__artists">{{ track.artists|default:"Unknown Artist" }}</span>
+                                                        </div>
+                                                        <span class="list-track__score">{{ track.popularity }}</span>
+                                                    </div>
+                                                </li>
+                                            {% empty %}
+                                                <li class="analytics-list__item analytics-list__item--empty">
+                                                    Need a few tracks with popularity data to surface highlights.
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+
+                                    <div class="popularity-column">
+                                        <h5 class="popularity-heading">Least Popular</h5>
+                                        <ul class="analytics-list">
+                                            {% for track in playlist_stats.least_popular_tracks %}
+                                                <li class="analytics-list__item">
+                                                    <div class="list-track">
+                                                        {% if track.album_image_url %}
+                                                            <img src="{{ track.album_image_url }}" alt="Album art for {{ track.name|default:'Unknown Track' }}" class="list-track__art">
+                                                        {% else %}
+                                                            <div class="list-track__art list-track__art--placeholder">
+                                                                {{ track.name|default:"?"|slice:":1" }}
+                                                            </div>
+                                                        {% endif %}
+                                                        <div class="list-track__meta">
+                                                            <span class="list-track__name">{{ track.name|default:"Unknown Track" }}</span>
+                                                            <span class="list-track__artists">{{ track.artists|default:"Unknown Artist" }}</span>
+                                                        </div>
+                                                        <span class="list-track__score">{{ track.popularity }}</span>
+                                                    </div>
+                                                </li>
+                                            {% empty %}
+                                                <li class="analytics-list__item analytics-list__item--empty">
+                                                    Need a few tracks with popularity data to surface highlights.
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </article>
+
                             <article class="analytics-card analytics-card--novelty">
                                 <div class="analytics-card__header">
                                     <h4 class="analytics-card__title">Freshness Gauge</h4>
@@ -148,30 +259,6 @@
                                         <span class="detail-label">New discoveries</span>
                                     </div>
                                 </div>
-                            </article>
-
-                            <article class="analytics-card analytics-card--wide">
-                                <div class="analytics-card__header">
-                                    <h4 class="analytics-card__title">Genre Mix</h4>
-                                    {% if playlist_stats.genre_distribution %}
-                                        <span class="stat-caption">Tap a slice to reveal the percentage</span>
-                                    {% else %}
-                                        <span class="stat-caption">Genre data unavailable for this playlist</span>
-                                    {% endif %}
-                                </div>
-                                <div class="analytics-chart">
-                                    <canvas id="genre-distribution-chart" data-chart="genre"></canvas>
-                                </div>
-                                <ul class="genre-legend">
-                                    {% for genre, pct in playlist_stats.genre_distribution.items %}
-                                        <li data-genre="{{ genre }}">
-                                            <span class="genre-label">{{ genre|title }}</span>
-                                            <span class="genre-value">{{ pct }}%</span>
-                                        </li>
-                                    {% empty %}
-                                        <li class="genre-empty">We need a bit more listening history to map genres.</li>
-                                    {% endfor %}
-                                </ul>
                             </article>
                         </div>
 
