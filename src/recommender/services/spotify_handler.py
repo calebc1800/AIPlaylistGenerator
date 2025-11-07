@@ -288,7 +288,13 @@ def compute_playlist_statistics(
             "avg_popularity": None,
             "novelty": 100.0,
             "genre_distribution": {},
+            "genre_top": [],
+            "genre_remaining": [],
             "novelty_reference_ids": [],
+            "source_mix": [],
+            "source_total": 0,
+            "top_popular_tracks": [],
+            "least_popular_tracks": [],
         }
 
     total_duration_ms = sum(int(track.get("duration_ms") or 0) for track in valid_tracks)
