@@ -64,12 +64,13 @@ if not settings.configured:
             "Ensure the 'aiplaylist' module is importable and has proper __init__.py files."
         )
 
-def pytest_configure(_config):
+def pytest_configure(config):  # pylint: disable=unused-argument
     """Called after command line options have been parsed."""
     if not settings.configured:
         setup_django()
 
-def pytest_collection_modifyitems(_config, items):
+
+def pytest_collection_modifyitems(config, items):  # pylint: disable=unused-argument
     """Modify collected test items."""
     # Add Django DB marker to tests that need it
     for item in items:
