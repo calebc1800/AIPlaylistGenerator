@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import subprocess
+from threading import local
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from openai import OpenAI
@@ -71,6 +72,51 @@ _DEFAULT_FALLBACKS = [
 
 _OPENAI_CLIENT: Optional[OpenAI] = None
 _JSON_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+_THREAD_STATE = local()
+
+
+def _default_usage_bucket() -> Dict[str, int]:
+    return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+
+def reset_llm_usage_tracker() -> None:
+    """Reset the accumulated token counters for the current thread."""
+    _THREAD_STATE.llm_usage = _default_usage_bucket()
+
+
+def _usage_bucket() -> Dict[str, int]:
+    usage = getattr(_THREAD_STATE, "llm_usage", None)
+    if usage is None:
+        usage = _default_usage_bucket()
+        _THREAD_STATE.llm_usage = usage
+    return usage
+
+
+def _record_llm_usage(
+    *,
+    prompt_tokens: Optional[int] = None,
+    completion_tokens: Optional[int] = None,
+    total_tokens: Optional[int] = None,
+) -> None:
+    usage = _usage_bucket()
+    if prompt_tokens:
+        usage["prompt_tokens"] += max(int(prompt_tokens), 0)
+    if completion_tokens:
+        usage["completion_tokens"] += max(int(completion_tokens), 0)
+    if total_tokens:
+        usage["total_tokens"] += max(int(total_tokens), 0)
+
+
+def get_llm_usage_snapshot() -> Dict[str, int]:
+    """Return the current token counters for the active thread."""
+    usage = getattr(_THREAD_STATE, "llm_usage", None)
+    if not usage:
+        return _default_usage_bucket()
+    return {
+        "prompt_tokens": int(usage.get("prompt_tokens", 0)),
+        "completion_tokens": int(usage.get("completion_tokens", 0)),
+        "total_tokens": int(usage.get("total_tokens", 0)),
+    }
 
 
 def _get_setting(name: str, default=None):
@@ -272,6 +318,8 @@ def query_openai(
         logger.error("OpenAI request failed: %s", exc)
         return ""
 
+    _capture_openai_usage(response)
+
     output_text = getattr(response, "output_text", "")
     if output_text:
         return output_text.strip()
@@ -288,6 +336,60 @@ def query_openai(
         return "".join(segments).strip()
     except Exception:  # pragma: no cover - fallback only
         return ""
+
+
+def _capture_openai_usage(response: object) -> None:
+    """Best-effort extraction of token usage metadata from OpenAI responses."""
+    usage_obj = getattr(response, "usage", None)
+    if usage_obj is None and isinstance(response, dict):
+        usage_obj = response.get("usage")
+
+    if usage_obj is None:
+        for item in getattr(response, "output", []) or []:
+            candidate = getattr(item, "usage", None)
+            if candidate is None and isinstance(item, dict):
+                candidate = item.get("usage")
+            if candidate is not None:
+                usage_obj = candidate
+                break
+
+    if usage_obj is None:
+        return
+
+    prompt_tokens = _extract_usage_value(usage_obj, "prompt_tokens", "input_tokens")
+    completion_tokens = _extract_usage_value(usage_obj, "completion_tokens", "output_tokens")
+    total_tokens = _extract_usage_value(usage_obj, "total_tokens")
+    if total_tokens is None and (prompt_tokens is not None or completion_tokens is not None):
+        total_tokens = (prompt_tokens or 0) + (completion_tokens or 0)
+
+    _record_llm_usage(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+    )
+
+
+def _extract_usage_value(source: object, *keys: str) -> Optional[int]:
+    for key in keys:
+        value = None
+        if isinstance(source, dict):
+            value = source.get(key)
+        if value is None:
+            try:
+                value = getattr(source, key)
+            except AttributeError:
+                value = None
+        if value is None and hasattr(source, "get"):
+            try:
+                value = source.get(key)
+            except Exception:  # pragma: no cover - defensive fallback
+                value = None
+        if value is not None:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+    return None
 
 
 def dispatch_llm_query(

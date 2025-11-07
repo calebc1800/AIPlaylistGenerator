@@ -11,7 +11,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import patch
 
-from recommender.models import SavedPlaylist
+from recommender.models import PlaylistGenerationStat, SavedPlaylist
 from recommender.services.spotify_handler import (
     _extract_release_year,
     _filter_by_market,
@@ -30,6 +30,10 @@ from recommender.services.spotify_handler import (
     _score_track_basic,
     _is_mostly_latin,
     compute_playlist_statistics,
+)
+from recommender.services.stats_service import (
+    get_genre_breakdown,
+    summarize_generation_stats,
 )
 from recommender.services.user_preferences import (
     describe_pending_options,
@@ -59,6 +63,82 @@ def _payload_with_owner(session, cache_key, payload, owner_user_id=None):
     enriched["owner_user_id"] = owner_user_id or session.get("spotify_user_id", "anonymous")
     enriched["owner_session_key"] = session.session_key
     return enriched
+
+
+class StatsServiceTests(TestCase):
+    """Verify aggregation helpers for generation history."""
+
+    def setUp(self):
+        PlaylistGenerationStat.objects.all().delete()
+
+    def test_summary_empty_identifier(self):
+        summary = summarize_generation_stats(None)
+        self.assertEqual(summary["total_playlists"], 0)
+        self.assertEqual(summary["total_tracks"], 0)
+        self.assertEqual(summary["top_genre"], "")
+        self.assertEqual(summary["total_tokens"], 0)
+
+    def test_summary_with_records(self):
+        PlaylistGenerationStat.objects.create(
+            user_identifier="user123",
+            prompt="alt pop vibes",
+            track_count=20,
+            total_duration_ms=3_600_000,
+            top_genre="Alt Pop",
+            avg_novelty=78.5,
+            stats={"genre_top": [{"genre": "Alt Pop", "percentage": 40}]},
+            total_tokens=1200,
+        )
+        PlaylistGenerationStat.objects.create(
+            user_identifier="user123",
+            prompt="chill study",
+            track_count=25,
+            total_duration_ms=4_200_000,
+            top_genre="Chill",
+            avg_novelty=81.0,
+            stats={"genre_top": [{"genre": "Chill", "percentage": 50}]},
+            total_tokens=800,
+        )
+
+        summary = summarize_generation_stats("user123")
+        self.assertEqual(summary["total_playlists"], 2)
+        self.assertEqual(summary["total_tracks"], 45)
+        self.assertAlmostEqual(summary["total_hours"], 2.17, places=2)
+        self.assertEqual(summary["top_genre"], "Alt Pop")
+        self.assertEqual(summary["avg_novelty"], 79.8)
+        self.assertEqual(summary["total_tokens"], 2000)
+
+    def test_genre_breakdown(self):
+        PlaylistGenerationStat.objects.create(
+            user_identifier="user456",
+            prompt="road trip",
+            track_count=10,
+            total_duration_ms=2_000_000,
+            top_genre="Indie",
+            stats={
+                "genre_top": [
+                    {"genre": "Indie", "percentage": 60},
+                    {"genre": "Rock", "percentage": 30},
+                ]
+            },
+        )
+        PlaylistGenerationStat.objects.create(
+            user_identifier="user456",
+            prompt="focus",
+            track_count=12,
+            total_duration_ms=2_500_000,
+            top_genre="Lo-Fi",
+            stats={
+                "genre_top": [
+                    {"genre": "Lo-Fi", "percentage": 70},
+                    {"genre": "Indie", "percentage": 20},
+                ]
+            },
+        )
+
+        breakdown = get_genre_breakdown("user456")
+        self.assertTrue(any(entry["genre"] == "Indie" for entry in breakdown))
+        self.assertTrue(any(entry["genre"] == "Lo-Fi" for entry in breakdown))
 
 
 class GeneratePlaylistViewTests(TestCase):
@@ -167,6 +247,7 @@ class GeneratePlaylistViewTests(TestCase):
         self.assertIn('Least Popular', page)
         self.assertIn('Show All Genres', page)
         self.assertIn('Source Blend', page)
+
 
     @patch("recommender.views.extract_playlist_attributes")
     @patch("recommender.views.compute_playlist_statistics")

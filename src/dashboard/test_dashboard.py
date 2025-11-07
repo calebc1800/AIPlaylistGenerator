@@ -1,3 +1,5 @@
+import json
+
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
@@ -214,6 +216,41 @@ class DashboardViewTests(TestCase):
         # Should handle empty history gracefully
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context['last_song'])
+
+    @patch('dashboard.views.get_genre_breakdown')
+    @patch('dashboard.views.summarize_generation_stats')
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_includes_generated_stats(self, mock_spotify, mock_summary, mock_breakdown):
+        """Dashboard context should include generation stats for templating."""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_summary.return_value = {
+            'total_playlists': 2,
+            'total_tracks': 50,
+            'total_hours': 3.5,
+            'total_tokens': 2500,
+            'avg_novelty': 78.2,
+            'top_genre': 'Indie',
+            'last_generated_at': '2024-01-01T12:00:00Z',
+        }
+        mock_breakdown.return_value = [{'genre': 'Indie', 'percentage': 60}]
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user',
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        response = self.client.get(self.dashboard_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['generated_stats']['total_playlists'], 2)
+        self.assertEqual(response.context['genre_breakdown'][0]['genre'], 'Indie')
 
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_with_expired_token(self, mock_spotify):
@@ -540,6 +577,51 @@ class DashboardViewTests(TestCase):
         self.assertTrue(response.context['llm_toggle_visible'])
         self.assertIn('id="llm-toggle"', content)
         self.assertIn('LLM Provider', content)
+
+
+class DashboardStatsAPITests(TestCase):
+    """API tests for live dashboard stats endpoint."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse('dashboard:user-stats')
+
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=False)
+    def test_requires_valid_session(self, mock_session_check):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('Authentication required', response.content.decode())
+
+    @patch('dashboard.views._fetch_spotify_highlights')
+    @patch('dashboard.views.get_genre_breakdown')
+    @patch('dashboard.views.summarize_generation_stats')
+    @patch('dashboard.views.spotipy.Spotify')
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
+    def test_returns_combined_payload(
+        self,
+        mock_session_check,
+        mock_spotify_client,
+        mock_summary,
+        mock_breakdown,
+        mock_highlights,
+    ):
+        session = self.client.session
+        session['spotify_access_token'] = 'test'
+        session.save()
+
+        mock_summary.return_value = {'total_playlists': 5, 'total_tracks': 120, 'total_tokens': 4200}
+        mock_breakdown.return_value = [{'genre': 'Pop', 'percentage': 55.0}]
+        mock_highlights.return_value = {'top_genres': [{'genre': 'Pop', 'count': 4}]}
+        mock_spotify_client.return_value = Mock()
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+
+        payload = json.loads(response.content.decode())
+        self.assertEqual(payload['generated']['total_playlists'], 5)
+        self.assertEqual(payload['generated']['total_tokens'], 4200)
+        self.assertEqual(payload['genre_breakdown'][0]['genre'], 'Pop')
+        self.assertEqual(payload['spotify']['top_genres'][0]['genre'], 'Pop')
 
 
 class DashboardIntegrationTests(TestCase):

@@ -18,11 +18,13 @@ from django.views.decorators.http import require_POST
 from requests import RequestException
 from spotipy import SpotifyException
 
-from .models import SavedPlaylist
+from .models import SavedPlaylist, PlaylistGenerationStat
 from .services.llm_handler import (
     extract_playlist_attributes,
     suggest_seed_tracks,
     suggest_remix_tracks,
+    get_llm_usage_snapshot,
+    reset_llm_usage_tracker,
 )
 from .services.spotify_handler import (
     cached_tracks_for_genre,
@@ -57,6 +59,54 @@ def _resolve_request_user_id(request) -> str:
     if request.user.is_authenticated:
         return str(request.user.pk)
     return str(request.session.get("spotify_user_id") or "anonymous")
+
+
+def _persist_generation_stat(
+    *,
+    user_identifier: str,
+    prompt: str,
+    playlist_stats: Optional[Dict[str, object]],
+    track_count: int,
+    ordered_tracks: List[Dict[str, object]],
+    llm_usage: Optional[Dict[str, int]] = None,
+) -> None:
+    """Persist a generation snapshot for later dashboard analytics."""
+    if not user_identifier:
+        return
+    stats_payload: Dict[str, object] = playlist_stats if isinstance(playlist_stats, dict) else {}
+    total_duration_ms = int(stats_payload.get("total_duration_ms") or 0)
+    if not total_duration_ms:
+        total_duration_ms = sum(int(track.get("duration_ms") or 0) for track in ordered_tracks)
+    top_genre = ""
+    genre_rows = stats_payload.get("genre_top") if isinstance(stats_payload.get("genre_top"), list) else []
+    if genre_rows:
+        first = genre_rows[0]
+        if isinstance(first, dict):
+            top_genre = (first.get("genre") or "").strip()
+    if not top_genre and isinstance(stats_payload.get("genre_distribution"), dict):
+        distribution = stats_payload["genre_distribution"]
+        if distribution:
+            top_genre = next(iter(distribution.keys()))
+    avg_novelty = stats_payload.get("novelty")
+    usage_snapshot = llm_usage or {}
+    prompt_tokens = int(usage_snapshot.get("prompt_tokens", 0))
+    completion_tokens = int(usage_snapshot.get("completion_tokens", 0))
+    total_tokens = int(usage_snapshot.get("total_tokens", 0))
+    try:
+        PlaylistGenerationStat.objects.create(
+            user_identifier=user_identifier,
+            prompt=prompt,
+            track_count=track_count,
+            total_duration_ms=total_duration_ms,
+            top_genre=top_genre[:128],
+            avg_novelty=avg_novelty if isinstance(avg_novelty, (int, float)) else None,
+            stats=stats_payload,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
+    except DatabaseError as exc:  # pragma: no cover - defensive guard
+        logger.warning("Failed to record playlist generation stat: %s", exc)
 
 
 def _attach_cache_metadata(payload: Dict[str, object], request, cache_key: str) -> Dict[str, object]:
@@ -256,6 +306,7 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
 def generate_playlist(request):
     """Generate a playlist based on the submitted prompt and render results."""
     prompt = request.POST.get("prompt", "").strip()
+    reset_llm_usage_tracker()
     debug_steps: List[str] = []
     errors: List[str] = []
     debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
@@ -654,6 +705,18 @@ def generate_playlist(request):
             cached_track_ids=novelty_reference_ids,
             log_step=log,
         )
+        llm_usage = get_llm_usage_snapshot()
+        try:
+            _persist_generation_stat(
+                user_identifier=user_id,
+                prompt=prompt,
+                playlist_stats=playlist_stats,
+                track_count=len(ordered_tracks),
+                ordered_tracks=ordered_tracks,
+                llm_usage=llm_usage,
+            )
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.warning("Playlist stat persistence failed: %s", exc)
 
         prompt_label = prompt.strip()
         suggested_playlist_name = prompt_label.title()[:100] if prompt_label else "AI Playlist"
