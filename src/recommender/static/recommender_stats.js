@@ -112,6 +112,75 @@
             });
         }
 
+        const sourceMix = Array.isArray(stats.source_mix) ? stats.source_mix : [];
+        if (hasChartJs && sourceMix.length) {
+            const sourceCanvas = document.getElementById('source-mix-chart');
+            if (sourceCanvas) {
+                const labels = sourceMix.map((item) => item.label || '');
+                const values = sourceMix.map((item) => Number(item.percentage || 0));
+                const colors = labels.map((_, index) => palette[index % palette.length]);
+                new Chart(sourceCanvas, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                data: values,
+                                backgroundColor: colors,
+                                borderRadius: 8,
+                                barThickness: 18,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                max: 100,
+                                ticks: {
+                                    color: '#e3f2fd',
+                                    callback: (value) => `${value}%`,
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)',
+                                },
+                            },
+                            y: {
+                                ticks: {
+                                    color: '#ffffff',
+                                    font: { weight: '600' },
+                                },
+                                grid: { display: false },
+                            },
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(15, 17, 21, 0.92)',
+                                borderColor: 'rgba(255, 255, 255, 0.12)',
+                                borderWidth: 1,
+                                padding: 12,
+                                titleFont: { family: 'inherit', size: 12 },
+                                bodyFont: { family: 'inherit', size: 12 },
+                                callbacks: {
+                                    label: (context) => {
+                                        const item = sourceMix[context.dataIndex];
+                                        if (!item) {
+                                            return `${context.parsed.x}%`;
+                                        }
+                                        return `${item.count} tracks • ${item.percentage}%`;
+                                    },
+                                },
+                            },
+                        },
+                    },
+                });
+            }
+        }
+
         const genreToggle = rootSection.querySelector('[data-role="genre-toggle"]');
         const genreRemainingList = rootSection.querySelector('[data-genre-list="remaining"]');
         if (genreToggle && genreRemainingList && totalGenres > 3) {

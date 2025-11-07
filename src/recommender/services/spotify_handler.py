@@ -373,6 +373,36 @@ def compute_playlist_statistics(
                 for genre, weight in sorted(genre_weights.items(), key=lambda item: item[1], reverse=True)
             }
 
+    source_counts: Dict[str, int] = {}
+    for track in valid_tracks:
+        raw_source = track.get("seed_source") or track.get("source") or "playlist"
+        label = str(raw_source or "playlist").strip().lower() or "playlist"
+        source_counts[label] = source_counts.get(label, 0) + 1
+
+    total_sources = sum(source_counts.values())
+    source_mix: List[Dict[str, object]] = []
+    if total_sources:
+        display_labels = {
+            "llm_seed": "LLM Seeds",
+            "user_genre_cache": "Your Favorites",
+            "genre_discovery": "Spotify Discovery",
+            "artist_seed": "Artist Seeds",
+            "remix_seed": "Remix Seeds",
+            "similarity": "Similarity Engine",
+            "playlist": "Playlist Mix",
+        }
+        for key, count in sorted(source_counts.items(), key=lambda item: item[1], reverse=True):
+            label = display_labels.get(key, key.replace("_", " ").title())
+            percentage = round((count / total_sources) * 100, 1)
+            source_mix.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "count": count,
+                    "percentage": percentage,
+                }
+            )
+
     def _select_popularity_tracks(items: List[Dict[str, object]]) -> List[Dict[str, object]]:
         preview: List[Dict[str, object]] = []
         for track in items[:3]:
@@ -418,6 +448,8 @@ def compute_playlist_statistics(
         "genre_top": top_genres_list,
         "genre_remaining": remaining_genres_list,
         "novelty_reference_ids": sorted(novelty_reference_ids),
+        "source_mix": source_mix,
+        "source_total": total_sources,
         "top_popular_tracks": top_popular_tracks,
         "least_popular_tracks": least_popular_tracks,
     }

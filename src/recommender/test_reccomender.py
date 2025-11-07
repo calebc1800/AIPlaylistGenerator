@@ -108,6 +108,11 @@ class GeneratePlaylistViewTests(TestCase):
                 {"genre": "dream-pop", "percentage": 15.0},
             ],
             "novelty_reference_ids": [],
+            "source_mix": [
+                {"key": "llm_seed", "label": "LLM Seeds", "count": 5, "percentage": 50.0},
+                {"key": "similarity", "label": "Similarity Engine", "count": 3, "percentage": 30.0},
+            ],
+            "source_total": 10,
             "top_popular_tracks": [
                 {"id": "1", "name": "Song A", "artists": "Artist A", "popularity": 80, "album_image_url": ""},
                 {"id": "2", "name": "Song B", "artists": "Artist B", "popularity": 50, "album_image_url": ""},
@@ -150,6 +155,7 @@ class GeneratePlaylistViewTests(TestCase):
         self.assertIn('Most Popular', page)
         self.assertIn('Least Popular', page)
         self.assertIn('Show All Genres', page)
+        self.assertIn('Source Blend', page)
 
     @patch("recommender.views.extract_playlist_attributes")
     @patch("recommender.views.compute_playlist_statistics")
@@ -186,6 +192,11 @@ class GeneratePlaylistViewTests(TestCase):
                 {"genre": "lofi", "percentage": 10.0},
             ],
             "novelty_reference_ids": [],
+            "source_mix": [
+                {"key": "genre_discovery", "label": "Spotify Discovery", "count": 3, "percentage": 60.0},
+                {"key": "similarity", "label": "Similarity Engine", "count": 2, "percentage": 40.0},
+            ],
+            "source_total": 5,
             "top_popular_tracks": [
                 {"id": "3", "name": "Fallback Song", "artists": "Fallback Artist", "popularity": 65, "album_image_url": ""},
             ],
@@ -425,6 +436,11 @@ class RemixPlaylistViewTests(TestCase):
                 {"genre": "chillhop", "percentage": 10.0},
             ],
             "novelty_reference_ids": [],
+            "source_mix": [
+                {"key": "remix_seed", "label": "Remix Seeds", "count": 5, "percentage": 50.0},
+                {"key": "similarity", "label": "Similarity Engine", "count": 3, "percentage": 30.0},
+            ],
+            "source_total": 10,
             "top_popular_tracks": [
                 {"id": "remix-1", "name": "Remix Track 1", "artists": "Remix Artist 1", "popularity": 70, "album_image_url": ""},
                 {"id": "remix-2", "name": "Remix Track 2", "artists": "Remix Artist 2", "popularity": 60, "album_image_url": ""},
@@ -456,6 +472,7 @@ class RemixPlaylistViewTests(TestCase):
         self.assertIn('Most Popular', content)
         self.assertIn('Least Popular', content)
         self.assertIn('Show All Genres', content)
+        self.assertIn('Source Blend', content)
 
     def test_remix_requires_spotify_auth(self):
         cache_key = _cache_key("remix-user", "lofi coding mix")
@@ -481,6 +498,8 @@ class SpotifyHandlerTests(TestCase):
         self.assertEqual(stats["genre_top"], [])
         self.assertEqual(stats["genre_remaining"], [])
         self.assertEqual(stats["novelty_reference_ids"], [])
+        self.assertEqual(stats["source_mix"], [])
+        self.assertEqual(stats["source_total"], 0)
         self.assertEqual(stats["top_popular_tracks"], [])
         self.assertEqual(stats["least_popular_tracks"], [])
 
@@ -527,6 +546,9 @@ class SpotifyHandlerTests(TestCase):
         self.assertEqual(len(stats["top_popular_tracks"]), 2)
         self.assertEqual(stats["top_popular_tracks"][0]["id"], "track-2")
         self.assertEqual(stats["least_popular_tracks"][0]["id"], "track-1")
+        self.assertEqual(stats["source_total"], 2)
+        self.assertEqual(len(stats["source_mix"]), 1)
+        self.assertEqual(stats["source_mix"][0]["key"], "playlist")
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_compute_playlist_statistics_populates_genre_distribution(self, mock_spotify):
@@ -574,6 +596,8 @@ class SpotifyHandlerTests(TestCase):
         self.assertEqual(len(stats["top_popular_tracks"]), 2)
         self.assertEqual(stats["top_popular_tracks"][0]["id"], "track-1")
         self.assertEqual(stats["least_popular_tracks"][0]["id"], "track-2")
+        self.assertEqual(stats["source_total"], 2)
+        self.assertEqual(len(stats["source_mix"]), 1)
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_resolve_seed_tracks_includes_metadata(self, mock_spotify):

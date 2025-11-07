@@ -291,16 +291,12 @@ main {
     order: 1;
 }
 
-.analytics-card--novelty {
-    order: 4;
+.analytics-card--meter {
+    order: 2;
 }
 
 .analytics-card--wide {
     order: 3;
-}
-
-.analytics-card--meter {
-    order: 2;
 }
 
 .analytics-card--popularity {

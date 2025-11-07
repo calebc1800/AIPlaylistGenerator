@@ -247,6 +247,31 @@
                                 </div>
                             </article>
 
+                            {% if playlist_stats.source_mix %}
+                                <article class="analytics-card">
+                                    <div class="analytics-card__header">
+                                        <h4 class="analytics-card__title">Source Blend</h4>
+                                        <span class="stat-caption">Track origins across AI and personal data</span>
+                                    </div>
+                                    <div class="analytics-chart">
+                                        <canvas id="source-mix-chart" data-chart="source"></canvas>
+                                    </div>
+                                    <ul class="analytics-list">
+                                        {% for item in playlist_stats.source_mix %}
+                                            <li class="analytics-list__item">
+                                                <div class="list-track">
+                                                    <div class="list-track__meta">
+                                                        <span class="list-track__name">{{ item.label }}</span>
+                                                        <span class="list-track__artists">{{ item.count }} tracks</span>
+                                                    </div>
+                                                    <span class="list-track__score">{{ item.percentage }}%</span>
+                                                </div>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                </article>
+                            {% endif %}
+
                             <article class="analytics-card analytics-card--novelty">
                                 <div class="analytics-card__header">
                                     <h4 class="analytics-card__title">Freshness Gauge</h4>

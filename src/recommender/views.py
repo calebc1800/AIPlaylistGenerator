@@ -505,6 +505,7 @@ def generate_playlist(request):
                     "popularity": track_dict.get("popularity"),
                     "artist_ids": track_dict.get("artist_ids", []),
                     "year": track_dict.get("year"),
+                    "seed_source": track_dict.get("seed_source") or track_dict.get("source") or "playlist",
                 }
             )
 
@@ -537,7 +538,9 @@ def generate_playlist(request):
             ]
 
             for track in similar_tracks:
-                _append_track(track)
+                prepared = dict(track)
+                prepared.setdefault("seed_source", prepared.get("source") or "similarity")
+                _append_track(prepared)
 
         playlist = [
             f"{track['name']} - {track['artists']}" for track in ordered_tracks
@@ -732,6 +735,7 @@ def remix_playlist(request):
                 "popularity": entry.get("popularity"),
                 "artist_ids": entry.get("artist_ids", []),
                 "year": entry.get("year"),
+                "seed_source": entry.get("seed_source") or entry.get("source") or "playlist",
             }
         )
         return True
@@ -772,8 +776,10 @@ def remix_playlist(request):
         for candidate in similarity_candidates:
             if len(ordered_tracks) >= target_count:
                 break
-            if _append_track(candidate):
-                similar_used.append(candidate)
+            prepared = dict(candidate)
+            prepared.setdefault("seed_source", prepared.get("source") or "similarity")
+            if _append_track(prepared):
+                similar_used.append(prepared)
 
     if len(ordered_tracks) < target_count:
         log("Falling back to original playlist tracks to maintain length.")
@@ -789,6 +795,7 @@ def remix_playlist(request):
                 "album_name": entry.get("album_name", ""),
                 "album_image_url": entry.get("album_image_url", ""),
                 "duration_ms": int(entry.get("duration_ms") or 0),
+                "seed_source": entry.get("seed_source") or entry.get("source") or "playlist",
             }
             _append_track(fallback_entry, force=True)
 
