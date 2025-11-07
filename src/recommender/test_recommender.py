@@ -50,6 +50,17 @@ from recommender.services.llm_handler import (
 from recommender.views import _cache_key, _build_context_from_payload, _make_logger
 
 
+def _payload_with_owner(session, cache_key, payload, owner_user_id=None):
+    """Return a cache payload annotated with ownership metadata."""
+    if not session.session_key:
+        session.save()
+    enriched = dict(payload)
+    enriched.setdefault("cache_key", cache_key)
+    enriched["owner_user_id"] = owner_user_id or session.get("spotify_user_id", "anonymous")
+    enriched["owner_session_key"] = session.session_key
+    return enriched
+
+
 class GeneratePlaylistViewTests(TestCase):
     """Tests for the recommender playlist generation view."""
 
@@ -251,18 +262,22 @@ class GeneratePlaylistViewTests(TestCase):
         cache_key = _cache_key("cache_user", "high energy pop")
         cache.set(
             cache_key,
-            {
-                "playlist": ["Cached Song - Artist"],
-                "attributes": {"mood": "upbeat", "genre": "pop", "energy": "high"},
-                "llm_suggestions": [
-                    {"title": "Cached Song", "artist": "Cached Artist"}
-                ],
-                "resolved_seed_tracks": [
-                    {"id": "1", "name": "Cached Song", "artists": "Cached Artist"}
-                ],
-                "seed_track_display": ["Cached Song - Cached Artist"],
-                "similar_tracks_display": ["Similar Song - Similar Artist"],
-            },
+            _payload_with_owner(
+                session,
+                cache_key,
+                {
+                    "playlist": ["Cached Song - Artist"],
+                    "attributes": {"mood": "upbeat", "genre": "pop", "energy": "high"},
+                    "llm_suggestions": [
+                        {"title": "Cached Song", "artist": "Cached Artist"}
+                    ],
+                    "resolved_seed_tracks": [
+                        {"id": "1", "name": "Cached Song", "artists": "Cached Artist"}
+                    ],
+                    "seed_track_display": ["Cached Song - Cached Artist"],
+                    "similar_tracks_display": ["Similar Song - Similar Artist"],
+                },
+            ),
             timeout=60,
         )
 
@@ -288,21 +303,25 @@ class GeneratePlaylistViewTests(TestCase):
         cache_key = _cache_key("debugger", "prompt")
         cache.set(
             cache_key,
-            {
-                "playlist": ["Debug Song - Debug Artist"],
-                "track_ids": ["debug-track"],
-                "track_details": [
-                    {
-                        "id": "debug-track",
-                        "name": "Debug Song",
-                        "artists": "Debug Artist",
-                        "album_name": "",
-                        "album_image_url": "",
-                        "duration_ms": 0,
-                    }
-                ],
-                "debug_steps": ["[0.00s] Step executed."],
-            },
+            _payload_with_owner(
+                session,
+                cache_key,
+                {
+                    "playlist": ["Debug Song - Debug Artist"],
+                    "track_ids": ["debug-track"],
+                    "track_details": [
+                        {
+                            "id": "debug-track",
+                            "name": "Debug Song",
+                            "artists": "Debug Artist",
+                            "album_name": "",
+                            "album_image_url": "",
+                            "duration_ms": 0,
+                        }
+                    ],
+                    "debug_steps": ["[0.00s] Step executed."],
+                },
+            ),
             timeout=60,
         )
 
@@ -320,21 +339,25 @@ class GeneratePlaylistViewTests(TestCase):
         cache_key = _cache_key("debugger", "prompt")
         cache.set(
             cache_key,
-            {
-                "playlist": ["Debug Song - Debug Artist"],
-                "track_ids": ["debug-track"],
-                "track_details": [
-                    {
-                        "id": "debug-track",
-                        "name": "Debug Song",
-                        "artists": "Debug Artist",
-                        "album_name": "",
-                        "album_image_url": "",
-                        "duration_ms": 0,
-                    }
-                ],
-                "debug_steps": ["[0.00s] Step executed."],
-            },
+            _payload_with_owner(
+                session,
+                cache_key,
+                {
+                    "playlist": ["Debug Song - Debug Artist"],
+                    "track_ids": ["debug-track"],
+                    "track_details": [
+                        {
+                            "id": "debug-track",
+                            "name": "Debug Song",
+                            "artists": "Debug Artist",
+                            "album_name": "",
+                            "album_image_url": "",
+                            "duration_ms": 0,
+                        }
+                    ],
+                    "debug_steps": ["[0.00s] Step executed."],
+                },
+            ),
             timeout=60,
         )
 
@@ -352,6 +375,9 @@ class RemixPlaylistViewTests(TestCase):
         cache.clear()
 
     def _seed_cached_playlist(self, cache_key: str, track_count: int = 3):
+        session = self.client.session
+        if not session.session_key:
+            session.save()
         tracks = []
         playlist = []
         for index in range(track_count):
@@ -372,14 +398,18 @@ class RemixPlaylistViewTests(TestCase):
 
         cache.set(
             cache_key,
-            {
-                "playlist": playlist,
-                "track_details": tracks,
-                "track_ids": [entry["id"] for entry in tracks],
-                "prompt": "lofi coding mix",
-                "attributes": {"mood": "chill", "genre": "lo-fi", "energy": "low"},
-                "suggested_playlist_name": "Lofi Coding Mix",
-            },
+            _payload_with_owner(
+                session,
+                cache_key,
+                {
+                    "playlist": playlist,
+                    "track_details": tracks,
+                    "track_ids": [entry["id"] for entry in tracks],
+                    "prompt": "lofi coding mix",
+                    "attributes": {"mood": "chill", "genre": "lo-fi", "energy": "low"},
+                    "suggested_playlist_name": "Lofi Coding Mix",
+                },
+            ),
             timeout=60,
         )
 
@@ -1150,19 +1180,26 @@ class SavePlaylistViewTests(TestCase):
         self.url = reverse("recommender:save_playlist")
         self.cache_key = "save-cache-key"
         cache.clear()
-        cache.set(
-            self.cache_key,
-            {
-                "playlist": ["Song A - Artist A"],
-                "track_ids": ["track1", "track2"],
-                "prompt": "test prompt",
-                "debug_steps": [],
-                "errors": [],
-            },
-            timeout=60,
-        )
         session = self.client.session
         session["spotify_access_token"] = "token"
+        session["spotify_user_id"] = "cache-owner"
+        session.save()
+        cache.set(
+            self.cache_key,
+            _payload_with_owner(
+                session,
+                self.cache_key,
+                {
+                    "playlist": ["Song A - Artist A"],
+                    "track_ids": ["track1", "track2"],
+                    "prompt": "test prompt",
+                    "debug_steps": [],
+                    "errors": [],
+                },
+            ),
+            timeout=60,
+        )
+        session["recommender_last_cache_key"] = self.cache_key
         session.save()
 
     @patch("recommender.views.create_playlist_with_tracks")
@@ -1240,33 +1277,42 @@ class PlaylistEditingTests(TestCase):
         self.client = Client()
         self.url = reverse("recommender:update_cached_playlist")
         cache.clear()
+        session = self.client.session
+        session["spotify_access_token"] = "token"
+        session["spotify_user_id"] = "editor"
+        session.save()
+        self.session = session
 
     def test_remove_track_updates_cache(self):
         cache_key = "recommender:test"
         cache.set(
             cache_key,
-            {
-                "track_details": [
-                    {
-                        "id": "track1",
-                        "name": "First",
-                        "artists": "Artist",
-                        "album_name": "",
-                        "album_image_url": "",
-                        "duration_ms": 0,
-                    },
-                    {
-                        "id": "track2",
-                        "name": "Second",
-                        "artists": "Artist",
-                        "album_name": "",
-                        "album_image_url": "",
-                        "duration_ms": 0,
-                    },
-                ],
-                "track_ids": ["track1", "track2"],
-                "playlist": ["First - Artist", "Second - Artist"],
-            },
+            _payload_with_owner(
+                self.session,
+                cache_key,
+                {
+                    "track_details": [
+                        {
+                            "id": "track1",
+                            "name": "First",
+                            "artists": "Artist",
+                            "album_name": "",
+                            "album_image_url": "",
+                            "duration_ms": 0,
+                        },
+                        {
+                            "id": "track2",
+                            "name": "Second",
+                            "artists": "Artist",
+                            "album_name": "",
+                            "album_image_url": "",
+                            "duration_ms": 0,
+                        },
+                    ],
+                    "track_ids": ["track1", "track2"],
+                    "playlist": ["First - Artist", "Second - Artist"],
+                },
+            ),
             timeout=60,
         )
 
@@ -1289,20 +1335,24 @@ class PlaylistEditingTests(TestCase):
         cache_key = "recommender:position"
         cache.set(
             cache_key,
-            {
-                "track_details": [
-                    {
-                        "id": "",
-                        "name": "Untitled",
-                        "artists": "Unknown",
-                        "album_name": "",
-                        "album_image_url": "",
-                        "duration_ms": 0,
-                    }
-                ],
-                "track_ids": [],
-                "playlist": ["Untitled - Unknown"],
-            },
+            _payload_with_owner(
+                self.session,
+                cache_key,
+                {
+                    "track_details": [
+                        {
+                            "id": "",
+                            "name": "Untitled",
+                            "artists": "Unknown",
+                            "album_name": "",
+                            "album_image_url": "",
+                            "duration_ms": 0,
+                        }
+                    ],
+                    "track_ids": [],
+                    "playlist": ["Untitled - Unknown"],
+                },
+            ),
             timeout=60,
         )
 

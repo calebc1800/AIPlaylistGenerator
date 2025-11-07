@@ -40,6 +40,90 @@ from .services.user_preferences import (
 )
 
 logger = logging.getLogger(__name__)
+PLAYLIST_NAME_MAX_LENGTH = 100
+
+
+def _ensure_session_key(request) -> str:
+    """Ensure the request has a session key and return it."""
+    session_key = request.session.session_key
+    if not session_key:
+        request.session.save()
+        session_key = request.session.session_key or ""
+    return session_key
+
+
+def _resolve_request_user_id(request) -> str:
+    """Return a stable identifier for the current user/session."""
+    if request.user.is_authenticated:
+        return str(request.user.pk)
+    return str(request.session.get("spotify_user_id") or "anonymous")
+
+
+def _attach_cache_metadata(payload: Dict[str, object], request, cache_key: str) -> Dict[str, object]:
+    """Attach ownership metadata to playlist payloads."""
+    payload["cache_key"] = cache_key
+    payload["owner_user_id"] = _resolve_request_user_id(request)
+    payload["owner_session_key"] = _ensure_session_key(request)
+    return payload
+
+
+def _payload_owned_by_request(request, payload: Dict[str, object]) -> bool:
+    """Return True if the cached payload belongs to the current requester."""
+    expected_user = payload.get("owner_user_id")
+    expected_session = payload.get("owner_session_key")
+    if not expected_user or not expected_session:
+        return False
+    return expected_user == _resolve_request_user_id(request) and expected_session == _ensure_session_key(request)
+
+
+def _resolve_cache_key_from_request(request, provided_key: str) -> str:
+    """Return the session-authorized cache key or empty string."""
+    provided = (provided_key or "").strip()
+    session_cache_key = str(request.session.get("recommender_last_cache_key", "") or "").strip()
+    if session_cache_key:
+        if provided and provided != session_cache_key:
+            logger.warning(
+                "Cache key mismatch for session %s (provided=%s, session=%s).",
+                _ensure_session_key(request),
+                provided,
+                session_cache_key,
+            )
+            return ""
+        return session_cache_key
+    return provided
+
+
+def _format_cache_timeout(seconds: int) -> str:
+    """Return a human readable label for cache timeouts."""
+    if seconds % 60 == 0:
+        minutes = seconds // 60
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    return f"{seconds} seconds"
+
+
+def _determine_llm_provider(request, *, requested_provider: str = "", debug_enabled: bool = False) -> str:
+    """Resolve the LLM provider while respecting debug constraints."""
+    provider_choices = {"openai", "ollama"}
+    default_provider = str(getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")).lower()
+    requested = (requested_provider or "").strip().lower()
+    session_provider = (request.session.get("llm_provider") or "").strip().lower()
+
+    if debug_enabled and requested in provider_choices:
+        provider = requested
+    elif session_provider in provider_choices:
+        provider = session_provider
+    elif default_provider in provider_choices:
+        provider = default_provider
+    else:
+        provider = "openai"
+
+    if not debug_enabled:
+        allowed_default = default_provider if default_provider in provider_choices else "openai"
+        if provider != allowed_default:
+            provider = allowed_default
+
+    request.session["llm_provider"] = provider
+    return provider
 
 
 def _cache_key(user_identifier: str, prompt: str) -> str:
@@ -48,18 +132,26 @@ def _cache_key(user_identifier: str, prompt: str) -> str:
     return f"recommender:{user_identifier}:{digest}"
 
 
-def _make_logger(debug_steps: List[str], errors: List[str]) -> Callable[[str], None]:
+def _make_logger(
+    debug_steps: List[str],
+    errors: List[str],
+    *,
+    label: str = "recommender",
+    capture_debug: bool = True,
+) -> Callable[[str], None]:
     """Capture diagnostic messages and surface potential errors for the UI."""
     start = time.perf_counter()
 
-    def _log(message: str) -> None:
+    def _log(message: str, *, sensitive: bool = False) -> None:
         elapsed = time.perf_counter() - start
         formatted = f"[{elapsed:0.2f}s] {message}"
-        debug_steps.append(formatted)
+        if capture_debug:
+            debug_steps.append(formatted)
         lower_msg = message.lower()
         if any(keyword in lower_msg for keyword in ("error", "failed", "missing", "unavailable")):
             errors.append(message)
-        logger.debug("generate_playlist: %s", formatted)
+        display_message = message if (capture_debug or not sensitive) else "<sensitive output hidden>"
+        logger.debug("%s: [%0.2fs] %s", label, elapsed, display_message)
 
     return _log
 
@@ -166,41 +258,27 @@ def generate_playlist(request):
     prompt = request.POST.get("prompt", "").strip()
     debug_steps: List[str] = []
     errors: List[str] = []
-    log = _make_logger(debug_steps, errors)
+    debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
+    log = _make_logger(debug_steps, errors, label="generate_playlist", capture_debug=debug_enabled)
 
     if not prompt:
         log("Prompt missing; redirecting to dashboard.")
         return redirect("dashboard:dashboard")
 
-    debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
-    default_provider = str(
-        getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
-    ).lower()
-    provider_choices = {"openai", "ollama"}
-    requested_provider = (request.POST.get("llm_provider") or "").strip().lower()
-    session_provider = (request.session.get("llm_provider") or "").strip().lower()
-    if debug_enabled and requested_provider in provider_choices:
-        llm_provider = requested_provider
-    elif session_provider in provider_choices:
-        llm_provider = session_provider
-    else:
-        llm_provider = default_provider if default_provider in provider_choices else "openai"
-    if not debug_enabled and llm_provider != (default_provider if default_provider in provider_choices else "openai"):
-        llm_provider = default_provider if default_provider in provider_choices else "openai"
-    request.session["llm_provider"] = llm_provider
+    llm_provider = _determine_llm_provider(
+        request,
+        requested_provider=request.POST.get("llm_provider"),
+        debug_enabled=debug_enabled,
+    )
 
-    log(f"Prompt received: {prompt}")
+    log(f"Prompt received: {prompt}", sensitive=True)
 
     access_token = request.session.get("spotify_access_token")
     if not access_token:
         log("Missing Spotify access token; redirecting to login.")
         return redirect("spotify_auth:login")
 
-    user_id = "anonymous"
-    if request.user.is_authenticated:
-        user_id = str(request.user.pk)
-    else:
-        user_id = request.session.get("spotify_user_id", user_id)
+    user_id = _resolve_request_user_id(request)
 
     profile_cache: Optional[Dict[str, object]] = None
     if user_id:
@@ -305,6 +383,12 @@ def generate_playlist(request):
 
     cache_key = _cache_key(user_id, prompt)
     cached_payload: Optional[Dict[str, object]] = cache.get(cache_key)
+    if isinstance(cached_payload, dict) and not _payload_owned_by_request(request, cached_payload):
+        logger.warning("Cache ownership mismatch for key %s", cache_key)
+        cached_payload = None
+    elif cached_payload is not None and not isinstance(cached_payload, dict):
+        logger.info("Ignoring legacy cached payload lacking ownership metadata.")
+        cached_payload = None
     preferences = get_preferences_for_request(request)
     preference_snapshot = asdict(preferences)
     preference_descriptions = describe_pending_options()
@@ -355,6 +439,10 @@ def generate_playlist(request):
             log_step=log,
             provider=llm_provider,
         )
+        if not isinstance(attributes, dict):
+            attributes = {}
+        else:
+            attributes = dict(attributes)
         log(f"Attributes after normalization: {attributes}")
 
         normalized_genre = normalize_genre(attributes.get("genre", "pop") or "pop")
@@ -586,9 +674,8 @@ def generate_playlist(request):
             "track_details": ordered_tracks,
             "prompt": prompt,
             "suggested_playlist_name": suggested_playlist_name,
-            "debug_steps": list(debug_steps),
+            "debug_steps": list(debug_steps) if debug_enabled else [],
             "errors": list(errors),
-            "cache_key": cache_key,
             "user_preferences": preference_snapshot,
             "preference_descriptions": preference_descriptions,
             "llm_provider": llm_provider,
@@ -596,10 +683,11 @@ def generate_playlist(request):
             "prompt_artist_candidates": prompt_artist_candidates,
             "playlist_stats": playlist_stats,
         }
+        _attach_cache_metadata(payload, request, cache_key)
         cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
         cache.set(cache_key, payload, timeout=cache_timeout)
         request.session["recommender_last_cache_key"] = cache_key
-        log("Playlist cached for 15 minutes.")
+        log(f"Playlist cached for {_format_cache_timeout(cache_timeout)}.")
 
     context = _build_context_from_payload(payload)
     context["cache_key"] = cache_key
@@ -609,21 +697,17 @@ def generate_playlist(request):
 @require_POST
 def remix_playlist(request):
     """Regenerate the cached playlist using the current tracks as seeds."""
-    cache_key = request.POST.get("cache_key", "").strip()
-    if not cache_key:
-        cache_key = str(request.session.get("recommender_last_cache_key", "") or "").strip()
+    cache_key = _resolve_cache_key_from_request(request, request.POST.get("cache_key", ""))
     if not cache_key:
         messages.error(request, "Playlist session expired. Please generate a new playlist.")
         return redirect("dashboard:dashboard")
 
     cached_payload = cache.get(cache_key)
     if not isinstance(cached_payload, dict):
-        fallback_key = str(request.session.get("recommender_last_cache_key", "") or "").strip()
-        if fallback_key and fallback_key != cache_key:
-            cache_key = fallback_key
-            cached_payload = cache.get(cache_key)
-    if not isinstance(cached_payload, dict):
         messages.error(request, "Playlist session expired. Please generate a new playlist.")
+        return redirect("dashboard:dashboard")
+    if not _payload_owned_by_request(request, cached_payload):
+        messages.error(request, "Playlist session does not belong to your session.")
         return redirect("dashboard:dashboard")
 
     track_details = cached_payload.get("track_details")
@@ -650,28 +734,16 @@ def remix_playlist(request):
 
     debug_steps: List[str] = []
     errors: List[str] = []
-    log = _make_logger(debug_steps, errors)
+    debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
+    log = _make_logger(debug_steps, errors, label="remix_playlist", capture_debug=debug_enabled)
 
     prompt = (cached_payload.get("prompt") or request.POST.get("prompt") or "").strip()
 
-    debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
-    default_provider = str(
-        getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
-    ).lower()
-    provider_choices = {"openai", "ollama"}
-    requested_provider = (request.POST.get("llm_provider") or "").strip().lower()
-    session_provider = (request.session.get("llm_provider") or "").strip().lower()
-    if debug_enabled and requested_provider in provider_choices:
-        llm_provider = requested_provider
-    elif session_provider in provider_choices:
-        llm_provider = session_provider
-    else:
-        llm_provider = default_provider if default_provider in provider_choices else "openai"
-    if not debug_enabled and llm_provider != (
-        default_provider if default_provider in provider_choices else "openai"
-    ):
-        llm_provider = default_provider if default_provider in provider_choices else "openai"
-    request.session["llm_provider"] = llm_provider
+    llm_provider = _determine_llm_provider(
+        request,
+        requested_provider=request.POST.get("llm_provider"),
+        debug_enabled=debug_enabled,
+    )
 
     raw_attributes = cached_payload.get("attributes")
     attributes = raw_attributes if isinstance(raw_attributes, dict) else None
@@ -835,18 +907,18 @@ def remix_playlist(request):
         ],
         "similar_tracks_debug": similar_used,
         "seed_track_details": resolved_seed_tracks,
-        "debug_steps": debug_steps,
-        "errors": errors,
+        "debug_steps": list(debug_steps) if debug_enabled else [],
+        "errors": list(errors),
         "llm_provider": llm_provider,
         "prompt": prompt,
-        "cache_key": cache_key,
         "playlist_stats": playlist_stats,
     }
+    _attach_cache_metadata(payload, request, cache_key)
 
     cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
     cache.set(cache_key, payload, timeout=cache_timeout)
     request.session["recommender_last_cache_key"] = cache_key
-    log("Remixed playlist cached for 15 minutes.")
+    log(f"Remixed playlist cached for {_format_cache_timeout(cache_timeout)}.")
 
     context = _build_context_from_payload(payload)
     context["cache_key"] = cache_key
@@ -858,7 +930,8 @@ def remix_playlist(request):
 @require_POST
 def update_cached_playlist(request):
     """Mutate cached playlist payloads (e.g., removing tracks) via AJAX."""
-    if request.content_type != "application/json":
+    content_type = (request.content_type or request.META.get("CONTENT_TYPE") or "").lower()
+    if not content_type.startswith("application/json"):
         return JsonResponse({"error": "Expected JSON payload."}, status=400)
 
     try:
@@ -867,15 +940,15 @@ def update_cached_playlist(request):
         return JsonResponse({"error": "Invalid JSON payload."}, status=400)
 
     action = (request_payload.get("action") or "").strip().lower()
-    cache_key = (request_payload.get("cache_key") or "").strip()
-    if not cache_key:
-        cache_key = request.session.get("recommender_last_cache_key", "")
+    cache_key = _resolve_cache_key_from_request(request, request_payload.get("cache_key"))
     if not cache_key or action not in {"remove"}:
         return JsonResponse({"error": "Invalid request."}, status=400)
 
     payload = cache.get(cache_key)
     if not isinstance(payload, dict):
         return JsonResponse({"error": "Playlist session expired."}, status=404)
+    if not _payload_owned_by_request(request, payload):
+        return JsonResponse({"error": "Playlist session unauthorized."}, status=403)
 
     track_details = payload.get("track_details")
     if not isinstance(track_details, list):
@@ -928,6 +1001,9 @@ def update_cached_playlist(request):
     if user_id:
         profile_cache = cache.get(f"recommender:user-profile:{user_id}")
 
+    def _stats_log(message: str) -> None:
+        logger.debug("update_cached_playlist: %s", message)
+
     existing_stats = payload.get("playlist_stats")
     novelty_reference_ids = None
     if isinstance(existing_stats, dict):
@@ -938,8 +1014,10 @@ def update_cached_playlist(request):
         updated_tracks,
         profile_cache=profile_cache,
         cached_track_ids=novelty_reference_ids,
+        log_step=_stats_log,
     )
 
+    _attach_cache_metadata(payload, request, cache_key)
     cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
     cache.set(cache_key, payload, timeout=cache_timeout)
 
@@ -956,15 +1034,16 @@ def update_cached_playlist(request):
 @require_POST
 def save_playlist(request):
     """Create a Spotify playlist for the cached tracks and display feedback."""
-    cache_key = request.POST.get("cache_key", "").strip()
-    playlist_name = (request.POST.get("playlist_name") or "").strip()
+    cache_key = _resolve_cache_key_from_request(request, request.POST.get("cache_key", ""))
+    playlist_name_raw = (request.POST.get("playlist_name") or "").strip()
+    playlist_name = re.sub(r"[\r\n\t]+", " ", playlist_name_raw).strip()
 
     if not cache_key:
         messages.error(request, "Playlist session expired. Please generate a new playlist.")
         return redirect("dashboard:dashboard")
 
     payload = cache.get(cache_key)
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict) or not _payload_owned_by_request(request, payload):
         messages.error(request, "Playlist session expired. Please generate a new playlist.")
         return redirect("dashboard:dashboard")
 
@@ -974,6 +1053,12 @@ def save_playlist(request):
 
     if not playlist_name:
         messages.error(request, "Please provide a playlist name.")
+        return render(request, "recommender/playlist_result.html", context)
+    if len(playlist_name) > PLAYLIST_NAME_MAX_LENGTH:
+        messages.error(
+            request,
+            f"Playlist names must be {PLAYLIST_NAME_MAX_LENGTH} characters or fewer.",
+        )
         return render(request, "recommender/playlist_result.html", context)
 
     track_ids = payload.get("track_ids") or []
@@ -1001,6 +1086,9 @@ def save_playlist(request):
         messages.error(request, str(exc))
     except RequestException as exc:
         messages.error(request, f"Network error while communicating with Spotify: {exc}")
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.exception("Unexpected error while saving playlist for cache %s: %s", cache_key, exc)
+        messages.error(request, "Unexpected error while saving your playlist. Please try again.")
     else:
         resolved_name = result.get("playlist_name") or playlist_name
         playlist_id = result.get("playlist_id")
