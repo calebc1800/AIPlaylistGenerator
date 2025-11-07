@@ -1141,6 +1141,7 @@ def save_playlist(request):
             playlist_name=playlist_name,
             prefix=getattr(settings, "RECOMMENDER_PLAYLIST_PREFIX", "TEST "),
             user_id=request.session.get("spotify_user_id"),
+            user_display_name=request.session.get('spotify_display_name'),
             public=getattr(settings, "RECOMMENDER_PLAYLIST_PUBLIC", False),
         )
     except SpotifyException as exc:
@@ -1158,11 +1159,14 @@ def save_playlist(request):
         resolved_user_id = result.get("user_id")
         if resolved_user_id:
             request.session["spotify_user_id"] = resolved_user_id
-        if playlist_id and resolved_user_id:
+        resolved_display_name = result.get("user_display_name")
+        if resolved_display_name:
+            request.session["spotify_display_name"] = resolved_display_name
+        if playlist_id and resolved_user_id and resolved_display_name:
             try:
                 SavedPlaylist.objects.update_or_create(
                     playlist_id=playlist_id,
-                    defaults={"creator_user_id": resolved_user_id},
+                    defaults={"creator_user_id": resolved_user_id, "creator_display_name": resolved_display_name},
                 )
             except DatabaseError as exc:  # pragma: no cover - defensive logging
                 logger.exception("Failed to persist saved playlist %s: %s", playlist_id, exc)

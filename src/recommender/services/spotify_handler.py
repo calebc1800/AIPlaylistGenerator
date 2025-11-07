@@ -1437,6 +1437,7 @@ def create_playlist_with_tracks(
     *,
     prefix: str = "",
     user_id: Optional[str] = None,
+    user_display_name: Optional[str] = None,
     public: bool = False,
 ) -> Dict[str, str]:
     """
@@ -1450,6 +1451,13 @@ def create_playlist_with_tracks(
         raise ValueError("A playlist name must be provided.")
 
     sp = spotipy.Spotify(auth=token)
+
+    resolved_user_display_name = user_display_name
+    if not resolved_user_display_name:
+        profile = sp.current_user()
+        resolved_user_display_name = profile.get("display_name")
+        if not resolved_user_display_name:
+            raise RuntimeError("Spotify user display name could not be resolved.")
 
     resolved_user_id = user_id
     if not resolved_user_id:
@@ -1495,4 +1503,5 @@ def create_playlist_with_tracks(
         "playlist_id": playlist_id,
         "playlist_name": playlist_title,
         "user_id": resolved_user_id,
+        "user_display_name": resolved_user_display_name,
     }

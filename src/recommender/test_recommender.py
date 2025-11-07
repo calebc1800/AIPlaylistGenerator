@@ -884,8 +884,8 @@ class SpotifyHandlerTests(TestCase):
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_create_playlist_with_tracks_chunking(self, mock_spotify):
         mock_instance = mock_spotify.return_value
-        mock_instance.current_user.return_value = {"id": "user123"}
-        mock_instance.user_playlist_create.return_value = {"id": "playlist123"}
+        mock_instance.current_user.return_value = {"id": "user123", "display_name": "User Name"}
+        mock_instance.user_playlist_create.return_value = {"id": "playlist123", "display_name": "User Name"}
 
         track_ids = [f"track{i}" for i in range(205)]
         result = create_playlist_with_tracks(
@@ -915,7 +915,7 @@ class SpotifyHandlerTests(TestCase):
             user_id="preset-user",
         )
 
-        mock_instance.current_user.assert_not_called()
+        mock_instance.current_user.assert_called()
         mock_instance.playlist_add_items.assert_called_once()
         self.assertEqual(mock_instance.playlist_add_items.call_args.args[0], "playlist456")
         self.assertEqual(mock_instance.playlist_add_items.call_args.args[1], ["track1"])
@@ -1289,6 +1289,7 @@ class SavePlaylistViewTests(TestCase):
             "playlist_id": "playlist123",
             "playlist_name": "TEST Summer Vibes",
             "user_id": "user123",
+            "user_display_name": "User Name",
         }
 
         response = self.client.post(
@@ -1314,12 +1315,14 @@ class SavePlaylistViewTests(TestCase):
         SavedPlaylist.objects.create(
             playlist_id="playlist123",
             creator_user_id="initial-user",
+            creator_display_name='initial name',
             like_count=5,
         )
         mock_create_playlist.return_value = {
             "playlist_id": "playlist123",
             "playlist_name": "TEST Summer Vibes",
             "user_id": "user456",
+            "user_display_name": 'user456 name',
         }
 
         response = self.client.post(
