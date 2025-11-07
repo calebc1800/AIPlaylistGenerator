@@ -11,9 +11,11 @@ from typing import Callable, Dict, List, Optional, Set
 from django.conf import settings
 from django.contrib import messages
 from django.core.cache import cache
+from django.db import DatabaseError
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
+from requests import RequestException
 from spotipy import SpotifyException
 
 from .models import SavedPlaylist
@@ -997,8 +999,8 @@ def save_playlist(request):
         messages.error(request, f"Spotify error: {exc}")
     except (ValueError, RuntimeError) as exc:
         messages.error(request, str(exc))
-    except Exception as exc:
-        messages.error(request, f"Unexpected error: {exc}")
+    except RequestException as exc:
+        messages.error(request, f"Network error while communicating with Spotify: {exc}")
     else:
         resolved_name = result.get("playlist_name") or playlist_name
         playlist_id = result.get("playlist_id")
@@ -1011,7 +1013,7 @@ def save_playlist(request):
                     playlist_id=playlist_id,
                     defaults={"creator_user_id": resolved_user_id},
                 )
-            except Exception as exc:  # pragma: no cover - defensive logging
+            except DatabaseError as exc:  # pragma: no cover - defensive logging
                 logger.exception("Failed to persist saved playlist %s: %s", playlist_id, exc)
         context["playlist_name"] = resolved_name
         messages.success(request, f"Playlist '{resolved_name}' saved to Spotify.")

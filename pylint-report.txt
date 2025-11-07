@@ -1,0 +1,764 @@
+************* Module src.recommender.views
+src/recommender/views.py:108:0: C0301: Line too long (107/100) (line-too-long)
+src/recommender/views.py:124:0: C0301: Line too long (106/100) (line-too-long)
+src/recommender/views.py:146:0: C0301: Line too long (101/100) (line-too-long)
+src/recommender/views.py:149:0: C0301: Line too long (119/100) (line-too-long)
+src/recommender/views.py:188:0: C0301: Line too long (118/100) (line-too-long)
+src/recommender/views.py:268:0: C0301: Line too long (111/100) (line-too-long)
+src/recommender/views.py:276:0: C0301: Line too long (104/100) (line-too-long)
+src/recommender/views.py:292:0: C0301: Line too long (107/100) (line-too-long)
+src/recommender/views.py:316:0: C0301: Line too long (110/100) (line-too-long)
+src/recommender/views.py:371:0: C0301: Line too long (101/100) (line-too-long)
+src/recommender/views.py:414:0: C0301: Line too long (136/100) (line-too-long)
+src/recommender/views.py:423:0: C0301: Line too long (116/100) (line-too-long)
+src/recommender/views.py:449:0: C0301: Line too long (110/100) (line-too-long)
+src/recommender/views.py:510:0: C0301: Line too long (107/100) (line-too-long)
+src/recommender/views.py:1:0: C0302: Too many lines in module (1021/1000) (too-many-lines)
+src/recommender/views.py:67:0: R0914: Too many local variables (22/15) (too-many-locals)
+src/recommender/views.py:164:0: R0914: Too many local variables (85/15) (too-many-locals)
+src/recommender/views.py:210:4: R1702: Too many nested blocks (6/5) (too-many-nested-blocks)
+src/recommender/views.py:164:0: R0912: Too many branches (53/12) (too-many-branches)
+src/recommender/views.py:164:0: R0915: Too many statements (204/50) (too-many-statements)
+src/recommender/views.py:610:0: R0914: Too many local variables (47/15) (too-many-locals)
+src/recommender/views.py:610:0: R0912: Too many branches (25/12) (too-many-branches)
+src/recommender/views.py:610:0: R0915: Too many statements (110/50) (too-many-statements)
+src/recommender/views.py:859:0: R0914: Too many local variables (18/15) (too-many-locals)
+src/recommender/views.py:859:0: R0911: Too many return statements (7/6) (too-many-return-statements)
+src/recommender/views.py:859:0: R0912: Too many branches (19/12) (too-many-branches)
+src/recommender/views.py:859:0: R0915: Too many statements (55/50) (too-many-statements)
+************* Module src.recommender.test_reccomender
+src/recommender/test_reccomender.py:117:0: C0301: Line too long (110/100) (line-too-long)
+src/recommender/test_reccomender.py:118:0: C0301: Line too long (110/100) (line-too-long)
+src/recommender/test_reccomender.py:121:0: C0301: Line too long (110/100) (line-too-long)
+src/recommender/test_reccomender.py:196:0: C0301: Line too long (105/100) (line-too-long)
+src/recommender/test_reccomender.py:201:0: C0301: Line too long (124/100) (line-too-long)
+src/recommender/test_reccomender.py:204:0: C0301: Line too long (114/100) (line-too-long)
+src/recommender/test_reccomender.py:445:0: C0301: Line too long (129/100) (line-too-long)
+src/recommender/test_reccomender.py:446:0: C0301: Line too long (129/100) (line-too-long)
+src/recommender/test_reccomender.py:447:0: C0301: Line too long (129/100) (line-too-long)
+src/recommender/test_reccomender.py:450:0: C0301: Line too long (123/100) (line-too-long)
+src/recommender/test_reccomender.py:832:0: C0301: Line too long (103/100) (line-too-long)
+src/recommender/test_reccomender.py:866:0: C0301: Line too long (111/100) (line-too-long)
+src/recommender/test_reccomender.py:881:0: C0301: Line too long (102/100) (line-too-long)
+src/recommender/test_reccomender.py:969:0: C0301: Line too long (121/100) (line-too-long)
+src/recommender/test_reccomender.py:972:0: C0301: Line too long (103/100) (line-too-long)
+src/recommender/test_reccomender.py:1105:0: C0301: Line too long (105/100) (line-too-long)
+src/recommender/test_reccomender.py:1364:0: C0301: Line too long (103/100) (line-too-long)
+src/recommender/test_reccomender.py:1420:0: C0301: Line too long (102/100) (line-too-long)
+src/recommender/test_reccomender.py:1435:0: C0301: Line too long (104/100) (line-too-long)
+src/recommender/test_reccomender.py:1:0: C0302: Too many lines in module (1451/1000) (too-many-lines)
+src/recommender/test_reccomender.py:61:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:65:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:70:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:81:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:81:4: R0913: Too many arguments (7/5) (too-many-arguments)
+src/recommender/test_reccomender.py:81:4: R0917: Too many positional arguments (7/5) (too-many-positional-arguments)
+src/recommender/test_reccomender.py:166:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:166:4: R0913: Too many arguments (7/5) (too-many-arguments)
+src/recommender/test_reccomender.py:166:4: R0917: Too many positional arguments (7/5) (too-many-positional-arguments)
+src/recommender/test_reccomender.py:238:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:238:4: R0913: Too many arguments (6/5) (too-many-arguments)
+src/recommender/test_reccomender.py:238:4: R0917: Too many positional arguments (6/5) (too-many-positional-arguments)
+src/recommender/test_reccomender.py:282:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:314:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:390:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:477:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:490:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:506:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:554:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:603:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:638:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:687:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:759:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:774:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:796:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:813:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:821:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:825:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:830:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:841:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:852:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:853:8: C0115: Missing class docstring (missing-class-docstring)
+src/recommender/test_reccomender.py:854:12: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:854:30: W0613: Unused argument 'ids' (unused-argument)
+src/recommender/test_reccomender.py:853:8: R0903: Too few public methods (1/2) (too-few-public-methods)
+src/recommender/test_reccomender.py:869:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:877:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:902:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:937:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:971:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:988:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1005:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1015:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1022:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1022:74: W0613: Unused argument 'mock_query' (unused-argument)
+src/recommender/test_reccomender.py:1031:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1037:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1044:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1051:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1059:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1070:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1075:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1076:8: C0115: Missing class docstring (missing-class-docstring)
+src/recommender/test_reccomender.py:1077:12: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1076:8: R0903: Too few public methods (1/2) (too-few-public-methods)
+src/recommender/test_reccomender.py:1086:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1087:8: C0115: Missing class docstring (missing-class-docstring)
+src/recommender/test_reccomender.py:1087:8: R0903: Too few public methods (0/2) (too-few-public-methods)
+src/recommender/test_reccomender.py:1091:8: C0115: Missing class docstring (missing-class-docstring)
+src/recommender/test_reccomender.py:1091:8: R0903: Too few public methods (0/2) (too-few-public-methods)
+src/recommender/test_reccomender.py:1095:8: C0115: Missing class docstring (missing-class-docstring)
+src/recommender/test_reccomender.py:1096:12: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1095:8: R0903: Too few public methods (1/2) (too-few-public-methods)
+src/recommender/test_reccomender.py:1104:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1118:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1133:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1169:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1195:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1221:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1244:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1288:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1328:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1334:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1339:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1350:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1365:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:1421:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/recommender/test_reccomender.py:12:0: C0411: standard import "unittest.mock.patch" should be placed before third party imports "django.conf.settings", "django.contrib.messages.get_messages", "django.core.cache.cache", "django.test.Client", "django.urls.reverse" (wrong-import-order)
+************* Module src.explorer.urls
+src/explorer/urls.py:9:0: C0304: Final newline missing (missing-final-newline)
+src/explorer/urls.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+************* Module src.explorer.apps
+src/explorer/apps.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/explorer/apps.py:4:0: C0115: Missing class docstring (missing-class-docstring)
+************* Module src.explorer.admin
+src/explorer/admin.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/explorer/admin.py:1:0: W0611: Unused admin imported from django.contrib (unused-import)
+************* Module src.explorer.models
+src/explorer/models.py:29:0: C0304: Final newline missing (missing-final-newline)
+src/explorer/models.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/explorer/models.py:2:0: E5142: User model imported from django.contrib.auth.models (imported-auth-user)
+src/explorer/models.py:5:0: C0115: Missing class docstring (missing-class-docstring)
+src/explorer/models.py:22:0: C0115: Missing class docstring (missing-class-docstring)
+************* Module src.explorer.views
+src/explorer/views.py:83:0: C0301: Line too long (101/100) (line-too-long)
+src/explorer/views.py:258:0: C0304: Final newline missing (missing-final-newline)
+src/explorer/views.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/explorer/views.py:6:0: E5142: User model imported from django.contrib.auth.models (imported-auth-user)
+src/explorer/views.py:27:19: W3101: Missing timeout argument for method 'requests.post' can cause your program to hang indefinitely (missing-timeout)
+src/explorer/views.py:29:8: R1705: Unnecessary "else" after "return", remove the "else" and de-indent the code inside it (no-else-return)
+src/explorer/views.py:32:12: W0719: Raising too general exception: Exception (broad-exception-raised)
+src/explorer/views.py:57:15: W0718: Catching too general exception Exception (broad-exception-caught)
+src/explorer/views.py:51:23: W3101: Missing timeout argument for method 'requests.get' can cause your program to hang indefinitely (missing-timeout)
+src/explorer/views.py:53:12: R1705: Unnecessary "else" after "return", remove the "else" and de-indent the code inside it (no-else-return)
+src/explorer/views.py:95:15: W0718: Catching too general exception Exception (broad-exception-caught)
+src/explorer/views.py:126:15: W0718: Catching too general exception Exception (broad-exception-caught)
+src/explorer/views.py:110:23: W3101: Missing timeout argument for method 'requests.get' can cause your program to hang indefinitely (missing-timeout)
+src/explorer/views.py:133:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/explorer/views.py:154:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/explorer/views.py:189:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/explorer/views.py:210:4: C0116: Missing function or method docstring (missing-function-docstring)
+************* Module src.explorer.test_explorer
+src/explorer/test_explorer.py:424:0: C0301: Line too long (102/100) (line-too-long)
+src/explorer/test_explorer.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/explorer/test_explorer.py:3:0: E5142: User model imported from django.contrib.auth.models (imported-auth-user)
+src/explorer/test_explorer.py:104:57: W0613: Unused argument 'mock_fetch' (unused-argument)
+src/explorer/test_explorer.py:256:43: W0613: Unused argument 'mock_token' (unused-argument)
+src/explorer/test_explorer.py:274:41: W0613: Unused argument 'mock_token' (unused-argument)
+src/explorer/test_explorer.py:284:46: W0613: Unused argument 'mock_token' (unused-argument)
+src/explorer/test_explorer.py:326:39: W0613: Unused argument 'mock_token' (unused-argument)
+src/explorer/test_explorer.py:4:0: C0411: standard import "unittest.mock.patch" should be placed before third party imports "django.test.TestCase", "django.urls.reverse", "django.contrib.auth.models.User" (wrong-import-order)
+************* Module src.spotify_auth.urls
+src/spotify_auth/urls.py:14:0: C0304: Final newline missing (missing-final-newline)
+src/spotify_auth/urls.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+************* Module src.spotify_auth.test_auth
+src/spotify_auth/test_auth.py:15:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:19:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:23:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:26:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:29:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:33:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:36:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:40:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:44:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:51:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:55:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:101:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:105:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:109:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:112:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:116:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:120:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:127:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:133:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:137:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:144:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:146:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:155:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:165:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:171:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:177:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:181:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:187:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:191:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:194:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:202:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:207:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:213:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:218:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:226:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:236:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:242:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:246:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:249:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:261:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:265:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:269:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:273:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:281:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:290:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:293:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:298:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:303:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:311:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:316:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:319:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:324:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:332:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:341:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:344:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:348:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:351:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:377:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:380:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:388:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:392:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:402:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:412:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:418:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:421:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:443:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:451:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:455:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:464:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:481:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:484:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:488:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:498:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:506:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:510:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:517:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:520:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:523:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:526:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:534:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:538:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:545:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:548:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:551:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:555:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:563:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:567:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:575:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:578:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:582:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:590:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:594:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:601:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:604:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:609:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:617:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:621:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:628:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:649:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:652:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:654:0: C0301: Line too long (105/100) (line-too-long)
+src/spotify_auth/test_auth.py:655:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:663:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:667:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:673:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:676:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/test_auth.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/spotify_auth/test_auth.py:32:8: W0612: Unused variable 'response' (unused-variable)
+src/spotify_auth/test_auth.py:569:8: C0415: Import outside toplevel (spotipy.exceptions.SpotifyException) (import-outside-toplevel)
+src/spotify_auth/test_auth.py:595:8: C0415: Import outside toplevel (spotipy.exceptions.SpotifyException) (import-outside-toplevel)
+************* Module src.spotify_auth.apps
+src/spotify_auth/apps.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/spotify_auth/apps.py:4:0: C0115: Missing class docstring (missing-class-docstring)
+************* Module src.spotify_auth.session
+src/spotify_auth/session.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/spotify_auth/session.py:79:42: W0613: Unused argument 'now' (unused-argument)
+************* Module src.spotify_auth.admin
+src/spotify_auth/admin.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/spotify_auth/admin.py:1:0: W0611: Unused admin imported from django.contrib (unused-import)
+************* Module src.spotify_auth.models
+src/spotify_auth/models.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/spotify_auth/models.py:1:0: W0611: Unused models imported from django.db (unused-import)
+************* Module src.spotify_auth.views
+src/spotify_auth/views.py:19:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:27:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:38:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:45:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:51:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:55:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:60:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:63:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:73:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:79:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:82:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:84:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:87:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:90:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:95:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:97:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:110:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:118:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:121:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:124:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:130:0: C0303: Trailing whitespace (trailing-whitespace)
+src/spotify_auth/views.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/spotify_auth/views.py:20:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/spotify_auth/views.py:46:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/spotify_auth/views.py:119:4: C0116: Missing function or method docstring (missing-function-docstring)
+************* Module src.dashboard.urls
+src/dashboard/urls.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+************* Module src.dashboard.apps
+src/dashboard/apps.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/dashboard/apps.py:4:0: C0115: Missing class docstring (missing-class-docstring)
+************* Module src.dashboard.test_dashboard
+src/dashboard/test_dashboard.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/dashboard/test_dashboard.py:3:0: E5142: User model imported from django.contrib.auth.models (imported-auth-user)
+src/dashboard/test_dashboard.py:230:8: C0415: Import outside toplevel (spotipy.exceptions.SpotifyException) (import-outside-toplevel)
+src/dashboard/test_dashboard.py:254:8: C0415: Import outside toplevel (spotipy.exceptions.SpotifyException) (import-outside-toplevel)
+src/dashboard/test_dashboard.py:568:8: W0612: Unused variable 'p2' (unused-variable)
+src/dashboard/test_dashboard.py:4:0: C0411: standard import "unittest.mock.patch" should be placed before third party imports "django.test.TestCase", "django.urls.reverse", "django.contrib.auth.models.User" (wrong-import-order)
+************* Module src.dashboard.admin
+src/dashboard/admin.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/dashboard/admin.py:1:0: W0611: Unused admin imported from django.contrib (unused-import)
+************* Module src.dashboard.models
+src/dashboard/models.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/dashboard/models.py:1:0: W0611: Unused models imported from django.db (unused-import)
+************* Module src.dashboard.views
+src/dashboard/views.py:47:0: C0301: Line too long (102/100) (line-too-long)
+src/dashboard/views.py:70:0: C0301: Line too long (109/100) (line-too-long)
+src/dashboard/views.py:94:0: C0301: Line too long (115/100) (line-too-long)
+src/dashboard/views.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/dashboard/views.py:15:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/dashboard/views.py:15:4: R0914: Too many local variables (23/15) (too-many-locals)
+src/dashboard/views.py:15:4: R0912: Too many branches (13/12) (too-many-branches)
+************* Module src.aiplaylist.urls
+src/aiplaylist/urls.py:7:0: C0411: first party import "explorer.views.SearchView" should be placed before local import "views.HomeView" (wrong-import-order)
+************* Module src.aiplaylist.settings
+src/aiplaylist/settings.py:88:0: C0301: Line too long (116/100) (line-too-long)
+src/aiplaylist/settings.py:283:0: C0301: Line too long (101/100) (line-too-long)
+src/aiplaylist/settings.py:263:0: C0103: Constant name "_default_ollama_timeout" doesn't conform to UPPER_CASE naming style (invalid-name)
+************* Module src.aiplaylist.views
+src/aiplaylist/views.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+src/aiplaylist/views.py:10:4: C0116: Missing function or method docstring (missing-function-docstring)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[159:187]
+==src.spotify_auth.test_auth:[624:653]
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+
+        # Mock recently played with multiple artists
+        mock_sp_instance.current_user_recently_played.return_value = {
+            'items': [
+                {
+                    'track': {
+                        'name': 'Collaboration Song',
+                        'artists': [
+                            {'name': 'Artist One'},
+                            {'name': 'Artist Two'},
+                            {'name': 'Artist Three'}
+                        ],
+                        'album': {
+                            'name': 'Test Album',
+                            'images': [{'url': 'https://example.com/image.jpg'}]
+                        }
+                    },
+                    'played_at': '2024-01-01T12:00:00Z'
+                }
+            ]
+        }
+
+        response = self.client.get(self.dashboard_url)
+
+        # Should format multiple artists correctly (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[86:117]
+==src.spotify_auth.test_auth:[502:540]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        # Mock user profile without display_name
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'email': 'test@example.com',
+            'followers': {'total': 0}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        response = self.client.get(self.dashboard_url)
+
+        # Should use user ID as username
+        self.assertEqual(response.context['username'], 'test_user_id')
+
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_displays_last_played_song(self, mock_spotify):
+        """Test that dashboard displays the last played song"""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = { (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[120:142]
+==src.spotify_auth.test_auth:[462:485]
+        }
+
+        # Mock recently played
+        mock_sp_instance.current_user_recently_played.return_value = {
+            'items': [
+                {
+                    'track': {
+                        'name': 'Test Song',
+                        'artists': [{'name': 'Test Artist'}],
+                        'album': {
+                            'name': 'Test Album',
+                            'images': [{'url': 'https://example.com/image.jpg'}]
+                        }
+                    },
+                    'played_at': '2024-01-01T12:00:00Z'
+                }
+            ]
+        }
+
+        # Make request
+        response = self.client.get(self.dashboard_url)
+
+        # Should render successfully (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[28:47]
+==src.spotify_auth.test_auth:[447:466]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        # Mock user profile
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'display_name': 'Test User',
+            'email': 'test@example.com',
+            'followers': {'total': 42},
+            'external_urls': {'spotify': 'https://open.spotify.com/user/test_user_id'}
+        }
+
+        # Mock recently played
+        mock_sp_instance.current_user_recently_played.return_value = { (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[334:348]
+==src.spotify_auth.test_auth:[447:465]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'display_name': 'Test User',
+            'email': 'test@example.com',
+            'followers': {'total': 42},
+            'external_urls': {'spotify': 'https://open.spotify.com/user/test_user_id'}
+        } (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[129:142]
+==src.spotify_auth.test_auth:[639:653]
+                        'album': {
+                            'name': 'Test Album',
+                            'images': [{'url': 'https://example.com/image.jpg'}]
+                        }
+                    },
+                    'played_at': '2024-01-01T12:00:00Z'
+                }
+            ]
+        }
+
+        # Make request
+        response = self.client.get(self.dashboard_url)
+
+        # Should format multiple artists correctly (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[174:187]
+==src.spotify_auth.test_auth:[471:485]
+                        'album': {
+                            'name': 'Test Album',
+                            'images': [{'url': 'https://example.com/image.jpg'}]
+                        }
+                    },
+                    'played_at': '2024-01-01T12:00:00Z'
+                }
+            ]
+        }
+
+        # Make request
+        response = self.client.get(self.dashboard_url)
+
+        # Should render successfully (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[60:71]
+==src.spotify_auth.test_auth:[447:460]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        # Mock user profile
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'display_name': 'Test User',
+            'email': 'test@example.com', (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[60:70]
+==src.spotify_auth.test_auth:[613:625]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'display_name': 'Test User', (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[28:40]
+==src.spotify_auth.test_auth:[530:542]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        # Mock user profile
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'display_name': 'Test User', (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[236:254]
+==src.spotify_auth.test_auth:[437:456]
+        response = self.client.get(self.dashboard_url)
+
+        # Should redirect to login
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('spotify_auth:login'))
+
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_with_api_error(self, mock_spotify):
+        """Test dashboard handles Spotify API errors gracefully"""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        # Mock Spotify API to raise error
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        from spotipy.exceptions import SpotifyException (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[118:127]
+==src.spotify_auth.test_auth:[624:633]
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+
+        # Mock recently played with a track
+        mock_sp_instance.current_user_recently_played.return_value = {
+            'items': [
+                {
+                    'track': { (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[28:39]
+==src.spotify_auth.test_auth:[502:513]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        # Mock user profile
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id', (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[86:96]
+==src.spotify_auth.test_auth:[447:458]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        # Mock user profile without display_name
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id', (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[369:390]
+==src.spotify_auth.test_auth:[659:678]
+        session = self.client.session
+        session['spotify_access_token'] = 'my_test_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user',
+            'followers': {'total': 0}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        self.client.get(self.dashboard_url)
+
+        # Verify Spotify client was created with correct token
+        mock_spotify.assert_called_once_with(auth='my_test_token')
+
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_template_content(self, mock_spotify):
+        """Test that dashboard template contains expected content""" (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[284:292]
+==src.spotify_auth.test_auth:[613:623]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        # Mock user profile
+        mock_sp_instance.current_user.return_value = { (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[195:203]
+==src.spotify_auth.test_auth:[530:540]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = { (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[150:158]
+==src.spotify_auth.test_auth:[502:512]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = { (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[109:117]
+==src.spotify_auth.test_auth:[447:457]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = { (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.views:[51:61]
+==src.explorer.views:[133:143]
+            playlists = Playlist.objects.all().order_by('-likes')
+
+            # If no playlists exist, fetch from Spotify
+            if not playlists.exists():
+                spotify_playlists = SpotifyAPIHelper.fetch_playlists('popular', limit=10)
+                for spotify_playlist in spotify_playlists:
+                    SpotifyAPIHelper.import_playlist(spotify_playlist)
+
+                playlists = Playlist.objects.all().order_by('-likes')
+ (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[329:343]
+==src.spotify_auth.test_auth:[496:513]
+        self.assertIn('playlists', response.context)
+
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_context_has_all_required_fields(self, mock_spotify):
+        """Test that dashboard context has all required fields"""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id', (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[111:118]
+==src.spotify_auth.test_auth:[661:669]
+        session.save()
+
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user', (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[28:37]
+==src.spotify_auth.test_auth:[586:595]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        # Mock Spotify API to raise error
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        from spotipy.exceptions import SpotifyException (duplicate-code)
+src/aiplaylist/views.py:1:0: R0801: Similar lines in 2 files
+==src.dashboard.test_dashboard:[245:254]
+==src.spotify_auth.test_auth:[502:511]
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        # Mock Spotify API responses
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        # Mock user profile without display_name (duplicate-code)
+
+------------------------------------------------------------------
+Your code has been rated at 8.48/10 (previous run: 8.48/10, +0.00)
+

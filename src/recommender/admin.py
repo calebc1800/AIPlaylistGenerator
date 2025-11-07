@@ -7,5 +7,7 @@ from .models import SavedPlaylist
 
 @admin.register(SavedPlaylist)
 class SavedPlaylistAdmin(admin.ModelAdmin):
+    """Read-only admin definition for stored Spotify playlists."""
+
     list_display = ("playlist_id", "creator_user_id", "like_count")
     search_fields = ("playlist_id", "creator_user_id")

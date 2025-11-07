@@ -1,67 +1,75 @@
 """
-conftest.py - pytest configuration for aiplaylist Django project
+pytest configuration helpers for the aiplaylist project.
 
-This file helps pytest-django find and configure the Django project
-even when there are import path issues.
+This module ensures Django is configured even when Pytest runs outside the
+standard manage.py entry point.
 """
 
+import logging
 import os
 import sys
-import django
-from django.conf import settings
 from pathlib import Path
 
-# Add project root to Python path
-project_root = Path(__file__).parent.absolute()
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+import django
+from django.conf import settings
+from django.core.exceptions import AppRegistryNotReady, ImproperlyConfigured
 
-# Try to configure Django settings
+LOGGER = logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+# Add project root to Python path
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+KNOWN_SETTING_MODULES = (
+    'aiplaylist.settings',
+    'settings',
+    'config.settings',
+    'core.settings',
+    'aiplaylist.settings.base',
+    'aiplaylist.settings.development',
+    'aiplaylist.settings.local',
+)
+
 def setup_django():
     """Setup Django configuration with fallback options for aiplaylist project."""
 
     # Possible settings modules to try for aiplaylist project
-    settings_modules = [
-        os.environ.get('DJANGO_SETTINGS_MODULE'),  # From environment
-        'aiplaylist.settings',                     # Main project settings
-        'settings',                                # Direct import
-        'config.settings',                         # Config layout
-        'core.settings',                          # Core layout
-        'aiplaylist.settings.base',               # Split settings - base
-        'aiplaylist.settings.development',        # Split settings - dev
-        'aiplaylist.settings.local',              # Split settings - local
-    ]
-
-    # Remove None values
-    settings_modules = [s for s in settings_modules if s]
+    configured = os.environ.get('DJANGO_SETTINGS_MODULE')
+    settings_modules = []
+    if configured:
+        settings_modules.append(configured)
+    settings_modules.extend(KNOWN_SETTING_MODULES)
 
     for settings_module in settings_modules:
+        if not settings_module:
+            continue
         try:
             os.environ['DJANGO_SETTINGS_MODULE'] = settings_module
             django.setup()
-            print(f"✅ Django configured with: {settings_module}")
+            LOGGER.info("Django configured with %s", settings_module)
             return True
-        except ImportError as e:
-            print(f"❌ Failed to import {settings_module}: {e}")
-            continue
-        except Exception as e:
-            print(f"❌ Failed to setup Django with {settings_module}: {e}")
-            continue
+        except ImportError as exc:
+            LOGGER.debug("Unable to import %s: %s", settings_module, exc, exc_info=exc)
+        except (ImproperlyConfigured, AppRegistryNotReady, RuntimeError) as exc:
+            LOGGER.warning("Failed to setup Django with %s: %s", settings_module, exc, exc_info=exc)
 
     return False
 
 # Setup Django when conftest is loaded
 if not settings.configured:
     if not setup_django():
-        print("⚠️  Warning: Could not configure Django for aiplaylist project. Tests may fail.")
-        print("💡 Make sure 'aiplaylist' module is importable and has proper __init__.py files")
+        LOGGER.error("Could not configure Django for the aiplaylist project. Tests may fail.")
+        LOGGER.info(
+            "Ensure the 'aiplaylist' module is importable and has proper __init__.py files."
+        )
 
-def pytest_configure(config):
+def pytest_configure(_config):
     """Called after command line options have been parsed."""
-    # Additional Django configuration if needed
-    pass
+    if not settings.configured:
+        setup_django()
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(_config, items):
     """Modify collected test items."""
     # Add Django DB marker to tests that need it
     for item in items:
