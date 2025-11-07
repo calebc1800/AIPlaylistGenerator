@@ -257,6 +257,211 @@ def _serialize_track_payload(track: Dict) -> Dict[str, object]:
     }
 
 
+def _format_duration_label(total_ms: int) -> str:
+    """Return a hh:mm:ss formatted label for a millisecond duration."""
+    total_seconds = max(int(total_ms // 1000), 0)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def compute_playlist_statistics(
+    token: str,
+    tracks: List[Dict[str, object]],
+    *,
+    profile_cache: Optional[Dict[str, object]] = None,
+    cached_track_ids: Optional[Iterable[str]] = None,
+    log_step: Optional[Callable[[str], None]] = None,
+) -> Dict[str, object]:
+    """Compute aggregate statistics for a playlist using cached metadata."""
+    valid_tracks = [
+        track
+        for track in tracks
+        if isinstance(track, dict) and track.get("id")
+    ]
+    total_tracks = len(valid_tracks)
+    if total_tracks == 0:
+        return {
+            "total_tracks": 0,
+            "total_duration": "00:00:00",
+            "total_duration_ms": 0,
+            "avg_popularity": None,
+            "novelty": 100.0,
+            "genre_distribution": {},
+            "genre_top": [],
+            "genre_remaining": [],
+            "novelty_reference_ids": [],
+            "source_mix": [],
+            "source_total": 0,
+            "top_popular_tracks": [],
+            "least_popular_tracks": [],
+        }
+
+    total_duration_ms = sum(int(track.get("duration_ms") or 0) for track in valid_tracks)
+    popularity_values: List[int] = [
+        int(track.get("popularity")) for track in valid_tracks if isinstance(track.get("popularity"), (int, float))
+    ]
+    avg_popularity: Optional[float] = None
+    if popularity_values:
+        avg_popularity = round(sum(popularity_values) / len(popularity_values), 1)
+
+    novelty_reference_ids: Set[str] = set()
+    if cached_track_ids:
+        novelty_reference_ids.update(str(track_id) for track_id in cached_track_ids if track_id)
+
+    if isinstance(profile_cache, dict):
+        tracks_map = profile_cache.get("tracks")
+        if isinstance(tracks_map, dict):
+            novelty_reference_ids.update(track_id for track_id in tracks_map.keys() if isinstance(track_id, str))
+        top_track_ids = profile_cache.get("top_track_ids")
+        if isinstance(top_track_ids, (list, tuple, set)):
+            novelty_reference_ids.update(str(track_id) for track_id in top_track_ids if track_id)
+
+    if not novelty_reference_ids:
+        novelty_score = 100.0
+    else:
+        novel_count = sum(1 for track in valid_tracks if track.get("id") not in novelty_reference_ids)
+        novelty_score = round((novel_count / total_tracks) * 100, 1)
+
+    artist_ids: List[str] = []
+    track_artist_map: Dict[str, List[str]] = {}
+    for track in valid_tracks:
+        artist_list = [artist_id for artist_id in track.get("artist_ids", []) if artist_id]
+        if artist_list:
+            track_artist_map[track["id"]] = artist_list
+            artist_ids.extend(artist_list)
+
+    genre_distribution: Dict[str, float] = {}
+    if artist_ids and token:
+        unique_artist_ids = list(dict.fromkeys(artist_ids))
+        artist_genre_map: Dict[str, List[str]] = {}
+        sp = spotipy.Spotify(auth=token)
+        for start in range(0, len(unique_artist_ids), 50):
+            batch = unique_artist_ids[start : start + 50]
+            try:
+                response = sp.artists(batch)
+            except SpotifyException as exc:
+                _log(None, log_step, f"Spotify artist lookup failed while computing stats: {exc}.")
+                continue
+            except requests.exceptions.RequestException as exc:
+                _log(None, log_step, f"Network error during artist lookup for stats: {exc}.")
+                continue
+
+            for artist in response.get("artists", []) or []:
+                artist_id = artist.get("id")
+                if not artist_id:
+                    continue
+                normalized_genres = [
+                    genre
+                    for genre in {_normalize_genre(raw) for raw in artist.get("genres", []) or []}
+                    if genre
+                ]
+                artist_genre_map[artist_id] = normalized_genres
+
+        if artist_genre_map:
+            genre_weights: Dict[str, float] = {}
+            for track in valid_tracks:
+                track_id = track.get("id")
+                associated_artists = track_artist_map.get(track_id, [])
+                track_genres: Set[str] = set()
+                for artist_id in associated_artists:
+                    for genre in artist_genre_map.get(artist_id, []):
+                        if genre:
+                            track_genres.add(genre)
+                if not track_genres:
+                    continue
+                weight = 1.0 / len(track_genres)
+                for genre in track_genres:
+                    genre_weights[genre] = genre_weights.get(genre, 0.0) + weight
+
+            genre_distribution = {
+                genre: round((weight / total_tracks) * 100, 1)
+                for genre, weight in sorted(genre_weights.items(), key=lambda item: item[1], reverse=True)
+            }
+
+    source_counts: Dict[str, int] = {}
+    for track in valid_tracks:
+        raw_source = track.get("seed_source") or track.get("source") or "playlist"
+        label = str(raw_source or "playlist").strip().lower() or "playlist"
+        source_counts[label] = source_counts.get(label, 0) + 1
+
+    total_sources = sum(source_counts.values())
+    source_mix: List[Dict[str, object]] = []
+    if total_sources:
+        display_labels = {
+            "llm_seed": "LLM Seeds",
+            "user_genre_cache": "Your Favorites",
+            "genre_discovery": "Spotify Discovery",
+            "artist_seed": "Artist Seeds",
+            "remix_seed": "Remix Seeds",
+            "similarity": "Similarity Engine",
+            "playlist": "Playlist Mix",
+        }
+        for key, count in sorted(source_counts.items(), key=lambda item: item[1], reverse=True):
+            label = display_labels.get(key, key.replace("_", " ").title())
+            percentage = round((count / total_sources) * 100, 1)
+            source_mix.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "count": count,
+                    "percentage": percentage,
+                }
+            )
+
+    def _select_popularity_tracks(items: List[Dict[str, object]]) -> List[Dict[str, object]]:
+        preview: List[Dict[str, object]] = []
+        for track in items[:3]:
+            preview.append(
+                {
+                    "id": track.get("id"),
+                    "name": track.get("name", "Unknown"),
+                    "artists": track.get("artists", "Unknown"),
+                    "popularity": int(track.get("popularity") or 0),
+                    "album_image_url": track.get("album_image_url", ""),
+                }
+            )
+        return preview
+
+    popularity_sorted_desc = sorted(
+        valid_tracks,
+        key=lambda track: int(track.get("popularity") or 0),
+        reverse=True,
+    )
+    popularity_sorted_asc = list(reversed(popularity_sorted_desc)) if popularity_sorted_desc else []
+
+    top_popular_tracks = _select_popularity_tracks(popularity_sorted_desc)
+    least_popular_tracks = _select_popularity_tracks(popularity_sorted_asc)
+
+    genre_items = sorted(genre_distribution.items(), key=lambda item: item[1], reverse=True)
+    top_genre_items = genre_items[:3]
+    remaining_genre_items = genre_items[3:]
+    top_distribution = {genre: pct for genre, pct in top_genre_items}
+    top_genres_list = [
+        {"genre": genre, "percentage": pct} for genre, pct in top_genre_items
+    ]
+    remaining_genres_list = [
+        {"genre": genre, "percentage": pct} for genre, pct in remaining_genre_items
+    ]
+
+    stats = {
+        "total_tracks": total_tracks,
+        "total_duration": _format_duration_label(total_duration_ms),
+        "total_duration_ms": total_duration_ms,
+        "avg_popularity": avg_popularity,
+        "novelty": novelty_score,
+        "genre_distribution": top_distribution,
+        "genre_top": top_genres_list,
+        "genre_remaining": remaining_genres_list,
+        "novelty_reference_ids": sorted(novelty_reference_ids),
+        "source_mix": source_mix,
+        "source_total": total_sources,
+        "top_popular_tracks": top_popular_tracks,
+        "least_popular_tracks": least_popular_tracks,
+    }
+    return stats
+
+
 def build_user_profile_seed_snapshot(
     sp: spotipy.Spotify,
     *,

@@ -11,7 +11,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import patch
 
-from recommender.models import SavedPlaylist
+from recommender.models import PlaylistGenerationStat, SavedPlaylist
 from recommender.services.spotify_handler import (
     _extract_release_year,
     _filter_by_market,
@@ -29,6 +29,11 @@ from recommender.services.spotify_handler import (
     create_playlist_with_tracks,
     _score_track_basic,
     _is_mostly_latin,
+    compute_playlist_statistics,
+)
+from recommender.services.stats_service import (
+    get_genre_breakdown,
+    summarize_generation_stats,
 )
 from recommender.services.user_preferences import (
     describe_pending_options,
@@ -47,6 +52,93 @@ from recommender.services.llm_handler import (
     suggest_seed_tracks,
 )
 from recommender.views import _cache_key, _build_context_from_payload, _make_logger
+
+
+def _payload_with_owner(session, cache_key, payload, owner_user_id=None):
+    """Return a cache payload annotated with ownership metadata."""
+    if not session.session_key:
+        session.save()
+    enriched = dict(payload)
+    enriched.setdefault("cache_key", cache_key)
+    enriched["owner_user_id"] = owner_user_id or session.get("spotify_user_id", "anonymous")
+    enriched["owner_session_key"] = session.session_key
+    return enriched
+
+
+class StatsServiceTests(TestCase):
+    """Verify aggregation helpers for generation history."""
+
+    def setUp(self):
+        PlaylistGenerationStat.objects.all().delete()
+
+    def test_summary_empty_identifier(self):
+        summary = summarize_generation_stats(None)
+        self.assertEqual(summary["total_playlists"], 0)
+        self.assertEqual(summary["total_tracks"], 0)
+        self.assertEqual(summary["top_genre"], "")
+        self.assertEqual(summary["total_tokens"], 0)
+
+    def test_summary_with_records(self):
+        PlaylistGenerationStat.objects.create(
+            user_identifier="user123",
+            prompt="alt pop vibes",
+            track_count=20,
+            total_duration_ms=3_600_000,
+            top_genre="Alt Pop",
+            avg_novelty=78.5,
+            stats={"genre_top": [{"genre": "Alt Pop", "percentage": 40}]},
+            total_tokens=1200,
+        )
+        PlaylistGenerationStat.objects.create(
+            user_identifier="user123",
+            prompt="chill study",
+            track_count=25,
+            total_duration_ms=4_200_000,
+            top_genre="Chill",
+            avg_novelty=81.0,
+            stats={"genre_top": [{"genre": "Chill", "percentage": 50}]},
+            total_tokens=800,
+        )
+
+        summary = summarize_generation_stats("user123")
+        self.assertEqual(summary["total_playlists"], 2)
+        self.assertEqual(summary["total_tracks"], 45)
+        self.assertAlmostEqual(summary["total_hours"], 2.17, places=2)
+        self.assertEqual(summary["top_genre"], "Alt Pop")
+        self.assertEqual(summary["avg_novelty"], 79.8)
+        self.assertEqual(summary["total_tokens"], 2000)
+
+    def test_genre_breakdown(self):
+        PlaylistGenerationStat.objects.create(
+            user_identifier="user456",
+            prompt="road trip",
+            track_count=10,
+            total_duration_ms=2_000_000,
+            top_genre="Indie",
+            stats={
+                "genre_top": [
+                    {"genre": "Indie", "percentage": 60},
+                    {"genre": "Rock", "percentage": 30},
+                ]
+            },
+        )
+        PlaylistGenerationStat.objects.create(
+            user_identifier="user456",
+            prompt="focus",
+            track_count=12,
+            total_duration_ms=2_500_000,
+            top_genre="Lo-Fi",
+            stats={
+                "genre_top": [
+                    {"genre": "Lo-Fi", "percentage": 70},
+                    {"genre": "Indie", "percentage": 20},
+                ]
+            },
+        )
+
+        breakdown = get_genre_breakdown("user456")
+        self.assertTrue(any(entry["genre"] == "Indie" for entry in breakdown))
+        self.assertTrue(any(entry["genre"] == "Lo-Fi" for entry in breakdown))
 
 
 class GeneratePlaylistViewTests(TestCase):
@@ -72,6 +164,7 @@ class GeneratePlaylistViewTests(TestCase):
         self.assertEqual(response.url, reverse("spotify_auth:login"))
 
     @patch("recommender.views.extract_playlist_attributes")
+    @patch("recommender.views.compute_playlist_statistics")
     @patch("recommender.views.suggest_seed_tracks")
     @patch("recommender.views.resolve_seed_tracks")
     @patch("recommender.views.get_similar_tracks")
@@ -82,6 +175,7 @@ class GeneratePlaylistViewTests(TestCase):
         mock_similar,
         mock_resolve,
         mock_suggest,
+        mock_stats,
         mock_extract,
     ):
         session = self.client.session
@@ -90,6 +184,34 @@ class GeneratePlaylistViewTests(TestCase):
         session.save()
 
         mock_extract.return_value = {"mood": "upbeat", "genre": "pop", "energy": "high"}
+        mock_stats.return_value = {
+            "total_tracks": 3,
+            "total_duration": "00:09:15",
+            "avg_popularity": 64.5,
+            "novelty": 72.0,
+            "genre_distribution": {"synth-pop": 40.0, "alt-pop": 25.0, "indie": 20.0},
+            "genre_top": [
+                {"genre": "synth-pop", "percentage": 40.0},
+                {"genre": "alt-pop", "percentage": 25.0},
+                {"genre": "indie", "percentage": 20.0},
+            ],
+            "genre_remaining": [
+                {"genre": "dream-pop", "percentage": 15.0},
+            ],
+            "novelty_reference_ids": [],
+            "source_mix": [
+                {"key": "llm_seed", "label": "LLM Seeds", "count": 5, "percentage": 50.0},
+                {"key": "similarity", "label": "Similarity Engine", "count": 3, "percentage": 30.0},
+            ],
+            "source_total": 10,
+            "top_popular_tracks": [
+                {"id": "1", "name": "Song A", "artists": "Artist A", "popularity": 80, "album_image_url": ""},
+                {"id": "2", "name": "Song B", "artists": "Artist B", "popularity": 50, "album_image_url": ""},
+            ],
+            "least_popular_tracks": [
+                {"id": "4", "name": "Song D", "artists": "Artist D", "popularity": 20, "album_image_url": ""},
+            ],
+        }
         mock_suggest.return_value = [
             {"title": "Song A", "artist": "Artist A"},
             {"title": "Song B", "artist": "Artist B"},
@@ -111,12 +233,24 @@ class GeneratePlaylistViewTests(TestCase):
         mock_resolve.assert_called_once()
         mock_similar.assert_called_once()
         mock_discover.assert_not_called()
+        mock_stats.assert_called_once()
         page = response.content.decode()
         self.assertIn('class="track-name">Song A', page)
         self.assertIn('class="track-name">Song C', page)
         self.assertIn('class="track-artist">Artist A', page)
+        self.assertIn('id="playlist-stats-data"', page)
+        self.assertIn('data-chart="genre"', page)
+        self.assertIn('Freshness Gauge', page)
+        self.assertIn('recommender_stats.js', page)
+        self.assertIn('Popularity Highlights', page)
+        self.assertIn('Most Popular', page)
+        self.assertIn('Least Popular', page)
+        self.assertIn('Show All Genres', page)
+        self.assertIn('Source Blend', page)
+
 
     @patch("recommender.views.extract_playlist_attributes")
+    @patch("recommender.views.compute_playlist_statistics")
     @patch("recommender.views.suggest_seed_tracks")
     @patch("recommender.views.resolve_seed_tracks")
     @patch("recommender.views.get_similar_tracks")
@@ -127,6 +261,7 @@ class GeneratePlaylistViewTests(TestCase):
         mock_similar,
         mock_resolve,
         mock_suggest,
+        mock_stats,
         mock_extract,
     ):
         session = self.client.session
@@ -134,6 +269,33 @@ class GeneratePlaylistViewTests(TestCase):
         session.save()
 
         mock_extract.return_value = {"mood": "calm", "genre": "ambient", "energy": "low"}
+        mock_stats.return_value = {
+            "total_tracks": 2,
+            "total_duration": "00:08:00",
+            "avg_popularity": 55.0,
+            "novelty": 80.0,
+            "genre_distribution": {"ambient": 50.0, "chill": 30.0, "downtempo": 20.0},
+            "genre_top": [
+                {"genre": "ambient", "percentage": 50.0},
+                {"genre": "chill", "percentage": 30.0},
+                {"genre": "downtempo", "percentage": 20.0},
+            ],
+            "genre_remaining": [
+                {"genre": "lofi", "percentage": 10.0},
+            ],
+            "novelty_reference_ids": [],
+            "source_mix": [
+                {"key": "genre_discovery", "label": "Spotify Discovery", "count": 3, "percentage": 60.0},
+                {"key": "similarity", "label": "Similarity Engine", "count": 2, "percentage": 40.0},
+            ],
+            "source_total": 5,
+            "top_popular_tracks": [
+                {"id": "3", "name": "Fallback Song", "artists": "Fallback Artist", "popularity": 65, "album_image_url": ""},
+            ],
+            "least_popular_tracks": [
+                {"id": "4", "name": "Similar Song", "artists": "Artist", "popularity": 45, "album_image_url": ""},
+            ],
+        }
         mock_suggest.return_value = [{"title": "Ambient Song", "artist": "Someone"}]
         mock_resolve.return_value = []
         mock_discover.return_value = [
@@ -151,9 +313,14 @@ class GeneratePlaylistViewTests(TestCase):
         mock_resolve.assert_called_once()
         mock_discover.assert_called_once()
         mock_similar.assert_called_once()
+        mock_stats.assert_called_once()
         page = response.content.decode()
         self.assertIn('class="track-name">Fallback Song', page)
         self.assertIn('class="track-name">Similar Song', page)
+        self.assertIn('Popularity Highlights', page)
+        self.assertIn('Most Popular', page)
+        self.assertIn('Least Popular', page)
+        self.assertIn('Show All Genres', page)
 
     @patch("recommender.views.extract_playlist_attributes")
     @patch("recommender.views.suggest_seed_tracks")
@@ -176,18 +343,22 @@ class GeneratePlaylistViewTests(TestCase):
         cache_key = _cache_key("cache_user", "high energy pop")
         cache.set(
             cache_key,
-            {
-                "playlist": ["Cached Song - Artist"],
-                "attributes": {"mood": "upbeat", "genre": "pop", "energy": "high"},
-                "llm_suggestions": [
-                    {"title": "Cached Song", "artist": "Cached Artist"}
-                ],
-                "resolved_seed_tracks": [
-                    {"id": "1", "name": "Cached Song", "artists": "Cached Artist"}
-                ],
-                "seed_track_display": ["Cached Song - Cached Artist"],
-                "similar_tracks_display": ["Similar Song - Similar Artist"],
-            },
+            _payload_with_owner(
+                session,
+                cache_key,
+                {
+                    "playlist": ["Cached Song - Artist"],
+                    "attributes": {"mood": "upbeat", "genre": "pop", "energy": "high"},
+                    "llm_suggestions": [
+                        {"title": "Cached Song", "artist": "Cached Artist"}
+                    ],
+                    "resolved_seed_tracks": [
+                        {"id": "1", "name": "Cached Song", "artists": "Cached Artist"}
+                    ],
+                    "seed_track_display": ["Cached Song - Cached Artist"],
+                    "similar_tracks_display": ["Similar Song - Similar Artist"],
+                },
+            ),
             timeout=60,
         )
 
@@ -213,21 +384,25 @@ class GeneratePlaylistViewTests(TestCase):
         cache_key = _cache_key("debugger", "prompt")
         cache.set(
             cache_key,
-            {
-                "playlist": ["Debug Song - Debug Artist"],
-                "track_ids": ["debug-track"],
-                "track_details": [
-                    {
-                        "id": "debug-track",
-                        "name": "Debug Song",
-                        "artists": "Debug Artist",
-                        "album_name": "",
-                        "album_image_url": "",
-                        "duration_ms": 0,
-                    }
-                ],
-                "debug_steps": ["[0.00s] Step executed."],
-            },
+            _payload_with_owner(
+                session,
+                cache_key,
+                {
+                    "playlist": ["Debug Song - Debug Artist"],
+                    "track_ids": ["debug-track"],
+                    "track_details": [
+                        {
+                            "id": "debug-track",
+                            "name": "Debug Song",
+                            "artists": "Debug Artist",
+                            "album_name": "",
+                            "album_image_url": "",
+                            "duration_ms": 0,
+                        }
+                    ],
+                    "debug_steps": ["[0.00s] Step executed."],
+                },
+            ),
             timeout=60,
         )
 
@@ -245,21 +420,25 @@ class GeneratePlaylistViewTests(TestCase):
         cache_key = _cache_key("debugger", "prompt")
         cache.set(
             cache_key,
-            {
-                "playlist": ["Debug Song - Debug Artist"],
-                "track_ids": ["debug-track"],
-                "track_details": [
-                    {
-                        "id": "debug-track",
-                        "name": "Debug Song",
-                        "artists": "Debug Artist",
-                        "album_name": "",
-                        "album_image_url": "",
-                        "duration_ms": 0,
-                    }
-                ],
-                "debug_steps": ["[0.00s] Step executed."],
-            },
+            _payload_with_owner(
+                session,
+                cache_key,
+                {
+                    "playlist": ["Debug Song - Debug Artist"],
+                    "track_ids": ["debug-track"],
+                    "track_details": [
+                        {
+                            "id": "debug-track",
+                            "name": "Debug Song",
+                            "artists": "Debug Artist",
+                            "album_name": "",
+                            "album_image_url": "",
+                            "duration_ms": 0,
+                        }
+                    ],
+                    "debug_steps": ["[0.00s] Step executed."],
+                },
+            ),
             timeout=60,
         )
 
@@ -277,6 +456,9 @@ class RemixPlaylistViewTests(TestCase):
         cache.clear()
 
     def _seed_cached_playlist(self, cache_key: str, track_count: int = 3):
+        session = self.client.session
+        if not session.session_key:
+            session.save()
         tracks = []
         playlist = []
         for index in range(track_count):
@@ -297,17 +479,22 @@ class RemixPlaylistViewTests(TestCase):
 
         cache.set(
             cache_key,
-            {
-                "playlist": playlist,
-                "track_details": tracks,
-                "track_ids": [entry["id"] for entry in tracks],
-                "prompt": "lofi coding mix",
-                "attributes": {"mood": "chill", "genre": "lo-fi", "energy": "low"},
-                "suggested_playlist_name": "Lofi Coding Mix",
-            },
+            _payload_with_owner(
+                session,
+                cache_key,
+                {
+                    "playlist": playlist,
+                    "track_details": tracks,
+                    "track_ids": [entry["id"] for entry in tracks],
+                    "prompt": "lofi coding mix",
+                    "attributes": {"mood": "chill", "genre": "lo-fi", "energy": "low"},
+                    "suggested_playlist_name": "Lofi Coding Mix",
+                },
+            ),
             timeout=60,
         )
 
+    @patch("recommender.views.compute_playlist_statistics")
     @patch("recommender.views.get_similar_tracks")
     @patch("recommender.views.resolve_seed_tracks")
     @patch("recommender.views.suggest_remix_tracks")
@@ -316,6 +503,7 @@ class RemixPlaylistViewTests(TestCase):
         mock_suggest,
         mock_resolve,
         mock_similar,
+        mock_stats,
     ):
         session = self.client.session
         session["spotify_access_token"] = "token"
@@ -344,6 +532,35 @@ class RemixPlaylistViewTests(TestCase):
             for index in range(1, 4)
         ]
         mock_similar.return_value = []
+        mock_stats.return_value = {
+            "total_tracks": 3,
+            "total_duration": "00:10:00",
+            "avg_popularity": 62.0,
+            "novelty": 68.0,
+            "genre_distribution": {"lo-fi": 40.0, "jazz": 30.0, "ambient": 20.0},
+            "genre_top": [
+                {"genre": "lo-fi", "percentage": 40.0},
+                {"genre": "jazz", "percentage": 30.0},
+                {"genre": "ambient", "percentage": 20.0},
+            ],
+            "genre_remaining": [
+                {"genre": "chillhop", "percentage": 10.0},
+            ],
+            "novelty_reference_ids": [],
+            "source_mix": [
+                {"key": "remix_seed", "label": "Remix Seeds", "count": 5, "percentage": 50.0},
+                {"key": "similarity", "label": "Similarity Engine", "count": 3, "percentage": 30.0},
+            ],
+            "source_total": 10,
+            "top_popular_tracks": [
+                {"id": "remix-1", "name": "Remix Track 1", "artists": "Remix Artist 1", "popularity": 70, "album_image_url": ""},
+                {"id": "remix-2", "name": "Remix Track 2", "artists": "Remix Artist 2", "popularity": 60, "album_image_url": ""},
+                {"id": "remix-3", "name": "Remix Track 3", "artists": "Remix Artist 3", "popularity": 55, "album_image_url": ""},
+            ],
+            "least_popular_tracks": [
+                {"id": "old-1", "name": "Old Track 1", "artists": "Old Artist 1", "popularity": 40, "album_image_url": ""},
+            ],
+        }
 
         response = self.client.post(self.url, {"cache_key": cache_key})
 
@@ -351,6 +568,7 @@ class RemixPlaylistViewTests(TestCase):
         mock_suggest.assert_called_once()
         mock_resolve.assert_called_once()
         mock_similar.assert_not_called()
+        mock_stats.assert_called_once()
 
         cached = cache.get(cache_key)
         self.assertIsInstance(cached, dict)
@@ -360,6 +578,12 @@ class RemixPlaylistViewTests(TestCase):
 
         messages_list = list(get_messages(response.wsgi_request))
         self.assertTrue(any("remixed" in str(message).lower() for message in messages_list))
+        content = response.content.decode()
+        self.assertIn('Popularity Highlights', content)
+        self.assertIn('Most Popular', content)
+        self.assertIn('Least Popular', content)
+        self.assertIn('Show All Genres', content)
+        self.assertIn('Source Blend', content)
 
     def test_remix_requires_spotify_auth(self):
         cache_key = _cache_key("remix-user", "lofi coding mix")
@@ -373,6 +597,118 @@ class RemixPlaylistViewTests(TestCase):
 
 class SpotifyHandlerTests(TestCase):
     """Unit tests for Spotify service helpers."""
+
+    def test_compute_playlist_statistics_empty_playlist(self):
+        stats = compute_playlist_statistics("token", [])
+
+        self.assertEqual(stats["total_tracks"], 0)
+        self.assertEqual(stats["total_duration"], "00:00:00")
+        self.assertIsNone(stats["avg_popularity"])
+        self.assertEqual(stats["novelty"], 100.0)
+        self.assertEqual(stats["genre_distribution"], {})
+        self.assertEqual(stats["genre_top"], [])
+        self.assertEqual(stats["genre_remaining"], [])
+        self.assertEqual(stats["novelty_reference_ids"], [])
+        self.assertEqual(stats["source_mix"], [])
+        self.assertEqual(stats["source_total"], 0)
+        self.assertEqual(stats["top_popular_tracks"], [])
+        self.assertEqual(stats["least_popular_tracks"], [])
+
+    def test_compute_playlist_statistics_with_cached_overlap(self):
+        tracks = [
+            {
+                "id": "track-1",
+                "name": "First",
+                "artists": "Artist One",
+                "duration_ms": 60000,
+                "popularity": 50,
+                "artist_ids": ["artist-1"],
+            },
+            {
+                "id": "track-2",
+                "name": "Second",
+                "artists": "Artist Two",
+                "duration_ms": 120000,
+                "popularity": 70,
+                "artist_ids": ["artist-2"],
+            },
+        ]
+        profile_cache = {
+            "tracks": {"track-1": {"id": "track-1"}},
+            "top_track_ids": ["track-3"],
+        }
+
+        stats = compute_playlist_statistics(
+            "",
+            tracks,
+            profile_cache=profile_cache,
+            cached_track_ids=["track-2"],
+        )
+
+        self.assertEqual(stats["total_tracks"], 2)
+        self.assertEqual(stats["total_duration"], "00:03:00")
+        self.assertEqual(stats["avg_popularity"], 60.0)
+        self.assertEqual(stats["novelty"], 0.0)
+        self.assertEqual(stats["genre_top"], [])
+        self.assertEqual(stats["genre_remaining"], [])
+        self.assertIn("track-1", stats["novelty_reference_ids"])
+        self.assertIn("track-2", stats["novelty_reference_ids"])
+        self.assertIn("track-3", stats["novelty_reference_ids"])
+        self.assertEqual(len(stats["top_popular_tracks"]), 2)
+        self.assertEqual(stats["top_popular_tracks"][0]["id"], "track-2")
+        self.assertEqual(stats["least_popular_tracks"][0]["id"], "track-1")
+        self.assertEqual(stats["source_total"], 2)
+        self.assertEqual(len(stats["source_mix"]), 1)
+        self.assertEqual(stats["source_mix"][0]["key"], "playlist")
+
+    @patch("recommender.services.spotify_handler.spotipy.Spotify")
+    def test_compute_playlist_statistics_populates_genre_distribution(self, mock_spotify):
+        mock_instance = mock_spotify.return_value
+        mock_instance.artists.return_value = {
+            "artists": [
+                {"id": "artist-1", "genres": ["Synth Pop", "Pop"]},
+                {"id": "artist-2", "genres": ["Indie Rock"]},
+            ]
+        }
+
+        tracks = [
+            {
+                "id": "track-1",
+                "name": "First",
+                "artists": "Artist One",
+                "duration_ms": 90000,
+                "popularity": 80,
+                "artist_ids": ["artist-1"],
+            },
+            {
+                "id": "track-2",
+                "name": "Second",
+                "artists": "Artist Two",
+                "duration_ms": 90000,
+                "popularity": 70,
+                "artist_ids": ["artist-2"],
+            },
+        ]
+
+        stats = compute_playlist_statistics(
+            "token",
+            tracks,
+        )
+
+        self.assertEqual(stats["total_tracks"], 2)
+        self.assertAlmostEqual(stats["avg_popularity"], 75.0)
+        self.assertAlmostEqual(stats["novelty"], 100.0)
+        self.assertEqual(len(stats["genre_top"]), 3)
+        self.assertTrue(any(item["genre"] == "indie-rock" for item in stats["genre_top"]))
+        self.assertTrue(any(item["genre"] == "pop" for item in stats["genre_top"]))
+        self.assertTrue(any(item["genre"] == "synth-pop" for item in stats["genre_top"]))
+        self.assertEqual(stats["genre_remaining"], [])
+        mock_instance.artists.assert_called_once()
+        self.assertEqual(len(stats["top_popular_tracks"]), 2)
+        self.assertEqual(stats["top_popular_tracks"][0]["id"], "track-1")
+        self.assertEqual(stats["least_popular_tracks"][0]["id"], "track-2")
+        self.assertEqual(stats["source_total"], 2)
+        self.assertEqual(len(stats["source_mix"]), 1)
 
     @patch("recommender.services.spotify_handler.spotipy.Spotify")
     def test_resolve_seed_tracks_includes_metadata(self, mock_spotify):
@@ -925,19 +1261,26 @@ class SavePlaylistViewTests(TestCase):
         self.url = reverse("recommender:save_playlist")
         self.cache_key = "save-cache-key"
         cache.clear()
-        cache.set(
-            self.cache_key,
-            {
-                "playlist": ["Song A - Artist A"],
-                "track_ids": ["track1", "track2"],
-                "prompt": "test prompt",
-                "debug_steps": [],
-                "errors": [],
-            },
-            timeout=60,
-        )
         session = self.client.session
         session["spotify_access_token"] = "token"
+        session["spotify_user_id"] = "cache-owner"
+        session.save()
+        cache.set(
+            self.cache_key,
+            _payload_with_owner(
+                session,
+                self.cache_key,
+                {
+                    "playlist": ["Song A - Artist A"],
+                    "track_ids": ["track1", "track2"],
+                    "prompt": "test prompt",
+                    "debug_steps": [],
+                    "errors": [],
+                },
+            ),
+            timeout=60,
+        )
+        session["recommender_last_cache_key"] = self.cache_key
         session.save()
 
     @patch("recommender.views.create_playlist_with_tracks")
@@ -1018,33 +1361,42 @@ class PlaylistEditingTests(TestCase):
         self.client = Client()
         self.url = reverse("recommender:update_cached_playlist")
         cache.clear()
+        session = self.client.session
+        session["spotify_access_token"] = "token"
+        session["spotify_user_id"] = "editor"
+        session.save()
+        self.session = session
 
     def test_remove_track_updates_cache(self):
         cache_key = "recommender:test"
         cache.set(
             cache_key,
-            {
-                "track_details": [
-                    {
-                        "id": "track1",
-                        "name": "First",
-                        "artists": "Artist",
-                        "album_name": "",
-                        "album_image_url": "",
-                        "duration_ms": 0,
-                    },
-                    {
-                        "id": "track2",
-                        "name": "Second",
-                        "artists": "Artist",
-                        "album_name": "",
-                        "album_image_url": "",
-                        "duration_ms": 0,
-                    },
-                ],
-                "track_ids": ["track1", "track2"],
-                "playlist": ["First - Artist", "Second - Artist"],
-            },
+            _payload_with_owner(
+                self.session,
+                cache_key,
+                {
+                    "track_details": [
+                        {
+                            "id": "track1",
+                            "name": "First",
+                            "artists": "Artist",
+                            "album_name": "",
+                            "album_image_url": "",
+                            "duration_ms": 0,
+                        },
+                        {
+                            "id": "track2",
+                            "name": "Second",
+                            "artists": "Artist",
+                            "album_name": "",
+                            "album_image_url": "",
+                            "duration_ms": 0,
+                        },
+                    ],
+                    "track_ids": ["track1", "track2"],
+                    "playlist": ["First - Artist", "Second - Artist"],
+                },
+            ),
             timeout=60,
         )
 
@@ -1067,20 +1419,24 @@ class PlaylistEditingTests(TestCase):
         cache_key = "recommender:position"
         cache.set(
             cache_key,
-            {
-                "track_details": [
-                    {
-                        "id": "",
-                        "name": "Untitled",
-                        "artists": "Unknown",
-                        "album_name": "",
-                        "album_image_url": "",
-                        "duration_ms": 0,
-                    }
-                ],
-                "track_ids": [],
-                "playlist": ["Untitled - Unknown"],
-            },
+            _payload_with_owner(
+                self.session,
+                cache_key,
+                {
+                    "track_details": [
+                        {
+                            "id": "",
+                            "name": "Untitled",
+                            "artists": "Unknown",
+                            "album_name": "",
+                            "album_image_url": "",
+                            "duration_ms": 0,
+                        }
+                    ],
+                    "track_ids": [],
+                    "playlist": ["Untitled - Unknown"],
+                },
+            ),
             timeout=60,
         )
 

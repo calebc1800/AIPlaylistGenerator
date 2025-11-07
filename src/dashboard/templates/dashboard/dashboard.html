@@ -109,25 +109,105 @@
             <div class="tab-content" id="stats">
                 <h2 class="section-title">Your Music Stats</h2>
                 
-                <div class="feature-grid">
-                    <div class="stat-card">
-                        <div class="stat-value">{{ followers }}</div>
+                <div class="feature-grid stats-grid">
+                    <div class="stat-card follower-card">
                         <div class="stat-label">Followers</div>
+                        <div class="stat-value" id="stat-followers">{{ followers }}</div>
                     </div>
                     
-                    <div class="stat-card" style="background: linear-gradient(135deg, #0277BD 0%, #4FC3F7 100%);">
-                        <div class="stat-value">0</div>
-                        <div class="stat-label">Playlists Created</div>
+                    <div class="stat-card">
+                        <div class="stat-label">Playlists Generated</div>
+                        <div class="stat-value" id="stat-playlists">{{ generated_stats.total_playlists|default:0 }}</div>
                     </div>
                     
-                    <div class="stat-card" style="background: linear-gradient(135deg, #01579B 0%, #29B6F6 100%);">
-                        <div class="stat-value">0</div>
-                        <div class="stat-label">Songs Added</div>
+                    <div class="stat-card alt">
+                        <div class="stat-label">Tracks Added</div>
+                        <div class="stat-value" id="stat-tracks">{{ generated_stats.total_tracks|default:0 }}</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-label">LLM Tokens Used</div>
+                        <div class="stat-value" id="stat-tokens">{{ generated_stats.total_tokens|default:0 }}</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-label">Total Hours</div>
+                        <div class="stat-value" id="stat-hours">{{ generated_stats.total_hours|default:0 }}</div>
+                    </div>
+
+                    <div class="stat-card alt">
+                        <div class="stat-label">Top Genre</div>
+                        <div class="stat-value stat-value-sm" id="stat-top-genre">
+                            {{ generated_stats.top_genre|default:"—" }}
+                        </div>
                     </div>
                 </div>
 
-                <h3 style="color: #fff; margin: 40px 0 0 0; font-size: 1.4rem; display: flex; align-items: center; gap: 12px;">
-                    <span style="width: 4px; height: 24px; background: linear-gradient(180deg, #0288D1 0%, #42a5f5 100%); border-radius: 2px;"></span>
+                <div class="stat-meta">
+                    <div class="stat-meta-item">
+                        <span class="meta-label">Avg. Novelty</span>
+                        <span class="meta-value" id="stat-novelty">
+                            {% if generated_stats.avg_novelty %}{{ generated_stats.avg_novelty }}%{% else %}—{% endif %}
+                        </span>
+                    </div>
+                    <div class="stat-meta-item">
+                        <span class="meta-label">Last Playlist Generated</span>
+                        <span class="meta-value" id="stat-last-generated">
+                            {% if generated_stats.last_generated_at %}{{ generated_stats.last_generated_at }}{% else %}No history yet{% endif %}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="stat-panels">
+                    <div class="stat-panel">
+                        <div class="stat-panel-header">
+                            <h3>Genre Breakdown</h3>
+                            <span class="stat-panel-subtitle">Recent generations</span>
+                        </div>
+                        <ul class="genre-breakdown" id="genre-breakdown-list">
+                            {% if genre_breakdown %}
+                                {% for genre in genre_breakdown %}
+                                <li>
+                                    <span>{{ genre.genre }}</span>
+                                    <span>{{ genre.percentage }}%</span>
+                                </li>
+                                {% endfor %}
+                            {% else %}
+                                <li class="empty-state small">Generate a playlist to start tracking genres.</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+
+                    <div class="stat-panel">
+                        <div class="stat-panel-header">
+                            <h3>Spotify Favorites</h3>
+                            <span class="stat-panel-subtitle">Refreshed live</span>
+                        </div>
+                        <div class="favorites-grid">
+                            <div>
+                                <h4>Top Genres</h4>
+                                <ul class="favorites-list" id="spotify-top-genres">
+                                    <li class="empty-state small">Fetching from Spotify...</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4>Top Artists</h4>
+                                <ul class="favorites-list" id="spotify-top-artists">
+                                    <li class="empty-state small">Fetching from Spotify...</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4>Top Tracks</h4>
+                                <ul class="favorites-list" id="spotify-top-tracks">
+                                    <li class="empty-state small">Fetching from Spotify...</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="stat-section-heading">
+                    <span class="accent-bar"></span>
                     Last Played Track
                 </h3>
                 {% if last_song %}
@@ -203,6 +283,10 @@
             <div class="loader-step" id="generation-progress-label">Initializing...</div>
         </div>
     </div>
+
+    {{ generated_stats|json_script:"initial_generated_stats" }}
+    {{ genre_breakdown|json_script:"initial_genre_breakdown" }}
+    {{ spotify_highlights|json_script:"initial_spotify_highlights" }}
 
     <script>
         // Tab switching functionality
@@ -374,6 +458,146 @@
                 generationOverlay.classList.remove('visible');
             });
         }
+
+        const parseJsonScript = (elementId, fallback) => {
+            const el = document.getElementById(elementId);
+            if (!el || !el.textContent) {
+                return fallback;
+            }
+            try {
+                return JSON.parse(el.textContent);
+            } catch (error) {
+                return fallback;
+            }
+        };
+
+        const statsEndpoint = "{% url 'dashboard:user-stats' %}";
+        const statElements = {
+            playlists: document.getElementById('stat-playlists'),
+            tracks: document.getElementById('stat-tracks'),
+            tokens: document.getElementById('stat-tokens'),
+            hours: document.getElementById('stat-hours'),
+            topGenre: document.getElementById('stat-top-genre'),
+            novelty: document.getElementById('stat-novelty'),
+            lastGenerated: document.getElementById('stat-last-generated'),
+        };
+        const genreList = document.getElementById('genre-breakdown-list');
+        const spotifyLists = {
+            genres: document.getElementById('spotify-top-genres'),
+            artists: document.getElementById('spotify-top-artists'),
+            tracks: document.getElementById('spotify-top-tracks'),
+        };
+
+        const formatNumber = (value) => {
+            const number = Number(value || 0);
+            return number.toLocaleString();
+        };
+
+        const applyGeneratedStats = (data) => {
+            if (!data) {
+                return;
+            }
+            if (statElements.playlists) {
+                statElements.playlists.textContent = formatNumber(data.total_playlists || 0);
+            }
+            if (statElements.tracks) {
+                statElements.tracks.textContent = formatNumber(data.total_tracks || 0);
+            }
+            if (statElements.tokens) {
+                statElements.tokens.textContent = formatNumber(data.total_tokens || 0);
+            }
+            if (statElements.hours) {
+                statElements.hours.textContent = (data.total_hours || 0).toFixed(2);
+            }
+            if (statElements.topGenre) {
+                statElements.topGenre.textContent = data.top_genre || '—';
+            }
+            if (statElements.novelty) {
+                statElements.novelty.textContent = data.avg_novelty ? `${data.avg_novelty}%` : '—';
+            }
+            if (statElements.lastGenerated) {
+                statElements.lastGenerated.textContent = data.last_generated_at
+                    ? new Date(data.last_generated_at).toLocaleString()
+                    : 'No history yet';
+            }
+        };
+
+        const renderGenreBreakdown = (entries) => {
+            if (!genreList) {
+                return;
+            }
+            if (!entries || !entries.length) {
+                genreList.innerHTML = '<li class="empty-state small">Generate a playlist to start tracking genres.</li>';
+                return;
+            }
+            genreList.innerHTML = entries
+                .map(
+                    (entry) =>
+                        `<li><span>${entry.genre}</span><span>${entry.percentage}%</span></li>`
+                )
+                .join('');
+        };
+
+        const renderSpotifyHighlights = (payload) => {
+            if (!payload) {
+                return;
+            }
+            if (spotifyLists.genres) {
+                spotifyLists.genres.innerHTML = payload.top_genres && payload.top_genres.length
+                    ? payload.top_genres
+                        .map((genre) => `<li><span>${genre.genre}</span><span>${genre.count}</span></li>`)
+                        .join('')
+                    : '<li class="empty-state small">No favorite genres yet.</li>';
+            }
+            if (spotifyLists.artists) {
+                spotifyLists.artists.innerHTML = payload.top_artists && payload.top_artists.length
+                    ? payload.top_artists
+                        .map(
+                            (artist) =>
+                                `<li><span>${artist.name}</span><span>${(artist.genres || []).join(', ')}</span></li>`
+                        )
+                        .join('')
+                    : '<li class="empty-state small">No favorite artists yet.</li>';
+            }
+            if (spotifyLists.tracks) {
+                spotifyLists.tracks.innerHTML = payload.top_tracks && payload.top_tracks.length
+                    ? payload.top_tracks
+                        .map(
+                            (track) =>
+                                `<li><span>${track.name}</span><span>${track.artists}</span></li>`
+                        )
+                        .join('')
+                    : '<li class="empty-state small">No favorite tracks yet.</li>';
+            }
+        };
+
+        const hydrateStats = () => {
+            applyGeneratedStats(parseJsonScript('initial_generated_stats', {}));
+            renderGenreBreakdown(parseJsonScript('initial_genre_breakdown', []));
+            renderSpotifyHighlights(parseJsonScript('initial_spotify_highlights', {}));
+        };
+
+        const refreshStats = async () => {
+            try {
+                const response = await fetch(statsEndpoint, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    return;
+                }
+                const payload = await response.json();
+                applyGeneratedStats(payload.generated);
+                renderGenreBreakdown(payload.genre_breakdown);
+                renderSpotifyHighlights(payload.spotify);
+            } catch (error) {
+                console.warn('Failed to refresh dashboard stats', error);
+            }
+        };
+
+        hydrateStats();
+        refreshStats();
+        setInterval(refreshStats, 120000);
     </script>
 </body>
 </html>
