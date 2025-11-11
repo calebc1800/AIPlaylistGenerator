@@ -1,7 +1,6 @@
 """Unit tests for the recommender app services and views."""
 
 import json
-import subprocess
 from types import SimpleNamespace
 
 from django.conf import settings
@@ -42,10 +41,8 @@ from recommender.services.user_preferences import (
 from recommender.services.llm_handler import (
     _json_candidates,
     _parse_json_response,
-    _resolve_provider,
     dispatch_llm_query,
     extract_playlist_attributes,
-    query_ollama,
     query_openai,
     refine_playlist,
     suggest_remix_tracks,
@@ -1151,36 +1148,16 @@ class LLMHandlerTests(TestCase):
         self.assertIsInstance(parsed, dict)
         self.assertEqual(parsed["tracks"], [1, 2])
 
-    @override_settings(RECOMMENDER_LLM_DEFAULT_PROVIDER="ollama")
-    def test_resolve_provider_defaults_for_invalid_option(self):
-        self.assertEqual(_resolve_provider("anthropic"), "ollama")
-        with override_settings(RECOMMENDER_LLM_DEFAULT_PROVIDER="invalid"):
-            self.assertEqual(_resolve_provider(None), "openai")
-
     @patch("recommender.services.llm_handler.query_openai", return_value="openai-response")
-    @patch("recommender.services.llm_handler.query_ollama", return_value="ollama-response")
-    def test_dispatch_llm_query_routes_to_ollama(self, mock_ollama, mock_openai):
-        result = dispatch_llm_query("prompt", provider="ollama", model="tiny", timeout=15)
-        self.assertEqual(result, "ollama-response")
-        mock_ollama.assert_called_once()
-        mock_openai.assert_not_called()
-
-    @override_settings(DEBUG=False, RECOMMENDER_OLLAMA_TIMEOUT_SECONDS=45)
-    @patch("recommender.services.llm_handler.subprocess.run")
-    def test_query_ollama_returns_trimmed_output(self, mock_run):
-        mock_run.return_value = SimpleNamespace(stdout=" result \n", stderr="", returncode=0)
-        output = query_ollama("hi there", model="llama3")
-        self.assertEqual(output, "result")
-        mock_run.assert_called_once()
-
-    @override_settings(DEBUG=False)
-    @patch(
-        "recommender.services.llm_handler.subprocess.run",
-        side_effect=subprocess.TimeoutExpired(cmd="ollama", timeout=60),
-    )
-    def test_query_ollama_handles_timeout(self, mock_run):
-        self.assertEqual(query_ollama("slow prompt"), "")
-        mock_run.assert_called_once()
+    def test_dispatch_llm_query_always_routes_to_openai(self, mock_openai):
+        result = dispatch_llm_query("prompt", provider="legacy", model="tiny", timeout=15)
+        self.assertEqual(result, "openai-response")
+        mock_openai.assert_called_once_with(
+            "prompt",
+            model="tiny",
+            temperature=None,
+            max_output_tokens=None,
+        )
 
     @patch("recommender.services.llm_handler._get_openai_client")
     def test_query_openai_returns_output_text(self, mock_get_client):
@@ -1495,7 +1472,7 @@ class ViewHelperTests(TestCase):
         self.assertTrue(debug_steps[0].endswith("Seed pipeline started."))
         self.assertTrue(debug_steps[1].endswith("Error: missing artist metadata."))
 
-    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=False, RECOMMENDER_LLM_DEFAULT_PROVIDER="openai")
+    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=False)
     def test_build_context_from_payload_converts_legacy_fields(self):
         payload = {
             "playlist": ["Track 1 - Artist 1", "Track 2 - Artist 2"],
@@ -1518,7 +1495,7 @@ class ViewHelperTests(TestCase):
             "attributes": {"mood": "happy"},
             "debug_steps": ["[0.00s] Legacy entry."],
             "profile_snapshot": "not-a-dict",
-            "llm_provider": "Ollama",
+            "llm_provider": "LegacyLLM",
         }
 
         context = _build_context_from_payload(payload)
@@ -1546,12 +1523,12 @@ class ViewHelperTests(TestCase):
         ])
         self.assertEqual(context["seed_tracks"], ["Seed 1 - Seed Artist"])
         self.assertEqual(context["similar_tracks"], ["Sim 1 - Sim Artist"])
-        self.assertEqual(context["llm_provider"], "Ollama")
+        self.assertEqual(context["llm_provider"], "openai")
         self.assertEqual(context["llm_provider_default"], "openai")
         self.assertEqual(context["debug_steps"], [])
         self.assertIsNone(context["profile_snapshot"])
 
-    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=True, RECOMMENDER_LLM_DEFAULT_PROVIDER="ollama")
+    @override_settings(RECOMMENDER_DEBUG_VIEW_ENABLED=True)
     def test_build_context_from_payload_preserves_debug_when_enabled(self):
         payload = {
             "playlist": ["Existing Track - Artist"],
@@ -1579,7 +1556,7 @@ class ViewHelperTests(TestCase):
 
         self.assertEqual(context["debug_steps"], ["[0.01s] Already logged."])
         self.assertEqual(context["playlist_tracks"][0]["album_name"], "Album")
-        self.assertEqual(context["llm_provider"], "ollama")
-        self.assertEqual(context["llm_provider_default"], "ollama")
+        self.assertEqual(context["llm_provider"], "openai")
+        self.assertEqual(context["llm_provider_default"], "openai")
         self.assertEqual(context["seed_track_details"][0]["name"], "Seed")
         self.assertEqual(context["similar_track_details"][0]["name"], "Similar")

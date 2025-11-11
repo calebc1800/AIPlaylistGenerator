@@ -152,26 +152,10 @@ def _format_cache_timeout(seconds: int) -> str:
 
 
 def _determine_llm_provider(request, *, requested_provider: str = "", debug_enabled: bool = False) -> str:
-    """Resolve the LLM provider while respecting debug constraints."""
-    provider_choices = {"openai", "ollama"}
-    default_provider = str(getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")).lower()
-    requested = (requested_provider or "").strip().lower()
-    session_provider = (request.session.get("llm_provider") or "").strip().lower()
-
-    if debug_enabled and requested in provider_choices:
-        provider = requested
-    elif session_provider in provider_choices:
-        provider = session_provider
-    elif default_provider in provider_choices:
-        provider = default_provider
-    else:
-        provider = "openai"
-
-    if not debug_enabled:
-        allowed_default = default_provider if default_provider in provider_choices else "openai"
-        if provider != allowed_default:
-            provider = allowed_default
-
+    """Resolve the (now fixed) LLM provider. Only OpenAI is supported."""
+    _ = requested_provider  # Provider overrides are deprecated.
+    _ = debug_enabled
+    provider = "openai"
     request.session["llm_provider"] = provider
     return provider
 
@@ -222,9 +206,7 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
             for key, value in preference_descriptions.items()
         ]
     debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
-    default_provider = str(
-        getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
-    ).lower()
+    default_provider = "openai"
     context_debug_steps: List[str] = []
     if debug_enabled:
         context_debug_steps = list(payload.get("debug_steps", []))
@@ -278,8 +260,8 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
         "prompt": payload.get("prompt", ""),
         "debug_steps": context_debug_steps,
         "debug_enabled": debug_enabled,
-        "llm_toggle_visible": debug_enabled,
-        "llm_provider": payload.get("llm_provider") or default_provider,
+        "llm_toggle_visible": False,
+        "llm_provider": default_provider,
         "llm_provider_default": default_provider,
         "errors": list(payload.get("errors", [])),
         "attributes": payload.get("attributes"),

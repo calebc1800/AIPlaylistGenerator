@@ -574,9 +574,9 @@ class DashboardViewTests(TestCase):
         content = response.content.decode()
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.context['llm_toggle_visible'])
-        self.assertIn('id="llm-toggle"', content)
-        self.assertIn('LLM Provider', content)
+        self.assertFalse(response.context['llm_toggle_visible'])
+        self.assertNotIn('id="llm-toggle"', content)
+        self.assertNotIn('LLM Provider', content)
 
 
 class DashboardStatsAPITests(TestCase):
