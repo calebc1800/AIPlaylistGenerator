@@ -12,4 +12,8 @@ urlpatterns = [
     path("remix/", views.remix_playlist, name="remix_playlist"),
     path("cache/update/", views.update_cached_playlist, name="update_cached_playlist"),
     path("save/", views.save_playlist, name="save_playlist"),
+    # GET endpoint for searching songs
+    path("search/", views.search_songs, name="search_songs"),
+    # POST endpoint for adding songs to playlist
+    path("add-song/", views.add_song_to_playlist, name="add_song_to_playlist"),
 ]

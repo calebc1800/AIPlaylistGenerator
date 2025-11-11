@@ -63,10 +63,13 @@
                 <div class="search-bar">
                     <input
                         type="text"
+                        id="song-search-input"
                         class="search-input"
-                        placeholder="Search to add songs (coming soon)"
-                        disabled>
-                    <span class="coming-soon-note">Manual additions will arrive in a future update.</span>
+                        placeholder="Search to add songs..."
+                        data-search-url="{% url 'recommender:search_songs' %}"
+                        data-add-url="{% url 'recommender:add_song_to_playlist' %}"
+                        data-cache-key="{{ cache_key }}">
+                    <div id="search-results" class="search-results" style="display: none;"></div>
                 </div>
 
                 {% if playlist_stats %}
@@ -811,6 +814,244 @@
             refreshDurations();
             if (trackList) {
                 setTrackCount(trackList.querySelectorAll('.track-item').length);
+            }
+
+            // Song search functionality
+            const searchInput = document.getElementById('song-search-input');
+            const searchResults = document.getElementById('search-results');
+            if (searchInput && searchResults) {
+                const searchUrl = searchInput.dataset.searchUrl;
+                const addUrl = searchInput.dataset.addUrl;
+                const cacheKey = searchInput.dataset.cacheKey;
+                let searchTimeout = null;
+
+                function hideSearchResults() {
+                    searchResults.style.display = 'none';
+                    searchResults.innerHTML = '';
+                }
+
+                function showSearchResults() {
+                    searchResults.style.display = 'block';
+                }
+
+                function createTrackElement(track) {
+                    const li = document.createElement('li');
+                    li.className = 'search-result-item';
+                    li.dataset.trackId = track.id;
+
+                    const trackDiv = document.createElement('div');
+                    trackDiv.className = 'search-result-track';
+
+                    if (track.album_image_url) {
+                        const img = document.createElement('img');
+                        img.src = track.album_image_url;
+                        img.alt = `Album art for ${track.name}`;
+                        img.className = 'search-result-art';
+                        trackDiv.appendChild(img);
+                    } else {
+                        const placeholder = document.createElement('div');
+                        placeholder.className = 'search-result-art search-result-art--placeholder';
+                        placeholder.textContent = track.name.charAt(0);
+                        trackDiv.appendChild(placeholder);
+                    }
+
+                    const metaDiv = document.createElement('div');
+                    metaDiv.className = 'search-result-meta';
+
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'search-result-name';
+                    nameSpan.textContent = track.name;
+                    metaDiv.appendChild(nameSpan);
+
+                    const artistsSpan = document.createElement('span');
+                    artistsSpan.className = 'search-result-artists';
+                    artistsSpan.textContent = track.artists;
+                    metaDiv.appendChild(artistsSpan);
+
+                    trackDiv.appendChild(metaDiv);
+
+                    const addButton = document.createElement('button');
+                    addButton.className = 'search-result-add';
+                    addButton.textContent = '+ Add';
+                    addButton.type = 'button';
+                    trackDiv.appendChild(addButton);
+
+                    li.appendChild(trackDiv);
+                    return li;
+                }
+
+                function performSearch(query) {
+                    if (query.length < 2) {
+                        hideSearchResults();
+                        return;
+                    }
+
+                    fetch(`${searchUrl}?q=${encodeURIComponent(query)}`, {
+                        method: 'GET',
+                        credentials: 'same-origin',
+                    })
+                        .then((response) => {
+                            if (!response.ok) {
+                                throw new Error('Search failed');
+                            }
+                            return response.json();
+                        })
+                        .then((data) => {
+                            if (data.error) {
+                                throw new Error(data.error);
+                            }
+
+                            searchResults.innerHTML = '';
+                            if (data.results && data.results.length > 0) {
+                                const ul = document.createElement('ul');
+                                ul.className = 'search-result-list';
+                                data.results.forEach((track) => {
+                                    const li = createTrackElement(track);
+                                    ul.appendChild(li);
+                                });
+                                searchResults.appendChild(ul);
+                                showSearchResults();
+                            } else {
+                                const noResults = document.createElement('div');
+                                noResults.className = 'search-no-results';
+                                noResults.textContent = 'No songs found';
+                                searchResults.appendChild(noResults);
+                                showSearchResults();
+                            }
+                        })
+                        .catch((error) => {
+                            searchResults.innerHTML = '';
+                            const errorDiv = document.createElement('div');
+                            errorDiv.className = 'search-error';
+                            errorDiv.textContent = error.message || 'Search failed. Try again.';
+                            searchResults.appendChild(errorDiv);
+                            showSearchResults();
+                        });
+                }
+
+                searchInput.addEventListener('input', (event) => {
+                    const query = event.target.value.trim();
+                    if (searchTimeout) {
+                        clearTimeout(searchTimeout);
+                    }
+                    searchTimeout = setTimeout(() => {
+                        performSearch(query);
+                    }, 300);
+                });
+
+                searchInput.addEventListener('blur', () => {
+                    // Delay hiding to allow click on results
+                    setTimeout(() => {
+                        hideSearchResults();
+                    }, 200);
+                });
+
+                searchInput.addEventListener('focus', () => {
+                    const query = searchInput.value.trim();
+                    if (query.length >= 2 && searchResults.innerHTML) {
+                        showSearchResults();
+                    }
+                });
+
+                searchResults.addEventListener('click', (event) => {
+                    const button = event.target.closest('.search-result-add');
+                    if (!button) {
+                        return;
+                    }
+
+                    const item = button.closest('.search-result-item');
+                    if (!item) {
+                        return;
+                    }
+
+                    const trackId = item.dataset.trackId;
+                    if (!trackId) {
+                        return;
+                    }
+
+                    button.disabled = true;
+                    button.textContent = 'Adding...';
+
+                    fetch(addUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            cache_key: cacheKey,
+                            track_id: trackId,
+                        }),
+                    })
+                        .then((response) => {
+                            if (!response.ok) {
+                                return response.json().then(data => {
+                                    throw new Error(data.error || 'Failed to add track');
+                                });
+                            }
+                            return response.json();
+                        })
+                        .then((data) => {
+                            if (data.status !== 'ok') {
+                                throw new Error(data.error || 'Failed to add track');
+                            }
+
+                            // Add track to the track list
+                            if (trackList && data.track) {
+                                const trackItem = document.createElement('li');
+                                trackItem.className = 'track-item';
+                                trackItem.dataset.trackId = data.track.id;
+
+                                const track = data.track;
+                                const durationFormatted = formatDuration(track.duration_ms || 0);
+
+                                trackItem.innerHTML = `
+                                    <div class="track-artwork">
+                                        ${track.album_image_url ?
+                                            `<img src="${track.album_image_url}" alt="Album artwork for ${track.name}">` :
+                                            track.name.charAt(0)
+                                        }
+                                    </div>
+                                    <div class="track-info">
+                                        <span class="track-name">${track.name}</span>
+                                        <span class="track-artist">${track.artists}</span>
+                                        ${track.album_name ? `<span class="track-album">${track.album_name}</span>` : ''}
+                                    </div>
+                                    <div class="track-meta">
+                                        <span class="track-duration" data-duration-ms="${track.duration_ms || 0}">${durationFormatted}</span>
+                                        <button type="button" class="remove-track-button">Remove</button>
+                                    </div>
+                                `;
+
+                                trackList.appendChild(trackItem);
+                                updateTrackPositions();
+                                setTrackCount(data.track_count || (trackList.querySelectorAll('.track-item').length));
+                            }
+
+                            pushMessage('success', `Added "${data.track.name}" to playlist`);
+                            button.textContent = 'Added!';
+                            searchInput.value = '';
+                            hideSearchResults();
+
+                            setTimeout(() => {
+                                button.disabled = false;
+                                button.textContent = '+ Add';
+                            }, 2000);
+                        })
+                        .catch((error) => {
+                            button.disabled = false;
+                            button.textContent = '+ Add';
+                            pushMessage('error', error.message || 'Failed to add track. Try again.');
+                        });
+                });
+
+                // Close search results when clicking outside
+                document.addEventListener('click', (event) => {
+                    if (!searchInput.contains(event.target) && !searchResults.contains(event.target)) {
+                        hideSearchResults();
+                    }
+                });
             }
         })();
     </script>

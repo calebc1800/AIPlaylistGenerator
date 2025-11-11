@@ -1096,3 +1096,149 @@ main {
         margin-top: 8px;
     }
 }
+
+/* Search Results Styles */
+.search-bar {
+    position: relative;
+    margin-bottom: 24px;
+}
+
+.search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 8px;
+    background: rgba(30, 30, 30, 0.98);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.search-result-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.search-result-item {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-track {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    transition: background 0.2s ease;
+}
+
+.search-result-track:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.search-result-art {
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.search-result-art--placeholder {
+    background: linear-gradient(135deg, rgba(66, 165, 245, 0.3), rgba(2, 136, 209, 0.3));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    text-transform: uppercase;
+}
+
+.search-result-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.search-result-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.search-result-artists {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.search-result-add {
+    padding: 8px 16px;
+    background: rgba(66, 165, 245, 0.2);
+    border: 1px solid rgba(66, 165, 245, 0.4);
+    border-radius: 6px;
+    color: #42a5f5;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.search-result-add:hover:not(:disabled) {
+    background: rgba(66, 165, 245, 0.3);
+    border-color: rgba(66, 165, 245, 0.6);
+}
+
+.search-result-add:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.search-no-results,
+.search-error {
+    padding: 24px 16px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 14px;
+}
+
+.search-error {
+    color: rgba(239, 83, 80, 0.9);
+}
+
+/* Scrollbar styles for search results */
+.search-results::-webkit-scrollbar {
+    width: 8px;
+}
+
+.search-results::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.search-results::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.search-results::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}

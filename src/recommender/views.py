@@ -1174,3 +1174,178 @@ def save_playlist(request):
         messages.success(request, f"Playlist '{resolved_name}' saved to Spotify.")
 
     return render(request, "recommender/playlist_result.html", context)
+
+
+def search_songs(request):
+    """Search for songs via Spotify API and return JSON results."""
+    query = request.GET.get("q", "").strip()
+    if not query:
+        return JsonResponse({"error": "Search query is required."}, status=400)
+
+    if len(query) < 2:
+        return JsonResponse({"error": "Search query must be at least 2 characters."}, status=400)
+
+    access_token = request.session.get("spotify_access_token")
+    if not access_token:
+        return JsonResponse({"error": "Spotify authentication required."}, status=401)
+
+    try:
+        import spotipy
+        sp = spotipy.Spotify(auth=access_token)
+
+        # Search for tracks
+        search_result = sp.search(q=query, type="track", limit=10, market="US")
+        tracks = search_result.get("tracks", {}).get("items", [])
+
+        # Serialize track data
+        results = []
+        for track in tracks:
+            if not track or not track.get("id"):
+                continue
+
+            album = track.get("album") or {}
+            artists = track.get("artists") or []
+            artist_names = ", ".join(artist.get("name", "") for artist in artists if artist.get("name"))
+
+            # Get album image
+            images = album.get("images", [])
+            album_image_url = ""
+            if images:
+                album_image_url = images[0].get("url", "")
+
+            results.append({
+                "id": track.get("id"),
+                "name": track.get("name", "Unknown"),
+                "artists": artist_names or "Unknown",
+                "album_name": album.get("name", ""),
+                "album_image_url": album_image_url,
+                "duration_ms": int(track.get("duration_ms") or 0),
+                "popularity": int(track.get("popularity") or 0),
+                "artist_ids": [artist.get("id") for artist in artists if artist.get("id")],
+            })
+
+        return JsonResponse({"results": results})
+
+    except SpotifyException as exc:
+        logger.error("Spotify search error for query '%s': %s", query, exc)
+        return JsonResponse({"error": "A Spotify error occurred during search."}, status=500)
+    except RequestException as exc:
+        logger.error("Network error during Spotify search for query '%s': %s", query, exc)
+        return JsonResponse({"error": "Network error while communicating with Spotify."}, status=500)
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.exception("Unexpected error during song search for query '%s': %s", query, exc)
+        return JsonResponse({"error": "Unexpected error during search."}, status=500)
+
+
+@require_POST
+def add_song_to_playlist(request):
+    """Add a manually searched song to the cached playlist via AJAX."""
+    content_type = (request.content_type or request.META.get("CONTENT_TYPE") or "").lower()
+    if not content_type.startswith("application/json"):
+        return JsonResponse({"error": "Expected JSON payload."}, status=400)
+
+    try:
+        request_payload = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    cache_key = _resolve_cache_key_from_request(request, request_payload.get("cache_key"))
+    track_id = (request_payload.get("track_id") or "").strip()
+
+    if not cache_key or not track_id:
+        return JsonResponse({"error": "Invalid request."}, status=400)
+
+    payload = cache.get(cache_key)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Playlist session expired."}, status=404)
+    if not _payload_owned_by_request(request, payload):
+        return JsonResponse({"error": "Playlist session unauthorized."}, status=403)
+
+    track_details = payload.get("track_details")
+    if not isinstance(track_details, list):
+        return JsonResponse({"error": "Playlist does not support editing yet."}, status=409)
+
+    # Check if track already exists in playlist
+    for existing_track in track_details:
+        if isinstance(existing_track, dict) and existing_track.get("id") == track_id:
+            return JsonResponse({"error": "Track already in playlist."}, status=409)
+
+    # Fetch track details from Spotify
+    access_token = request.session.get("spotify_access_token")
+    if not access_token:
+        return JsonResponse({"error": "Spotify authentication required."}, status=401)
+
+    try:
+        import spotipy
+        sp = spotipy.Spotify(auth=access_token)
+        track = sp.track(track_id)
+
+        if not track or not track.get("id"):
+            return JsonResponse({"error": "Track not found."}, status=404)
+
+        # Serialize track data
+        from .services.spotify_handler import _serialize_track_payload
+
+        new_track = _serialize_track_payload(track)
+        new_track["seed_source"] = "manual_search"
+
+        # Add track to the end of the playlist
+        track_details.append(new_track)
+
+        # Update payload
+        payload["track_details"] = track_details
+        payload["track_ids"] = [
+            entry.get("id") for entry in track_details if entry.get("id")
+        ]
+        payload["playlist"] = [
+            f"{entry.get('name', 'Unknown')} - {entry.get('artists', 'Unknown')}".strip()
+            for entry in track_details
+        ]
+
+        # Recompute playlist statistics
+        user_id = "anonymous"
+        if request.user.is_authenticated:
+            user_id = str(request.user.pk)
+        else:
+            user_id = request.session.get("spotify_user_id", user_id)
+
+        profile_cache: Optional[Dict[str, object]] = None
+        if user_id:
+            profile_cache = cache.get(f"recommender:user-profile:{user_id}")
+
+        def _stats_log(message: str) -> None:
+            logger.debug("add_song_to_playlist: %s", message)
+
+        existing_stats = payload.get("playlist_stats")
+        novelty_reference_ids = None
+        if isinstance(existing_stats, dict):
+            novelty_reference_ids = existing_stats.get("novelty_reference_ids")
+
+        payload["playlist_stats"] = compute_playlist_statistics(
+            access_token,
+            track_details,
+            profile_cache=profile_cache,
+            cached_track_ids=novelty_reference_ids,
+            log_step=_stats_log,
+        )
+
+        # Update cache
+        _attach_cache_metadata(payload, request, cache_key)
+        cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
+        cache.set(cache_key, payload, timeout=cache_timeout)
+
+        return JsonResponse({
+            "status": "ok",
+            "track_count": len(track_details),
+            "track": new_track,
+        })
+
+    except SpotifyException as exc:
+        logger.error("Spotify error while fetching track '%s': %s", track_id, exc)
+        return JsonResponse({"error": f"Spotify error: {exc}"}, status=500)
+    except RequestException as exc:
+        logger.error("Network error while fetching track '%s': %s", track_id, exc)
+        return JsonResponse({"error": "Network error while communicating with Spotify."}, status=500)
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.exception("Unexpected error while adding track '%s': %s", track_id, exc)
+        return JsonResponse({"error": "Unexpected error while adding track."}, status=500)
