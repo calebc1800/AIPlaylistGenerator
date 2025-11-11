@@ -14,7 +14,7 @@ coverage==7.11.0
 cryptography==46.0.3
 dill==0.4.0
 distro==1.9.0
-Django==5.2.7
+Django==5.2.8
 django-extensions==4.1
 dotenv==0.9.9
 frozenlist==1.8.0
