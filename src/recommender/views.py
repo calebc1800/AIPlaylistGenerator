@@ -1324,7 +1324,7 @@ def add_song_to_playlist(request):
 
     except SpotifyException as exc:
         logger.error("Spotify error while fetching track '%s': %s", track_id, exc)
-        return JsonResponse({"error": f"Spotify error: {exc}"}, status=500)
+        return JsonResponse({"error": "Spotify error while fetching track."}, status=500)
     except RequestException as exc:
         logger.error("Network error while fetching track '%s': %s", track_id, exc)
         return JsonResponse({"error": "Network error while communicating with Spotify."}, status=500)
