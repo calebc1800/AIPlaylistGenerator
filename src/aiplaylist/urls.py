@@ -3,8 +3,8 @@ URL configuration for aiplaylist project.
 """
 from django.contrib import admin
 from django.urls import path, include
-from .views import HomeView
 from explorer.views import SearchView, LogoutView
+from .views import HomeView
 
 urlpatterns = [
     path('admin/', admin.site.urls),

@@ -85,7 +85,7 @@ if not SECRET_KEY:
 
 _raw_allowed_hosts = os.getenv(
     "DJANGO_ALLOWED_HOSTS",
-    "0.0.0.0,localhost,127.0.0.1,192.168.1.111,aiplaylistgenerator.app,aiplaylistgenerator-not-docker.onrender.com",
+    "0.0.0.0,localhost,127.0.0.1,aiplaylistgenerator.app,aiplaylistgenerator-not-docker.onrender.com",
 )
 ALLOWED_HOSTS = [host.strip() for host in _raw_allowed_hosts.split(",") if host.strip()]
 _raw_csrf_trusted_origins = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS")
@@ -273,7 +273,7 @@ RECOMMENDER_EXPERIMENTAL_FLAGS = {
 }
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = _bool_env("DJANGO_SECURE_SSL_REDIRECT", False) # Handled by hosting service
+    SECURE_SSL_REDIRECT = _bool_env("DJANGO_SECURE_SSL_REDIRECT", False) # Handled by host
     SESSION_COOKIE_SECURE = _bool_env("DJANGO_SESSION_COOKIE_SECURE", True)
     CSRF_COOKIE_SECURE = _bool_env("DJANGO_CSRF_COOKIE_SECURE", True)
     SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "31536000"))
