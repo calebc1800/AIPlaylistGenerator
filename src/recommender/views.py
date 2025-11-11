@@ -1228,7 +1228,7 @@ def search_songs(request):
 
     except SpotifyException as exc:
         logger.error("Spotify search error for query '%s': %s", query, exc)
-        return JsonResponse({"error": f"Spotify error: {exc}"}, status=500)
+        return JsonResponse({"error": "A Spotify error occurred during search."}, status=500)
     except RequestException as exc:
         logger.error("Network error during Spotify search for query '%s': %s", query, exc)
         return JsonResponse({"error": "Network error while communicating with Spotify."}, status=500)
