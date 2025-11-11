@@ -1,10 +1,9 @@
-"""Lightweight adapters around the OpenAI/Ollama LLMs used for playlist generation."""
+"""Lightweight adapters around the OpenAI LLMs used for playlist generation."""
 
 import json
 import logging
 import os
 import re
-import subprocess
 from threading import local
 from typing import Any, Callable, Dict, List, Optional, Set
 
@@ -209,70 +208,6 @@ def _parse_json_response(raw: str) -> Optional[Any]:
     return None
 
 
-def _resolve_provider(provider: Optional[str]) -> str:
-    default_provider = (_get_setting("RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai") or "openai").lower()
-    candidates = {"openai", "ollama"}
-    if provider:
-        normalized = provider.strip().lower()
-        if normalized in candidates:
-            return normalized
-    return default_provider if default_provider in candidates else "openai"
-
-
-def query_ollama(
-    prompt: str,
-    *,
-    model: Optional[str] = None,
-    timeout: Optional[int] = None,
-) -> str:
-    """Send a prompt to a local Ollama model and return the response text."""
-    resolved_model = model or (_get_setting("RECOMMENDER_OLLAMA_MODEL", None) or "mistral")
-    resolved_timeout = timeout
-    if resolved_timeout is None:
-        timeout_setting = _get_setting("RECOMMENDER_OLLAMA_TIMEOUT_SECONDS")
-        if timeout_setting is not None:
-            try:
-                resolved_timeout = int(timeout_setting)
-            except (TypeError, ValueError):
-                resolved_timeout = None
-    if resolved_timeout is None:
-        if settings is not None and getattr(settings, "DEBUG", False):
-            resolved_timeout = 600
-        else:
-            resolved_timeout = 60
-
-    cmd = ["ollama", "run", resolved_model, prompt]
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=max(resolved_timeout, 1),
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning(
-            "Ollama request timed out after %s seconds. Prompt snippet: %s",
-            resolved_timeout,
-            prompt[:120],
-        )
-        return ""
-    except FileNotFoundError:
-        logger.error("Ollama executable not found. Ensure Ollama is installed and on PATH.")
-        return ""
-    except subprocess.SubprocessError as exc:
-        logger.error("Ollama execution failed: %s", exc)
-        return ""
-    if result.returncode != 0:
-        logger.error(
-            "Ollama returned non-zero exit code %s. stderr: %s",
-            result.returncode,
-            (result.stderr or "").strip(),
-        )
-        return ""
-    return (result.stdout or "").strip()
-
-
 def query_openai(
     prompt: str,
     *,
@@ -398,12 +333,8 @@ def dispatch_llm_query(
     provider: Optional[str] = None,
     **kwargs: object,
 ) -> str:
-    """Route LLM prompts to the active provider (OpenAI by default)."""
-    resolved_provider = _resolve_provider(provider)
-    if resolved_provider == "ollama":
-        model = kwargs.get("ollama_model") or kwargs.get("model")
-        timeout = kwargs.get("timeout") or kwargs.get("ollama_timeout")
-        return query_ollama(prompt, model=model if isinstance(model, str) else None, timeout=timeout if isinstance(timeout, int) else None)
+    """Route LLM prompts to OpenAI (provider retained for backward compatibility)."""
+    _ = provider  # provider toggles are deprecated; OpenAI is always used.
     model = kwargs.get("model")
     temperature = kwargs.get("temperature")
     max_tokens = kwargs.get("max_output_tokens")
