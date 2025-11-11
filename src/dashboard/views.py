@@ -17,6 +17,15 @@ from recommender.services.stats_service import (
 
 
 def _resolve_generation_identifier(request, spotify_user_id: str | None = None) -> str:
+    """Resolves the generation identifier using the User's Spotify ID
+
+    Args:
+        request (django request): http session information request
+        spotify_user_id (str | None, optional): User's Spotify ID. Defaults to None.
+
+    Returns:
+        str: User's Spotify ID
+    """
     if request.user.is_authenticated:
         return str(request.user.pk)
     if spotify_user_id:
@@ -25,6 +34,14 @@ def _resolve_generation_identifier(request, spotify_user_id: str | None = None) 
 
 
 def _ensure_session_key(request) -> str:
+    """Checks for session key
+
+    Args:
+        request (django request): http session information request
+
+    Returns:
+        str: Session Key
+    """
     session_key = request.session.session_key
     if not session_key:
         request.session.save()
@@ -33,6 +50,15 @@ def _ensure_session_key(request) -> str:
 
 
 def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
+    """Uses Spotify API to get the current user's top artists and songs
+
+    Args:
+        request (django request): http session information request
+        sp (spotipy.Spotify): Spotify API
+
+    Returns:
+        dict: Top genres, artists and tracks
+    """
     cache_key = f"dashboard:spotify-highlights:{_ensure_session_key(request)}"
     cached = cache.get(cache_key)
     if cached:
@@ -79,7 +105,9 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
 
     top_genres = [
         {"genre": genre, "count": count}
-        for genre, count in sorted(genre_counter.items(), key=lambda item: item[1], reverse=True)[:5]
+        for genre, count in sorted(genre_counter.items(),
+                                   key=lambda item: item[1], 
+                                   reverse=True)[:5]
     ]
 
     highlights.update(
@@ -130,7 +158,11 @@ class DashboardView(View):
                     'name': track['name'],
                     'artist': ', '.join([artist['name'] for artist in track['artists']]),
                     'album': track['album']['name'],
-                    'image': track['album']['images'][0]['url'] if track['album']['images'] else None,
+                    'image': (
+                        track['album']['images'][0]['url'] 
+                        if track['album']['images'] 
+                        else None
+                        ),
                     'played_at': recently_played['items'][0]['played_at']
                 }
 
@@ -153,7 +185,11 @@ class DashboardView(View):
             if session_provider not in {"openai", "ollama"}:
                 session_provider = default_provider
             if not debug_enabled:
-                session_provider = default_provider if default_provider in {"openai", "ollama"} else "openai"
+                session_provider = (
+                    default_provider 
+                    if default_provider in {"openai", "ollama"} 
+                    else "openai"
+                )
                 request.session["llm_provider"] = session_provider
             else:
                 request.session["llm_provider"] = session_provider
