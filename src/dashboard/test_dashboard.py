@@ -623,6 +623,58 @@ class DashboardStatsAPITests(TestCase):
         self.assertEqual(payload['genre_breakdown'][0]['genre'], 'Pop')
         self.assertEqual(payload['spotify']['top_genres'][0]['genre'], 'Pop')
 
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
+    def test_requires_access_token(self, mock_session_check):
+        """Test that API requires access token even when session is valid"""
+        # Session is valid but no access token
+        session = self.client.session
+        session.save()
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('Authentication required', response.content.decode())
+
+    @patch('dashboard.views.get_genre_breakdown')
+    @patch('dashboard.views.summarize_generation_stats')
+    @patch('dashboard.views.spotipy.Spotify')
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
+    def test_handles_spotify_exception_gracefully(
+        self,
+        mock_session_check,
+        mock_spotify_client,
+        mock_summary,
+        mock_breakdown,
+    ):
+        """Test that API handles Spotify exceptions and returns empty highlights"""
+        from spotipy.exceptions import SpotifyException
+
+        session = self.client.session
+        session['spotify_access_token'] = 'test'
+        session.save()
+
+        mock_summary.return_value = {'total_playlists': 3, 'total_tracks': 60}
+        mock_breakdown.return_value = [{'genre': 'Jazz', 'percentage': 45.0}]
+
+        # Mock Spotify client to raise exception
+        mock_sp_instance = Mock()
+        mock_spotify_client.return_value = mock_sp_instance
+        mock_sp_instance.current_user_top_artists.side_effect = SpotifyException(
+            http_status=503,
+            code=-1,
+            msg='Service Unavailable'
+        )
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+
+        payload = json.loads(response.content.decode())
+        # Should still return generated stats
+        self.assertEqual(payload['generated']['total_playlists'], 3)
+        # But Spotify highlights should be empty
+        self.assertEqual(payload['spotify']['top_genres'], [])
+        self.assertEqual(payload['spotify']['top_artists'], [])
+        self.assertEqual(payload['spotify']['top_tracks'], [])
+
 
 class DashboardIntegrationTests(TestCase):
     """Integration tests for dashboard functionality"""
@@ -765,3 +817,351 @@ class DashboardIntegrationTests(TestCase):
         self.assertContains(response, '123')
         self.assertContains(response, 'Followers')
         self.assertContains(response, 'stat-card')
+
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_stores_spotify_user_id_in_session(self, mock_spotify):
+        """Test that dashboard stores Spotify user ID in session"""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'spotify_user_123',
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        response = self.client.get(self.dashboard_url)
+
+        # Check that Spotify user ID is stored in session
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.session.get('spotify_user_id'), 'spotify_user_123')
+
+    @patch('dashboard.views.build_user_profile_seed_snapshot')
+    @patch('dashboard.views.cache')
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_builds_user_profile_snapshot(self, mock_spotify, mock_cache, mock_build_snapshot):
+        """Test that dashboard builds user profile snapshot when not cached"""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_456',
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        # Mock cache to return None (not cached)
+        mock_cache.get.return_value = None
+        mock_build_snapshot.return_value = {'snapshot': 'data'}
+
+        response = self.client.get(self.dashboard_url)
+
+        # Verify snapshot was built and cached
+        self.assertEqual(response.status_code, 200)
+        mock_build_snapshot.assert_called_once_with(mock_sp_instance)
+        mock_cache.set.assert_called()
+
+    @override_settings(RECOMMENDER_USER_PROFILE_CACHE_TTL=7200)
+    @patch('dashboard.views.build_user_profile_seed_snapshot')
+    @patch('dashboard.views.cache')
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_uses_custom_cache_ttl(self, mock_spotify, mock_cache, mock_build_snapshot):
+        """Test that dashboard uses custom cache TTL from settings"""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_789',
+            'display_name': 'Test User',
+            'followers': {'total': 0}
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+
+        # Mock cache to return None (not cached)
+        mock_cache.get.return_value = None
+        mock_build_snapshot.return_value = {'snapshot': 'data'}
+
+        response = self.client.get(self.dashboard_url)
+
+        # Verify custom TTL was used
+        self.assertEqual(response.status_code, 200)
+        # Check that cache.set was called with TTL of 7200
+        cache_set_calls = mock_cache.set.call_args_list
+        self.assertTrue(any(call[0][2] == 7200 for call in cache_set_calls if len(call[0]) > 2))
+
+    @patch('dashboard.views.ensure_valid_spotify_session')
+    def test_dashboard_edge_case_valid_session_but_no_token(self, mock_ensure):
+        """Test edge case where session is valid but access token is missing"""
+        # Mock ensure_valid_spotify_session to return True
+        mock_ensure.return_value = True
+
+        # But don't set access token in session
+        session = self.client.session
+        session.save()
+
+        response = self.client.get(self.dashboard_url)
+
+        # Should redirect to login
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('spotify_auth:login'))
+
+
+class HelperFunctionTests(TestCase):
+    """Tests for helper functions in dashboard views"""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+
+    def test_resolve_generation_identifier_with_authenticated_user(self):
+        """Test _resolve_generation_identifier with authenticated user"""
+        from dashboard.views import _resolve_generation_identifier
+
+        # Log in the user
+        self.client.login(username='testuser', password='testpass')
+        request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
+
+        identifier = _resolve_generation_identifier(request)
+
+        # Should return user's primary key as string
+        self.assertEqual(identifier, str(self.user.pk))
+
+    def test_resolve_generation_identifier_with_spotify_user_id_param(self):
+        """Test _resolve_generation_identifier with spotify_user_id parameter"""
+        from dashboard.views import _resolve_generation_identifier
+
+        request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
+
+        identifier = _resolve_generation_identifier(request, spotify_user_id='spotify_123')
+
+        # Should return the provided spotify_user_id
+        self.assertEqual(identifier, 'spotify_123')
+
+    def test_resolve_generation_identifier_with_session_spotify_user_id(self):
+        """Test _resolve_generation_identifier with spotify_user_id in session"""
+        from dashboard.views import _resolve_generation_identifier
+
+        session = self.client.session
+        session['spotify_user_id'] = 'session_spotify_456'
+        session.save()
+
+        request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
+
+        identifier = _resolve_generation_identifier(request)
+
+        # Should return spotify_user_id from session
+        self.assertEqual(identifier, 'session_spotify_456')
+
+    def test_resolve_generation_identifier_anonymous(self):
+        """Test _resolve_generation_identifier with anonymous user and no spotify_user_id"""
+        from dashboard.views import _resolve_generation_identifier
+
+        request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
+
+        identifier = _resolve_generation_identifier(request)
+
+        # Should return 'anonymous'
+        self.assertEqual(identifier, 'anonymous')
+
+    def test_ensure_session_key_with_existing_key(self):
+        """Test _ensure_session_key with existing session key"""
+        from dashboard.views import _ensure_session_key
+
+        session = self.client.session
+        session['test'] = 'data'
+        session.save()
+
+        request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
+
+        session_key = _ensure_session_key(request)
+
+        # Should return the existing session key
+        self.assertIsNotNone(session_key)
+        self.assertEqual(session_key, request.session.session_key)
+
+    def test_ensure_session_key_creates_new_key(self):
+        """Test _ensure_session_key creates new session key if missing"""
+        from dashboard.views import _ensure_session_key
+        from django.test import RequestFactory
+        from django.contrib.sessions.middleware import SessionMiddleware
+
+        # Create a fresh request without a session key
+        factory = RequestFactory()
+        request = factory.get('/dashboard/')
+
+        # Add session middleware
+        middleware = SessionMiddleware(lambda req: None)
+        middleware.process_request(request)
+
+        # Ensure session key is None initially
+        self.assertIsNone(request.session.session_key)
+
+        session_key = _ensure_session_key(request)
+
+        # Should create and return a session key
+        self.assertIsNotNone(session_key)
+        self.assertEqual(session_key, request.session.session_key)
+
+    @patch('dashboard.views.cache')
+    def test_fetch_spotify_highlights_from_cache(self, mock_cache):
+        """Test _fetch_spotify_highlights returns cached data"""
+        from dashboard.views import _fetch_spotify_highlights
+
+        session = self.client.session
+        session.save()
+
+        request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
+
+        cached_data = {
+            'top_genres': [{'genre': 'Rock', 'count': 5}],
+            'top_artists': [{'name': 'Artist 1'}],
+            'top_tracks': [{'name': 'Track 1'}]
+        }
+        mock_cache.get.return_value = cached_data
+
+        mock_sp = Mock()
+
+        result = _fetch_spotify_highlights(request, mock_sp)
+
+        # Should return cached data without calling Spotify API
+        self.assertEqual(result, cached_data)
+        mock_sp.current_user_top_artists.assert_not_called()
+        mock_sp.current_user_top_tracks.assert_not_called()
+
+    @patch('dashboard.views.cache')
+    def test_fetch_spotify_highlights_with_spotify_exception(self, mock_cache):
+        """Test _fetch_spotify_highlights handles Spotify exception"""
+        from dashboard.views import _fetch_spotify_highlights
+        from spotipy.exceptions import SpotifyException
+
+        session = self.client.session
+        session.save()
+
+        request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
+
+        mock_cache.get.return_value = None
+
+        mock_sp = Mock()
+        mock_sp.current_user_top_artists.side_effect = SpotifyException(
+            http_status=500,
+            code=-1,
+            msg='API Error'
+        )
+
+        result = _fetch_spotify_highlights(request, mock_sp)
+
+        # Should return empty highlights
+        self.assertEqual(result['top_genres'], [])
+        self.assertEqual(result['top_artists'], [])
+        self.assertEqual(result['top_tracks'], [])
+
+    @patch('dashboard.views.cache')
+    def test_fetch_spotify_highlights_builds_data(self, mock_cache):
+        """Test _fetch_spotify_highlights builds highlights from Spotify API"""
+        from dashboard.views import _fetch_spotify_highlights
+
+        session = self.client.session
+        session.save()
+
+        request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
+
+        mock_cache.get.return_value = None
+
+        mock_sp = Mock()
+        mock_sp.current_user_top_artists.return_value = {
+            'items': [
+                {
+                    'name': 'Artist 1',
+                    'genres': ['rock', 'alternative', 'indie'],
+                    'images': [{'url': 'https://image1.jpg'}]
+                },
+                {
+                    'name': 'Artist 2',
+                    'genres': ['pop', 'rock'],
+                    'images': []
+                }
+            ]
+        }
+
+        mock_sp.current_user_top_tracks.return_value = {
+            'items': [
+                {
+                    'name': 'Track 1',
+                    'artists': [{'name': 'Artist A'}, {'name': 'Artist B'}],
+                    'album': {
+                        'name': 'Album 1',
+                        'images': [{'url': 'https://album1.jpg'}]
+                    }
+                },
+                {
+                    'name': 'Track 2',
+                    'artists': [{'name': 'Artist C'}],
+                    'album': {
+                        'name': 'Album 2',
+                        'images': []
+                    }
+                }
+            ]
+        }
+
+        result = _fetch_spotify_highlights(request, mock_sp)
+
+        # Verify top genres (should count occurrences)
+        self.assertEqual(len(result['top_genres']), 4)  # Rock appears twice
+        self.assertEqual(result['top_genres'][0]['genre'], 'Rock')  # Most common
+        self.assertEqual(result['top_genres'][0]['count'], 2)
+
+        # Verify top artists
+        self.assertEqual(len(result['top_artists']), 2)
+        self.assertEqual(result['top_artists'][0]['name'], 'Artist 1')
+        self.assertEqual(result['top_artists'][0]['genres'], ['Rock', 'Alternative', 'Indie'])
+        self.assertEqual(result['top_artists'][0]['image'], 'https://image1.jpg')
+        self.assertEqual(result['top_artists'][1]['image'], '')  # No image
+
+        # Verify top tracks
+        self.assertEqual(len(result['top_tracks']), 2)
+        self.assertEqual(result['top_tracks'][0]['name'], 'Track 1')
+        self.assertEqual(result['top_tracks'][0]['artists'], 'Artist A, Artist B')
+        self.assertEqual(result['top_tracks'][0]['album'], 'Album 1')
+        self.assertEqual(result['top_tracks'][0]['image'], 'https://album1.jpg')
+        self.assertEqual(result['top_tracks'][1]['image'], '')  # No image
+
+        # Verify caching
+        mock_cache.set.assert_called_once()
+
+    @patch('dashboard.views.cache')
+    def test_fetch_spotify_highlights_handles_empty_response(self, mock_cache):
+        """Test _fetch_spotify_highlights handles empty API responses"""
+        from dashboard.views import _fetch_spotify_highlights
+
+        session = self.client.session
+        session.save()
+
+        request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
+
+        mock_cache.get.return_value = None
+
+        mock_sp = Mock()
+        mock_sp.current_user_top_artists.return_value = {'items': []}
+        mock_sp.current_user_top_tracks.return_value = {'items': []}
+
+        result = _fetch_spotify_highlights(request, mock_sp)
+
+        # Should return empty lists
+        self.assertEqual(result['top_genres'], [])
+        self.assertEqual(result['top_artists'], [])
+        self.assertEqual(result['top_tracks'], [])

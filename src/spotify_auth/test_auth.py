@@ -217,6 +217,97 @@ class SpotifyCallbackViewTests(TestCase):
         self.assertIn('Failed to get access token', data['error'])
 
     @patch('spotify_auth.views.requests.post')
+    def test_callback_with_network_error_during_token_exchange(self, mock_post):
+        """Test callback when network error occurs during token exchange"""
+        # Set up session state
+        session = self.client.session
+        session['spotify_auth_state'] = 'test_state'
+        session.save()
+
+        # Mock a network error
+        mock_post.side_effect = RequestException("Connection timeout")
+
+        # Make the callback request
+        response = self.client.get(self.callback_url, {
+            'code': 'test_auth_code',
+            'state': 'test_state'
+        })
+
+        # Should return 502 Bad Gateway
+        self.assertEqual(response.status_code, 502)
+        data = json.loads(response.content)
+        self.assertIn('Unable to reach Spotify', data['error'])
+
+    @patch('spotify_auth.views.SpotifyCallbackView.get_user_profile')
+    @patch('spotify_auth.views.requests.post')
+    def test_callback_handles_user_profile_fetch_failure(self, mock_post, mock_get_profile):
+        """Test callback gracefully handles user profile fetch failure"""
+        # Set up session state
+        session = self.client.session
+        session['spotify_auth_state'] = 'test_state'
+        session.save()
+
+        # Mock successful token exchange
+        mock_token_response = Mock()
+        mock_token_response.status_code = 200
+        mock_token_response.json.return_value = {
+            'access_token': 'test_access_token',
+            'refresh_token': 'test_refresh_token',
+            'expires_in': 3600
+        }
+        mock_post.return_value = mock_token_response
+
+        # Mock user profile fetch to return None (failure)
+        mock_get_profile.return_value = None
+
+        # Make the callback request
+        response = self.client.get(self.callback_url, {
+            'code': 'test_auth_code',
+            'state': 'test_state'
+        })
+
+        # Should still redirect to dashboard despite profile fetch failure
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dashboard:dashboard'))
+
+        # Tokens should still be stored
+        self.assertEqual(self.client.session.get('spotify_access_token'), 'test_access_token')
+
+        # User profile data should not be stored
+        self.assertNotIn('spotify_user_id', self.client.session)
+        self.assertNotIn('spotify_display_name', self.client.session)
+
+    @patch('spotify_auth.views.requests.get')
+    def test_get_user_profile_with_network_error(self, mock_get):
+        """Test get_user_profile handles network errors gracefully"""
+        from spotify_auth.views import SpotifyCallbackView
+
+        # Mock a network error
+        mock_get.side_effect = RequestException("Network error")
+
+        view = SpotifyCallbackView()
+        result = view.get_user_profile('test_token')
+
+        # Should return None on network error
+        self.assertIsNone(result)
+
+    @patch('spotify_auth.views.requests.get')
+    def test_get_user_profile_with_failed_response(self, mock_get):
+        """Test get_user_profile handles non-200 responses"""
+        from spotify_auth.views import SpotifyCallbackView
+
+        # Mock a failed response
+        mock_response = Mock()
+        mock_response.status_code = 401
+        mock_get.return_value = mock_response
+
+        view = SpotifyCallbackView()
+        result = view.get_user_profile('test_token')
+
+        # Should return None on failed response
+        self.assertIsNone(result)
+
+    @patch('spotify_auth.views.requests.post')
     def test_callback_token_exchange_parameters(self, mock_post):
         """Test that token exchange includes correct parameters"""
         # Set up session state
