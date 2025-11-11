@@ -65,6 +65,36 @@ def _payload_with_owner(session, cache_key, payload, owner_user_id=None):
     return enriched
 
 
+class ModelTests(TestCase):
+    """Tests for recommender models."""
+
+    def test_saved_playlist_str(self):
+        """Test __str__ method of SavedPlaylist"""
+        playlist = SavedPlaylist.objects.create(
+            playlist_id="spotify123",
+            like_count=10,
+            creator_user_id="user456",
+            creator_display_name="Test User"
+        )
+        expected = "spotify123 (user456)"
+        self.assertEqual(str(playlist), expected)
+
+    def test_playlist_generation_stat_str(self):
+        """Test __str__ method of PlaylistGenerationStat"""
+        import datetime
+        stat = PlaylistGenerationStat.objects.create(
+            user_identifier="testuser",
+            prompt="test prompt",
+            track_count=20,
+            total_duration_ms=1000000
+        )
+        # Should include user_identifier and created_at timestamp
+        str_repr = str(stat)
+        self.assertIn("testuser", str_repr)
+        # Check format includes date/time
+        self.assertRegex(str_repr, r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}')
+
+
 class StatsServiceTests(TestCase):
     """Verify aggregation helpers for generation history."""
 
@@ -77,6 +107,12 @@ class StatsServiceTests(TestCase):
         self.assertEqual(summary["total_tracks"], 0)
         self.assertEqual(summary["top_genre"], "")
         self.assertEqual(summary["total_tokens"], 0)
+
+    def test_summary_empty_string_identifier(self):
+        """Test summarize_generation_stats with empty string returns empty summary"""
+        summary = summarize_generation_stats("")
+        self.assertEqual(summary["total_playlists"], 0)
+        self.assertEqual(summary["total_tracks"], 0)
 
     def test_summary_with_records(self):
         PlaylistGenerationStat.objects.create(
@@ -139,6 +175,68 @@ class StatsServiceTests(TestCase):
         breakdown = get_genre_breakdown("user456")
         self.assertTrue(any(entry["genre"] == "Indie" for entry in breakdown))
         self.assertTrue(any(entry["genre"] == "Lo-Fi" for entry in breakdown))
+
+    def test_genre_breakdown_with_empty_identifier(self):
+        """Test get_genre_breakdown returns empty list for None identifier"""
+        breakdown = get_genre_breakdown(None)
+        self.assertEqual(breakdown, [])
+
+    def test_genre_breakdown_with_empty_string_identifier(self):
+        """Test get_genre_breakdown returns empty list for empty string"""
+        breakdown = get_genre_breakdown("")
+        self.assertEqual(breakdown, [])
+
+    def test_genre_breakdown_with_top_genre_not_in_genre_top(self):
+        """Test get_genre_breakdown includes top_genre even if not in stats"""
+        PlaylistGenerationStat.objects.create(
+            user_identifier="user789",
+            prompt="jazz classics",
+            track_count=15,
+            total_duration_ms=3_000_000,
+            top_genre="Jazz",  # This genre is not in stats['genre_top']
+            stats={
+                "genre_top": [
+                    {"genre": "Blues", "percentage": 40},
+                ]
+            },
+        )
+
+        breakdown = get_genre_breakdown("user789")
+        # Jazz should be included even though it's only in top_genre
+        self.assertTrue(any(entry["genre"] == "Jazz" for entry in breakdown))
+
+    def test_genre_breakdown_with_invalid_genre_entries(self):
+        """Test _normalize_genre_entries handles invalid data gracefully"""
+        from recommender.services.stats_service import _normalize_genre_entries
+
+        # Test with non-dict entries
+        result = _normalize_genre_entries([
+            {"genre": "Valid", "percentage": 50},
+            "not a dict",  # Should be skipped
+            None,  # Should be skipped
+            {"genre": "", "percentage": 30},  # Empty genre should be skipped
+            {"percentage": 20},  # Missing genre should be skipped
+        ])
+
+        # Only the first valid entry should remain
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["genre"], "Valid")
+        self.assertEqual(result[0]["weight"], 50)
+
+    def test_genre_breakdown_with_non_dict_stats(self):
+        """Test get_genre_breakdown handles non-dict stats gracefully"""
+        PlaylistGenerationStat.objects.create(
+            user_identifier="user_nondict",
+            prompt="test",
+            track_count=10,
+            total_duration_ms=1_000_000,
+            top_genre="Pop",
+            stats="not a dict",  # Invalid stats format
+        )
+
+        breakdown = get_genre_breakdown("user_nondict")
+        # Should still include top_genre
+        self.assertTrue(any(entry["genre"] == "Pop" for entry in breakdown))
 
 
 class GeneratePlaylistViewTests(TestCase):
@@ -1476,6 +1574,27 @@ class UserPreferencePlaceholderTests(TestCase):
         self.assertIn("track_count", keys)
         self.assertIn("enforce_unique_tracks", keys)
         self.assertIn("allow_seed_only_playlists", keys)
+
+    def test_is_customized_always_returns_false(self):
+        """Test that is_customized property always returns False for placeholder"""
+        prefs = get_default_preferences()
+        # Until user settings UI is implemented, this should always be False
+        self.assertFalse(prefs.is_customized)
+
+    def test_get_preferences_for_request(self):
+        """Test get_preferences_for_request returns default preferences"""
+        from django.test import RequestFactory
+        from recommender.services.user_preferences import get_preferences_for_request
+
+        factory = RequestFactory()
+        request = factory.get('/test/')
+
+        prefs = get_preferences_for_request(request)
+        # Should return same as get_default_preferences()
+        default_prefs = get_default_preferences()
+        self.assertEqual(prefs.track_count, default_prefs.track_count)
+        self.assertEqual(prefs.enforce_unique_tracks, default_prefs.enforce_unique_tracks)
+        self.assertEqual(prefs.allow_seed_only_playlists, default_prefs.allow_seed_only_playlists)
 
 
 class ViewHelperTests(TestCase):

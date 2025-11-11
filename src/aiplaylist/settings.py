@@ -85,7 +85,7 @@ if not SECRET_KEY:
 
 _raw_allowed_hosts = os.getenv(
     "DJANGO_ALLOWED_HOSTS",
-    "0.0.0.0,localhost,127.0.0.1,192.168.1.111,aiplaylistgenerator.app,aiplaylistgenerator-not-docker.onrender.com",
+    "0.0.0.0,localhost,127.0.0.1,aiplaylistgenerator.app,aiplaylistgenerator-not-docker.onrender.com",
 )
 ALLOWED_HOSTS = [host.strip() for host in _raw_allowed_hosts.split(",") if host.strip()]
 _raw_csrf_trusted_origins = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS")
@@ -260,10 +260,10 @@ RECOMMENDER_OPENAI_TEMPERATURE = _float_env("RECOMMENDER_OPENAI_TEMPERATURE", 0.
 RECOMMENDER_OPENAI_MAX_TOKENS = _int_env("RECOMMENDER_OPENAI_MAX_TOKENS", 512)
 RECOMMENDER_LLM_DEFAULT_PROVIDER = os.getenv("RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai").lower()
 RECOMMENDER_OLLAMA_MODEL = os.getenv("RECOMMENDER_OLLAMA_MODEL", "mistral")
-_default_ollama_timeout = 600 if DEBUG else 60
+DEFAULT_OLLAMA_TIMEOUT = 600 if DEBUG else 60
 RECOMMENDER_OLLAMA_TIMEOUT_SECONDS = _int_env(
     "RECOMMENDER_OLLAMA_TIMEOUT_SECONDS",
-    _default_ollama_timeout,
+    DEFAULT_OLLAMA_TIMEOUT,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -280,7 +280,7 @@ RECOMMENDER_EXPERIMENTAL_FLAGS = {
 }
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = _bool_env("DJANGO_SECURE_SSL_REDIRECT", False) # Handled by hosting service
+    SECURE_SSL_REDIRECT = _bool_env("DJANGO_SECURE_SSL_REDIRECT", False) # Handled by host
     SESSION_COOKIE_SECURE = _bool_env("DJANGO_SESSION_COOKIE_SECURE", True)
     CSRF_COOKIE_SECURE = _bool_env("DJANGO_CSRF_COOKIE_SECURE", True)
     SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "31536000"))
