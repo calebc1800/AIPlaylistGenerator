@@ -178,27 +178,9 @@ class DashboardView(View):
                 playlists = Playlist.objects.all().order_by('-likes')
 
             debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
-<<<<<<< HEAD
             session_provider = "openai"
             request.session["llm_provider"] = session_provider
             default_provider = "openai"
-=======
-            default_provider = str(
-                getattr(settings, "RECOMMENDER_LLM_DEFAULT_PROVIDER", "openai")
-            ).lower()
-            session_provider = (request.session.get("llm_provider") or "").strip().lower()
-            if session_provider not in {"openai", "ollama"}:
-                session_provider = default_provider
-            if not debug_enabled:
-                session_provider = (
-                    default_provider 
-                    if default_provider in {"openai", "ollama"} 
-                    else "openai"
-                )
-                request.session["llm_provider"] = session_provider
-            else:
-                request.session["llm_provider"] = session_provider
->>>>>>> main
 
             generation_identifier = _resolve_generation_identifier(request, user_id)
             generated_stats = summarize_generation_stats(generation_identifier)
