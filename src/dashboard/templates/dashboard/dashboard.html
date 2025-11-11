@@ -482,6 +482,16 @@
             }
         };
 
+        // Helper to escape HTML special characters in a string.
+        const escapeHtml = (unsafe) => {
+            return String(unsafe)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        };
+
         const renderGenreBreakdown = (entries) => {
             if (!genreList) {
                 return;
@@ -493,7 +503,7 @@
             genreList.innerHTML = entries
                 .map(
                     (entry) =>
-                        `<li><span>${entry.genre}</span><span>${entry.percentage}%</span></li>`
+                        `<li><span>${escapeHtml(entry.genre)}</span><span>${escapeHtml(entry.percentage)}%</span></li>`
                 )
                 .join('');
         };
