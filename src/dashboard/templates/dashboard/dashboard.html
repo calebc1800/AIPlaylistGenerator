@@ -51,22 +51,6 @@
                     <div class="form-group">
                         <div class="form-group-header">
                             <label for="playlist_prompt">Playlist Prompt</label>
-                            {% if llm_toggle_visible %}
-                            {% with current_provider=llm_provider|default:llm_provider_default|default:'openai' %}
-                            <div class="llm-toggle" id="llm-toggle">
-                                <span class="toggle-label">LLM Provider</span>
-                                <label class="switch">
-                                    <input
-                                        type="checkbox"
-                                        id="llm_provider_toggle"
-                                        {% if current_provider|lower == 'ollama' %}checked{% endif %}
-                                    >
-                                    <span class="slider"></span>
-                                </label>
-                                <span class="toggle-state" id="llm-toggle-state">{{ current_provider|capfirst }}</span>
-                            </div>
-                            {% endwith %}
-                            {% endif %}
                         </div>
                         <textarea 
                             id="playlist_prompt" 
@@ -75,20 +59,11 @@
                             required
                         ></textarea>
                         <div class="prompt-limit" id="prompt-char-limit">0 / 128 characters</div>
-                        {% if llm_toggle_visible %}
-                        <input
-                            type="hidden"
-                            name="llm_provider"
-                            id="llm_provider_input"
-                            value="{{ llm_provider|default:llm_provider_default|default:'openai' }}"
-                        >
-                        {% else %}
                         <input
                             type="hidden"
                             name="llm_provider"
                             value="{{ llm_provider_default|default:'openai' }}"
                         >
-                        {% endif %}
                     </div>
                     
                     <div class="form-group">
@@ -315,21 +290,6 @@
         if (promptInput) {
             updatePromptState();
             promptInput.addEventListener('input', updatePromptState);
-        }
-
-        const llmProviderInput = document.getElementById('llm_provider_input');
-        const llmProviderToggle = document.getElementById('llm_provider_toggle');
-        const llmToggleState = document.getElementById('llm-toggle-state');
-
-        if (llmProviderInput && llmProviderToggle && llmToggleState) {
-            const applyProviderState = () => {
-                const provider = llmProviderToggle.checked ? 'ollama' : 'openai';
-                llmProviderInput.value = provider;
-                llmToggleState.textContent = provider === 'ollama' ? 'Ollama' : 'OpenAI';
-            };
-
-            applyProviderState();
-            llmProviderToggle.addEventListener('change', applyProviderState);
         }
 
         tabs.forEach(tab => {
