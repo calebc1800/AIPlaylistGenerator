@@ -1144,17 +1144,69 @@ def save_playlist(request):
         resolved_display_name = result.get("user_display_name")
         if resolved_display_name:
             request.session["spotify_display_name"] = resolved_display_name
+        
         if playlist_id and resolved_user_id and resolved_display_name:
             try:
+                # Fetch playlist details from Spotify
+                import spotipy
+                sp = spotipy.Spotify(auth=access_token)
+                spotify_playlist = sp.playlist(playlist_id)
+                
+                # Extract playlist metadata
+                cover_image = ""
+                if spotify_playlist.get("images"):
+                    cover_image = spotify_playlist["images"][0].get("url", "")
+                
+                # Calculate total duration from tracks
+                track_details = payload.get("track_details", [])
+                total_duration_ms = sum(int(track.get("duration_ms", 0)) for track in track_details if isinstance(track, dict))
+                
+                # Get description from payload attributes or prompt
+                description = ""
+                prompt = payload.get("prompt", "")
+                attributes = payload.get("attributes")
+                if isinstance(attributes, dict):
+                    mood = attributes.get("mood", "")
+                    genre = attributes.get("genre", "")
+                    energy = attributes.get("energy", "")
+                    description = f"AI-generated playlist: {prompt}. Mood: {mood}, Genre: {genre}, Energy: {energy}"
+                elif prompt:
+                    description = f"AI-generated playlist: {prompt}"
+                
                 SavedPlaylist.objects.update_or_create(
                     playlist_id=playlist_id,
-                    defaults={"creator_user_id": resolved_user_id, "creator_display_name": resolved_display_name},
+                    defaults={
+                        "creator_user_id": resolved_user_id,
+                        "creator_display_name": resolved_display_name,
+                        "playlist_name": resolved_name,
+                        "description": description,
+                        "cover_image": cover_image,
+                        "track_count": len(track_ids),
+                        "total_duration_ms": total_duration_ms,
+                        "spotify_uri": spotify_playlist.get("uri", ""),
+                    },
                 )
+            except SpotifyException as exc:
+                logger.warning("Failed to fetch playlist details from Spotify %s: %s", playlist_id, exc)
+                # Still save basic info even if we can't fetch details
+                try:
+                    SavedPlaylist.objects.update_or_create(
+                        playlist_id=playlist_id,
+                        defaults={
+                            "creator_user_id": resolved_user_id,
+                            "creator_display_name": resolved_display_name,
+                            "playlist_name": resolved_name,
+                            "track_count": len(track_ids),
+                        },
+                    )
+                except DatabaseError as db_exc:
+                    logger.exception("Failed to persist saved playlist %s: %s", playlist_id, db_exc)
             except DatabaseError as exc:  # pragma: no cover - defensive logging
                 logger.exception("Failed to persist saved playlist %s: %s", playlist_id, exc)
+        
         context["playlist_name"] = resolved_name
         messages.success(request, f"Playlist '{resolved_name}' saved to Spotify.")
-
+        
     return render(request, "recommender/playlist_result.html", context)
 
 

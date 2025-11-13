@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from .models import Playlist, Song
+from recommender.models import SavedPlaylist
 
 
 class SpotifyAPIHelper:
@@ -131,15 +132,15 @@ class ExplorerView(View):
     """Display playlists from database, or fetch from Spotify if empty"""
 
     def get(self, request):
-        playlists = Playlist.objects.all().order_by('-likes')
+        playlists = SavedPlaylist.objects.all().order_by('-likes')
 
-        # If no playlists exist, fetch from Spotify
+            # If no playlists exist, fetch from Spotify
         if not playlists.exists():
             spotify_playlists = SpotifyAPIHelper.fetch_playlists('popular', limit=10)
             for spotify_playlist in spotify_playlists:
                 SpotifyAPIHelper.import_playlist(spotify_playlist)
 
-            playlists = Playlist.objects.all().order_by('-likes')
+            playlists = SavedPlaylist.objects.all().order_by('-likes')
 
         context = {
             'playlists': playlists,
@@ -238,10 +239,12 @@ def logout(request):
 @csrf_exempt
 def like_playlist(request, spotify_id):
     """Handle playlist like action"""
-    playlist = get_object_or_404(Playlist, spotify_id=spotify_id)
+    from recommender.models import SavedPlaylist
+    
+    playlist = get_object_or_404(SavedPlaylist, playlist_id=spotify_id)
 
     # Increment the likes field using F expression for atomic operation
-    playlist.likes = F('likes') + 1
+    playlist.like_count = F('like_count') + 1
     playlist.save()
 
     # Refresh to get the actual value
@@ -251,7 +254,7 @@ def like_playlist(request, spotify_id):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({
             'success': True,
-            'likes': playlist.likes
+            'likes': playlist.like_count
         })
 
     # For non-AJAX requests, redirect back
