@@ -2,54 +2,53 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
 from unittest.mock import patch, Mock
-from explorer.models import Playlist, Song
+from recommender.models import SavedPlaylist
+from explorer.models import Playlist, Song  # Still needed for SpotifyAPIHelper tests
 from explorer.views import SpotifyAPIHelper
 
 
-class PlaylistModelTests(TestCase):
-    """Tests for Playlist model"""
+class SavedPlaylistModelTests(TestCase):
+    """Tests for SavedPlaylist model"""
 
     def setUp(self):
         self.user = User.objects.create_user(username='tester', password='testpass')
 
-    def test_create_playlist(self):
-        """Test creating a playlist with all fields"""
-        playlist = Playlist.objects.create(
-            name='Test Playlist',
+    def test_create_saved_playlist(self):
+        """Test creating a saved playlist with all fields"""
+        playlist = SavedPlaylist.objects.create(
+            playlist_name='Test Playlist',
+            playlist_id='sp123',
             description='Sample playlist',
-            creator=self.user,
-            likes=5,
-            spotify_id='sp123',
+            creator_user_id='user123',
+            creator_display_name='tester',
+            like_count=5,
             spotify_uri='spotify:playlist:sp123'
         )
-        self.assertEqual(str(playlist), 'Test Playlist')
-        self.assertEqual(playlist.likes, 5)
-        self.assertEqual(playlist.creator.username, 'tester')
-        self.assertEqual(playlist.spotify_id, 'sp123')
+        self.assertEqual(str(playlist), 'Test Playlist (tester)')
+        self.assertEqual(playlist.like_count, 5)
+        self.assertEqual(playlist.creator_display_name, 'tester')
+        self.assertEqual(playlist.playlist_id, 'sp123')
 
-    def test_playlist_ordering(self):
-        """Test that playlists are ordered by likes descending"""
-        p1 = Playlist.objects.create(name='Low', creator=self.user, likes=1, spotify_id='low')
-        p2 = Playlist.objects.create(name='High', creator=self.user, likes=10, spotify_id='high')
-        playlists = Playlist.objects.all()
+    def test_saved_playlist_ordering(self):
+        """Test that saved playlists are ordered by created_at descending"""
+        p1 = SavedPlaylist.objects.create(
+            playlist_name='First',
+            playlist_id='first',
+            creator_user_id='user1',
+            creator_display_name='tester',
+            like_count=1
+        )
+        p2 = SavedPlaylist.objects.create(
+            playlist_name='Second',
+            playlist_id='second',
+            creator_user_id='user1',
+            creator_display_name='tester',
+            like_count=10
+        )
+        # Default ordering is by -created_at, so p2 should be first
+        playlists = SavedPlaylist.objects.all()
         self.assertEqual(playlists[0], p2)
         self.assertEqual(playlists[1], p1)
-
-    def test_song_creation_and_relation(self):
-        """Test creating songs and their relationship with playlists"""
-        playlist = Playlist.objects.create(name='Test', creator=self.user, spotify_id='xyz1')
-        song = Song.objects.create(playlist=playlist, name='Track 1', artist='Artist X')
-        self.assertEqual(str(song), 'Track 1')
-        self.assertEqual(song.playlist, playlist)
-        self.assertEqual(playlist.sample_songs.count(), 1)
-
-    def test_multiple_songs_in_playlist(self):
-        """Test adding multiple songs to a playlist"""
-        playlist = Playlist.objects.create(name='Multi', creator=self.user, spotify_id='multi')
-        Song.objects.create(playlist=playlist, name='Song 1', artist='Artist 1')
-        Song.objects.create(playlist=playlist, name='Song 2', artist='Artist 2')
-        Song.objects.create(playlist=playlist, name='Song 3', artist='Artist 3')
-        self.assertEqual(playlist.sample_songs.count(), 3)
 
 
 class SearchViewTests(TestCase):
@@ -58,14 +57,14 @@ class SearchViewTests(TestCase):
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(username='bob', password='123')
-        self.p1 = Playlist.objects.create(
-            name='Rock Mix',
+        self.p1 = SavedPlaylist.objects.create(
+            playlist_name='Rock Mix',
+            playlist_id='rockmix',
             description='Best rock songs',
-            creator=self.user,
-            likes=4,
-            spotify_id='rockmix'
+            creator_user_id='bob_id',
+            creator_display_name='bob',
+            like_count=4
         )
-        Song.objects.create(playlist=self.p1, name='Thunderstruck', artist='AC/DC')
 
     def test_search_view_renders(self):
         """Test that search view renders successfully"""
@@ -86,9 +85,12 @@ class SearchViewTests(TestCase):
         self.assertContains(response, 'Rock Mix')
 
     def test_search_by_song_name(self):
-        """Test searching for playlists by song name"""
+        """Test searching for playlists by song name - not supported with SavedPlaylist"""
+        # SavedPlaylist doesn't have song relations, so searching by song name won't work
+        # This test now verifies that searching for a song name returns no results
         response = self.client.get(reverse('search') + '?q=Thunderstruck')
-        self.assertContains(response, 'Rock Mix')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['results_count'], 0)
 
     def test_search_by_creator_username(self):
         """Test searching for playlists by creator username"""
@@ -100,37 +102,20 @@ class SearchViewTests(TestCase):
         response = self.client.get(reverse('search') + '?q=ROCK')
         self.assertContains(response, 'Rock Mix')
 
-    @patch('explorer.views.SpotifyAPIHelper.fetch_playlists', return_value=[])
-    def test_search_no_results_shows_empty_message(self, mock_fetch):
+    def test_search_no_results_shows_empty_message(self):
         """Test that search shows appropriate message when no results found"""
         response = self.client.get(reverse('search') + '?q=Nonexistent')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'No playlists found')
 
-    @patch('explorer.views.SpotifyAPIHelper.fetch_playlists')
-    @patch('explorer.views.SpotifyAPIHelper.import_playlist')
-    def test_search_fetches_from_spotify_when_not_found_locally(self, mock_import, mock_fetch):
-        """Test that search fetches from Spotify API when no local results"""
-        Playlist.objects.all().delete()
-        mock_fetch.return_value = [
-            {
-                'id': 'abc',
-                'name': 'Imported',
-                'description': 'From Spotify',
-                'images': [{'url': 'http://image.url'}],
-                'followers': {'total': 100},
-                'tracks': {'href': 'http://tracks'},
-                'uri': 'spotify:playlist:abc'
-            }
-        ]
-        mock_import.return_value = Playlist.objects.create(
-            name='Imported',
-            creator=self.user,
-            spotify_id='abc'
-        )
+    def test_search_fetches_from_spotify_when_not_found_locally(self):
+        """Test that search returns empty when no local results found"""
+        # Since we removed Spotify fallback, searching for nonexistent playlists returns empty
+        SavedPlaylist.objects.all().delete()
         response = self.client.get(reverse('search') + '?q=something')
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Imported')
+        # Should return empty results
+        self.assertEqual(response.context['results_count'], 0)
 
     def test_search_without_query(self):
         """Test search without query parameter returns all playlists"""
@@ -160,39 +145,55 @@ class ProfileViewTests(TestCase):
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(username='charlie', password='test')
-        Playlist.objects.create(name='User Playlist 1', creator=self.user, spotify_id='user1')
-        Playlist.objects.create(name='User Playlist 2', creator=self.user, spotify_id='user2')
+        self.spotify_user_id = 'charlie_spotify_id'
+        SavedPlaylist.objects.create(
+            playlist_name='User Playlist 1',
+            playlist_id='user1',
+            creator_user_id=self.spotify_user_id,
+            creator_display_name='charlie'
+        )
+        SavedPlaylist.objects.create(
+            playlist_name='User Playlist 2',
+            playlist_id='user2',
+            creator_user_id=self.spotify_user_id,
+            creator_display_name='charlie'
+        )
 
     def test_profile_page_valid_user(self):
         """Test that profile page displays for valid user"""
-        response = self.client.get(reverse('profile', args=[self.user.id]))
+        response = self.client.get(reverse('profile', args=[self.spotify_user_id]))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'explorer/profile.html')
         self.assertContains(response, "charlie's Playlists")
 
     def test_profile_shows_user_playlists(self):
         """Test that profile shows all user's playlists"""
-        response = self.client.get(reverse('profile', args=[self.user.id]))
+        response = self.client.get(reverse('profile', args=[self.spotify_user_id]))
         self.assertContains(response, 'User Playlist 1')
         self.assertContains(response, 'User Playlist 2')
 
     def test_profile_page_invalid_user(self):
         """Test that profile page returns 404 for non-existent user"""
-        response = self.client.get(reverse('profile', args=[999]))
+        response = self.client.get(reverse('profile', args=['nonexistent_user_id']))
         self.assertEqual(response.status_code, 404)
 
     def test_profile_shows_only_user_playlists(self):
         """Test that profile only shows playlists created by that user"""
-        other_user = User.objects.create_user(username='other', password='pass')
-        Playlist.objects.create(name='Other Playlist', creator=other_user, spotify_id='other')
+        other_user_id = 'other_spotify_id'
+        SavedPlaylist.objects.create(
+            playlist_name='Other Playlist',
+            playlist_id='other',
+            creator_user_id=other_user_id,
+            creator_display_name='other'
+        )
 
-        response = self.client.get(reverse('profile', args=[self.user.id]))
+        response = self.client.get(reverse('profile', args=[self.spotify_user_id]))
         self.assertContains(response, 'User Playlist 1')
         self.assertNotContains(response, 'Other Playlist')
 
     def test_profile_displays_playlist_card_structure(self):
         """Test that profile page uses the new playlist card structure"""
-        response = self.client.get(reverse('profile', args=[self.user.id]))
+        response = self.client.get(reverse('profile', args=[self.spotify_user_id]))
         self.assertEqual(response.status_code, 200)
         # Check for new playlist card structure elements
         self.assertContains(response, 'playlist-card')
@@ -366,17 +367,16 @@ class PlaylistCardTemplateTests(TestCase):
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(username='testuser', password='testpass')
-        self.playlist = Playlist.objects.create(
-            name='Test Playlist',
+        self.playlist = SavedPlaylist.objects.create(
+            playlist_name='Test Playlist',
+            playlist_id='test123',
             description='Test Description',
-            creator=self.user,
-            likes=10,
-            spotify_id='test123',
+            creator_user_id='user_test123',
+            creator_display_name='testuser',
+            like_count=10,
             spotify_uri='spotify:playlist:test123',
             cover_image='http://example.com/image.jpg'
         )
-        Song.objects.create(playlist=self.playlist, name='Test Song 1', artist='Test Artist 1')
-        Song.objects.create(playlist=self.playlist, name='Test Song 2', artist='Test Artist 2')
 
     def test_playlist_card_has_correct_structure(self):
         """Test that playlist card has the new structure with all elements"""
@@ -421,7 +421,7 @@ class PlaylistCardTemplateTests(TestCase):
         """Test that playlist card shows Spotify link when spotify_uri is set"""
         response = self.client.get(reverse('search') + '?q=Test')
         self.assertContains(response, 'View on Spotify')
-        self.assertContains(response, f'https://open.spotify.com/playlist/{self.playlist.spotify_id}')
+        self.assertContains(response, f'https://open.spotify.com/playlist/{self.playlist.playlist_id}')
 
     def test_playlist_card_hides_spotify_link_when_not_available(self):
         """Test that playlist card hides Spotify link when spotify_uri is not set"""

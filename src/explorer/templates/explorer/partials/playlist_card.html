@@ -1,23 +1,23 @@
 <div class="playlist-card">
     <div class="playlist-image">
         {% if playlist.cover_image %}
-        <img src="{{ playlist.cover_image }}" alt="{{ playlist.name }}">
+        <img src="{{ playlist.cover_image }}" alt="{{ playlist.playlist_name }}">
         {% else %}
         🎵
         {% endif %}
     </div>
     <div class="playlist-info-compact">
-        <div class="playlist-title">{{ playlist.name }}</div>
+        <div class="playlist-title">{{ playlist.playlist_name }}</div>
         <div class="playlist-meta">
-            <span class="creator-name">👤 {{ playlist.creator.username }}</span>
-            <form method="POST" action="{% url 'like_playlist' playlist.spotify_id %}" class="like-form" style="display: inline;">
-                <button type="submit" class="like-button" data-playlist-id="{{ playlist.spotify_id }}">
-                    <span class="likes-count">{{ playlist.likes }}</span> 👍
+            <span class="creator-name">👤 {{ playlist.creator_display_name }}</span>
+            <form method="POST" action="{% url 'like_playlist' playlist.playlist_id %}" class="like-form" style="display: inline;">
+                <button type="submit" class="like-button" data-playlist-id="{{ playlist.playlist_id }}">
+                    <span class="likes-count">{{ playlist.like_count }}</span> 👍
                 </button>
             </form>
         </div>
         {% if playlist.spotify_uri %}
-        <a href="https://open.spotify.com/playlist/{{ playlist.spotify_id }}" target="_blank" class="spotify-link">View on Spotify →</a>
+        <a href="https://open.spotify.com/playlist/{{ playlist.playlist_id }}" target="_blank" class="spotify-link">View on Spotify →</a>
         {% endif %}
     </div>
 </div>

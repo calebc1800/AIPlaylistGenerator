@@ -235,12 +235,15 @@
         </main>
 
         <footer class="search-footer">
-            <form class="search-form">
+            <form class="search-form" id="playlist-search-form">
                 <div class="search-container">
                     <input
                         type="text"
-                        placeholder="Chat to find/make playlist..."
+                        name="q"
+                        id="playlist-search-input"
+                        placeholder="Search for playlists by name or creator..."
                         class="search-input"
+                        autocomplete="off"
                     >
                     <button type="submit" class="search-btn">🔍</button>
                 </div>
@@ -568,6 +571,70 @@
         hydrateStats();
         refreshStats();
         setInterval(refreshStats, 120000);
+
+        // Playlist search functionality
+        const searchForm = document.getElementById('playlist-search-form');
+        const searchInput = document.getElementById('playlist-search-input');
+        const exploreTab = document.querySelector('[data-tab="explore"]');
+
+        if (searchForm && searchInput) {
+            // Handle form submission
+            searchForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const query = searchInput.value.trim();
+                filterPlaylists(query);
+
+                // Switch to explore tab if not already there
+                if (exploreTab && !exploreTab.classList.contains('active')) {
+                    exploreTab.click();
+                }
+            });
+
+            // Real-time filtering as user types
+            searchInput.addEventListener('input', () => {
+                const query = searchInput.value.trim();
+                filterPlaylists(query);
+            });
+        }
+
+        function filterPlaylists(query) {
+            const playlistCards = document.querySelectorAll('.playlist-card');
+            const lowerQuery = query.toLowerCase();
+            let visibleCount = 0;
+
+            playlistCards.forEach(card => {
+                const title = card.querySelector('.playlist-title')?.textContent.toLowerCase() || '';
+                const creator = card.querySelector('.creator-name')?.textContent.toLowerCase() || '';
+
+                if (!query || title.includes(lowerQuery) || creator.includes(lowerQuery)) {
+                    card.style.display = '';
+                    visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // Show/hide empty state message
+            const playlistsGrid = document.querySelector('#explore .playlists-grid');
+            if (playlistsGrid) {
+                let emptyState = playlistsGrid.querySelector('.search-empty-state');
+
+                if (visibleCount === 0 && query) {
+                    if (!emptyState) {
+                        emptyState = document.createElement('div');
+                        emptyState.className = 'empty-state search-empty-state';
+                        emptyState.style.gridColumn = '1 / -1';
+                        emptyState.textContent = `No playlists found for "${query}"`;
+                        playlistsGrid.appendChild(emptyState);
+                    } else {
+                        emptyState.textContent = `No playlists found for "${query}"`;
+                        emptyState.style.display = '';
+                    }
+                } else if (emptyState) {
+                    emptyState.style.display = 'none';
+                }
+            }
+        }
     </script>
 </body>
 </html>

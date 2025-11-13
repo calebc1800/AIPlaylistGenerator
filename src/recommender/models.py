@@ -7,12 +7,22 @@ class SavedPlaylist(models.Model):
     """Persist Spotify playlists saved through the application."""
 
     playlist_id = models.CharField(max_length=64, unique=True)
+    playlist_name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    cover_image = models.URLField(blank=True)
     like_count = models.PositiveIntegerField(default=0)
     creator_user_id = models.CharField(max_length=64)
     creator_display_name = models.CharField(max_length=64)
+    track_count = models.PositiveIntegerField(default=0)
+    total_duration_ms = models.BigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    spotify_uri = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
     def __str__(self) -> str:
-        return f"{self.playlist_id} ({self.creator_user_id})"
+        return f"{self.playlist_name} ({self.creator_display_name})"
 
 
 class PlaylistGenerationStat(models.Model):

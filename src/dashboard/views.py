@@ -6,8 +6,7 @@ from django.core.cache import cache
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
-from explorer.models import Playlist
-from explorer.views import SpotifyAPIHelper
+from recommender.models import SavedPlaylist
 from spotify_auth.session import clear_spotify_session, ensure_valid_spotify_session
 from recommender.services.spotify_handler import build_user_profile_seed_snapshot
 from recommender.services.stats_service import (
@@ -166,16 +165,8 @@ class DashboardView(View):
                     'played_at': recently_played['items'][0]['played_at']
                 }
 
-            # Fetch playlists from database
-            playlists = Playlist.objects.all().order_by('-likes')
-
-            # If no playlists exist, fetch from Spotify
-            if not playlists.exists():
-                spotify_playlists = SpotifyAPIHelper.fetch_playlists('popular', limit=10)
-                for spotify_playlist in spotify_playlists:
-                    SpotifyAPIHelper.import_playlist(spotify_playlist)
-
-                playlists = Playlist.objects.all().order_by('-likes')
+            # Fetch saved playlists from database
+            playlists = SavedPlaylist.objects.all().order_by('-like_count')
 
             debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
             session_provider = "openai"

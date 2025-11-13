@@ -69,11 +69,12 @@ class ModelTests(TestCase):
         """Test __str__ method of SavedPlaylist"""
         playlist = SavedPlaylist.objects.create(
             playlist_id="spotify123",
+            playlist_name="My Awesome Playlist",
             like_count=10,
             creator_user_id="user456",
             creator_display_name="Test User"
         )
-        expected = "spotify123 (user456)"
+        expected = "My Awesome Playlist (Test User)"
         self.assertEqual(str(playlist), expected)
 
     def test_playlist_generation_stat_str(self):

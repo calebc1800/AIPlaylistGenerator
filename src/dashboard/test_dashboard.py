@@ -4,7 +4,7 @@ from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
 from unittest.mock import patch, Mock
-from explorer.models import Playlist, Song
+from recommender.models import SavedPlaylist
 
 
 class DashboardViewTests(TestCase):
@@ -306,17 +306,19 @@ class DashboardViewTests(TestCase):
     def test_dashboard_displays_playlists(self, mock_spotify):
         """Test that dashboard displays playlists in explore tab"""
         # Create some test playlists
-        Playlist.objects.create(
-            name='Playlist 1',
-            creator=self.user,
-            likes=10,
-            spotify_id='p1'
+        SavedPlaylist.objects.create(
+            playlist_name='Playlist 1',
+            playlist_id='p1',
+            creator_user_id='user1',
+            creator_display_name='testuser',
+            like_count=10
         )
-        Playlist.objects.create(
-            name='Playlist 2',
-            creator=self.user,
-            likes=5,
-            spotify_id='p2'
+        SavedPlaylist.objects.create(
+            playlist_name='Playlist 2',
+            playlist_id='p2',
+            creator_user_id='user1',
+            creator_display_name='testuser',
+            like_count=5
         )
 
         session = self.client.session
@@ -344,7 +346,7 @@ class DashboardViewTests(TestCase):
     def test_dashboard_handles_empty_playlists_gracefully(self, mock_spotify):
         """Test that dashboard handles empty playlist database gracefully"""
         # Delete all existing playlists to ensure database is empty
-        Playlist.objects.all().delete()
+        SavedPlaylist.objects.all().delete()
 
         session = self.client.session
         session['spotify_access_token'] = 'test_access_token'
@@ -480,11 +482,12 @@ class DashboardViewTests(TestCase):
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_displays_inline_playlist_cards(self, mock_spotify):
         """Test that dashboard displays playlists with inline card structure"""
-        Playlist.objects.create(
-            name='Test Playlist',
-            creator=self.user,
-            likes=10,
-            spotify_id='test123',
+        SavedPlaylist.objects.create(
+            playlist_name='Test Playlist',
+            playlist_id='test123',
+            creator_user_id='user1',
+            creator_display_name='testuser',
+            like_count=10,
             spotify_uri='spotify:playlist:test123'
         )
 
@@ -518,12 +521,13 @@ class DashboardViewTests(TestCase):
         session['spotify_access_token'] = 'test_access_token'
         session.save()
 
-        Playlist.objects.create(
-            name='Sample Playlist',
-            description='',
-            creator=self.user,
-            likes=0,
-            spotify_id='toggle-sample',
+        SavedPlaylist.objects.create(
+            playlist_name='Sample Playlist',
+            playlist_id='toggle-sample',
+            creator_user_id='user1',
+            creator_display_name='testuser',
+            like_count=0,
+            description=''
         )
 
         mock_sp_instance = Mock()
@@ -552,12 +556,13 @@ class DashboardViewTests(TestCase):
         session['spotify_access_token'] = 'test_access_token'
         session.save()
 
-        Playlist.objects.create(
-            name='Visible Playlist',
-            description='',
-            creator=self.user,
-            likes=0,
-            spotify_id='toggle-visible',
+        SavedPlaylist.objects.create(
+            playlist_name='Visible Playlist',
+            playlist_id='toggle-visible',
+            creator_user_id='user1',
+            creator_display_name='testuser',
+            like_count=0,
+            description=''
         )
 
         mock_sp_instance = Mock()
@@ -688,23 +693,23 @@ class DashboardIntegrationTests(TestCase):
     def test_full_dashboard_flow_with_playlists(self, mock_spotify):
         """Test complete dashboard flow with user data and playlists"""
         # Create playlists
-        p1 = Playlist.objects.create(
-            name='Top Hits',
+        p1 = SavedPlaylist.objects.create(
+            playlist_name='Top Hits',
+            playlist_id='hits',
+            creator_user_id='user1',
+            creator_display_name='integration_test',
+            like_count=50,
             description='Popular songs',
-            creator=self.user,
-            likes=50,
-            spotify_id='hits',
             cover_image='http://image1.url'
         )
-        Song.objects.create(playlist=p1, name='Song 1', artist='Artist 1')
-        Song.objects.create(playlist=p1, name='Song 2', artist='Artist 2')
 
-        p2 = Playlist.objects.create(
-            name='Chill Vibes',
-            description='Relaxing music',
-            creator=self.user,
-            likes=30,
-            spotify_id='chill'
+        p2 = SavedPlaylist.objects.create(
+            playlist_name='Chill Vibes',
+            playlist_id='chill',
+            creator_user_id='user1',
+            creator_display_name='integration_test',
+            like_count=30,
+            description='Relaxing music'
         )
 
         # Set up session
@@ -757,9 +762,9 @@ class DashboardIntegrationTests(TestCase):
         # Verify playlists
         playlists = response.context['playlists']
         self.assertEqual(playlists.count(), 2)
-        # Should be ordered by likes descending
-        self.assertEqual(playlists[0].name, 'Top Hits')
-        self.assertEqual(playlists[1].name, 'Chill Vibes')
+        # Should be ordered by like_count descending
+        self.assertEqual(playlists[0].playlist_name, 'Top Hits')
+        self.assertEqual(playlists[1].playlist_name, 'Chill Vibes')
 
         # Verify content in response
         self.assertContains(response, 'Spotify User')
