@@ -41,56 +41,86 @@
 
             <!-- Create Tab -->
             <div class="tab-content" id="create">
-                <div class="welcome-card">
-                    <h2>Create Your Perfect Playlist</h2>
-                    <p>Use AI to generate custom playlists based on your mood, activity, or favorite artists.</p>
-                </div>
+                <div class="create-layout">
+                    <div class="create-primary">
+                        <section class="create-hero">
+                            <div>
+                                <p class="eyebrow">Create with AI</p>
+                                <h2>Tell us the vibe, we'll handle the rest.</h2>
+                                <p class="hero-copy">
+                                    Describe a scene, mood, or artist blend and the generator will craft a Spotify-ready playlist.
+                                </p>
+                            </div>
+                        </section>
 
-                <div class="suggestions-section" id="listening-suggestions-section">
-                    <div class="suggestions-header">
-                        <h3>Suggestions Based on Your Listening</h3>
-                        <button type="button" class="refresh-suggestions-btn" id="refresh-suggestions-btn">
-                            Refresh
-                        </button>
-                    </div>
-                    <div class="suggestion-grid" id="listening-suggestions"></div>
-                    <div class="empty-state small" id="suggestions-empty-state">
-                        Generate a playlist to unlock personalized suggestions.
-                    </div>
-                </div>
-                
-                <form class="create-form" action="{% url 'recommender:generate_playlist' %}" method="POST">
-                    {% csrf_token %}
-                    <div class="form-group">
-                        <div class="form-group-header">
-                            <label for="playlist_prompt">Playlist Prompt</label>
+                        <div class="suggestions-section" id="listening-suggestions-section">
+                            <div class="suggestions-header">
+                                <h3>Suggestions Based on Your Listening</h3>
+                                <button type="button" class="refresh-suggestions-btn" id="refresh-suggestions-btn">
+                                    Refresh
+                                </button>
+                            </div>
+                            <div class="suggestion-grid" id="listening-suggestions"></div>
+                            <div class="empty-state small" id="suggestions-empty-state">
+                                Generate a playlist to unlock personalized suggestions.
+                            </div>
                         </div>
-                        <textarea 
-                            id="playlist_prompt" 
-                            name="prompt" 
-                            placeholder="E.g., 'Upbeat indie rock for a road trip' or 'Relaxing jazz for studying'"
-                            required
-                        ></textarea>
-                        <div class="prompt-limit" id="prompt-char-limit">0 / 128 characters</div>
-                        <input
-                            type="hidden"
-                            name="llm_provider"
-                            value="{{ llm_provider_default|default:'openai' }}"
-                        >
+
+                        <form class="create-form" action="{% url 'recommender:generate_playlist' %}" method="POST">
+                            {% csrf_token %}
+                            <div class="input-card">
+                                <div class="form-group-header">
+                                    <label for="playlist_prompt">Playlist Prompt</label>
+                                    <span class="helper-text">Think mood, activity, era, or artist mashups.</span>
+                                </div>
+                                <textarea 
+                                    id="playlist_prompt" 
+                                    name="prompt" 
+                                    placeholder="E.g., 'Upbeat indie rock for a road trip' or 'Relaxing jazz for studying'"
+                                    required
+                                ></textarea>
+                                <div class="prompt-toolbar">
+                                    <div class="prompt-limit" id="prompt-char-limit">0 / 128 characters</div>
+                                    <div class="prompt-chips" data-prompt-chip-pool>
+                                        <!-- prompt chips populated via JS -->
+                                    </div>
+                                </div>
+                                <input
+                                    type="hidden"
+                                    name="llm_provider"
+                                    value="{{ llm_provider_default|default:'openai' }}"
+                                >
+                            </div>
+                            
+                            <div class="input-card">
+                                <label for="playlist_name">Playlist Name (Optional)</label>
+                                <input 
+                                    type="text" 
+                                    id="playlist_name" 
+                                    name="playlist_name" 
+                                    placeholder="Leave empty to auto-generate"
+                                >
+                            </div>
+                            
+                            <button type="submit" class="create-btn">Create Playlist</button>
+                        </form>
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="playlist_name">Playlist Name (Optional)</label>
-                        <input 
-                            type="text" 
-                            id="playlist_name" 
-                            name="playlist_name" 
-                            placeholder="Leave empty to auto-generate"
-                        >
-                    </div>
-                    
-                    <button type="submit" class="create-btn">Create Playlist</button>
-                </form>
+
+                    <aside class="create-sidebar">
+                        <div class="tip-card">
+                            <h4>Prompt Tips</h4>
+                            <ul>
+                                <li>Mention a mood or activity (“sunset rooftop”)</li>
+                                <li>Blend genres or decades (“90s R&B + modern disco”)</li>
+                                <li>Call out must-have artists or energy level</li>
+                            </ul>
+                        </div>
+                        <div class="tip-card">
+                            <h4>What you get</h4>
+                            <p>Detailed playlist stats, editable track lists, and one-click save to Spotify.</p>
+                        </div>
+                    </aside>
+                </div>
             </div>
 
             <!-- Stats Tab -->
@@ -320,6 +350,47 @@
         if (promptInput) {
             updatePromptState();
             promptInput.addEventListener('input', updatePromptState);
+        }
+
+        const promptChipPool = [
+            { label: "Feel-good commute", template: "Feel-good indie for a sunny commute" },
+            { label: "Late-night focus", template: "Moody electronic playlist for late-night coding" },
+            { label: "Empoweringtemplate: "High-energy pop with fearless female vocals" },
+            { label: "Sunset chill", template: "Laid-back house for a beach sunset" },
+            { label: "Throwback mix", template: "90s R&B blended with modern neo-soul" },
+            { label: "Weekend energy", template: "High-energy EDM and pop for weekend workouts" },
+            { label: "Deep focus", template: "Instrumental jazz for deep work sessions" },
+            { label: "Festival build-up", template: "Progressive house and techno to warm up a festival crowd" },
+            { label: "Cozy acoustic", template: "Warm acoustic folk for a rainy afternoon indoors" },
+            { label: "Global groove", template: "Afrobeat meets Latin rhythms for lively dinner parties" },
+            { label: "Morning reset", template: "Gentle piano and lo-fi beats to start the day calm" },
+            { label: "Hype anthems", template: "Modern pop-punk and alt rock for gym motivation" },
+        ];
+        const promptChipContainer = document.querySelector('[data-prompt-chip-pool]');
+
+        const attachPromptChip = (chip) => {
+            chip.addEventListener('click', () => {
+                const template = chip.dataset.template || chip.textContent || "";
+                if (!template) {
+                    return;
+                }
+                promptInput.value = template.slice(0, promptLimit);
+                updatePromptState();
+                promptInput.focus();
+            });
+        };
+
+        if (promptInput && promptChipContainer) {
+            const shuffled = [...promptChipPool].sort(() => Math.random() - 0.5).slice(0, 3);
+            shuffled.forEach((entry) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'prompt-chip';
+                button.dataset.template = entry.template;
+                button.textContent = `+ ${entry.label}`;
+                promptChipContainer.appendChild(button);
+                attachPromptChip(button);
+            });
         }
 
         tabs.forEach((tab) => {
