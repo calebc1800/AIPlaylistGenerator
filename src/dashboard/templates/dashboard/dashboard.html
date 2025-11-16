@@ -25,10 +25,10 @@
                 </div>
             </div>
             <nav class="nav-tabs">
-                <button class="tab active" data-tab="explore">Explore</button>
-                <button class="tab" data-tab="create">Create</button>
-                <button class="tab" data-tab="stats">Stats</button>
-                <button class="tab" data-tab="account">Account</button>
+                <button type="button" class="tab active" data-tab="explore">Explore</button>
+                <button type="button" class="tab" data-tab="create">Create</button>
+                <button type="button" class="tab" data-tab="stats">Stats</button>
+                <button type="button" class="tab" data-tab="account">Account</button>
             </nav>
         </header>
 
@@ -352,19 +352,34 @@
             promptInput.addEventListener('input', updatePromptState);
         }
 
+        tabs.forEach((tab) => {
+            tab.addEventListener('click', () => activateTab(tab.dataset.tab));
+        });
+
+        activateTab(defaultTab);
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const promptFromQuery = urlParams.get('prompt');
+        if (promptFromQuery && promptInput) {
+            promptInput.value = promptFromQuery.slice(0, promptLimit);
+            updatePromptState();
+            activateTab('create');
+            setTimeout(() => promptInput.focus(), 0);
+        }
+
         const promptChipPool = [
             { label: "Feel-good commute", template: "Feel-good indie for a sunny commute" },
             { label: "Late-night focus", template: "Moody electronic playlist for late-night coding" },
-            { label: "Empoweringtemplate: "High-energy pop with fearless female vocals" },
+            { label: "Empower pop", template: "High-energy pop with fearless female vocals" },
             { label: "Sunset chill", template: "Laid-back house for a beach sunset" },
             { label: "Throwback mix", template: "90s R&B blended with modern neo-soul" },
             { label: "Weekend energy", template: "High-energy EDM and pop for weekend workouts" },
-            { label: "Deep focus", template: "Instrumental jazz for deep work sessions" },
+            { label: "Deep focus jazz", template: "Instrumental jazz for deep work sessions" },
             { label: "Festival build-up", template: "Progressive house and techno to warm up a festival crowd" },
             { label: "Cozy acoustic", template: "Warm acoustic folk for a rainy afternoon indoors" },
             { label: "Global groove", template: "Afrobeat meets Latin rhythms for lively dinner parties" },
             { label: "Morning reset", template: "Gentle piano and lo-fi beats to start the day calm" },
-            { label: "Hype anthems", template: "Modern pop-punk and alt rock for gym motivation" },
+            { label: "Hype anthems", template: "Modern pop-punk and alt rock for gym motivation" }
         ];
         const promptChipContainer = document.querySelector('[data-prompt-chip-pool]');
 
@@ -381,31 +396,20 @@
         };
 
         if (promptInput && promptChipContainer) {
-            const shuffled = [...promptChipPool].sort(() => Math.random() - 0.5).slice(0, 3);
-            shuffled.forEach((entry) => {
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'prompt-chip';
-                button.dataset.template = entry.template;
-                button.textContent = `+ ${entry.label}`;
-                promptChipContainer.appendChild(button);
-                attachPromptChip(button);
-            });
-        }
-
-        tabs.forEach((tab) => {
-            tab.addEventListener('click', () => activateTab(tab.dataset.tab));
-        });
-
-        activateTab(defaultTab);
-
-        const urlParams = new URLSearchParams(window.location.search);
-        const promptFromQuery = urlParams.get('prompt');
-        if (promptFromQuery && promptInput) {
-            promptInput.value = promptFromQuery.slice(0, promptLimit);
-            updatePromptState();
-            activateTab('create');
-            setTimeout(() => promptInput.focus(), 0);
+            try {
+                const shuffled = [...promptChipPool].sort(() => Math.random() - 0.5).slice(0, 3);
+                shuffled.forEach((entry) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'prompt-chip';
+                    button.dataset.template = entry.template;
+                    button.textContent = `+ ${entry.label}`;
+                    promptChipContainer.appendChild(button);
+                    attachPromptChip(button);
+                });
+            } catch (error) {
+                console.warn('Failed to populate prompt chips', error);
+            }
         }
 
         // Playlist generation progress overlay
