@@ -227,6 +227,46 @@
                                 </p>
                             </article>
 
+                            <article class="analytics-card analytics-card--genre">
+                                <div class="analytics-card__header">
+                                    <h4 class="analytics-card__title">Genre Blend</h4>
+                                    <span class="stat-caption">Breakdown of dominant styles</span>
+                                </div>
+                                <div class="analytics-chart analytics-chart--genre">
+                                    <canvas id="genre-distribution-chart" data-chart="genre"></canvas>
+                                </div>
+                                <div class="genre-lists">
+                                    <div>
+                                        <h5>Top Genres</h5>
+                                        <ul class="genre-legend" data-genre-list="top">
+                                            {% for item in playlist_stats.genre_top %}
+                                                <li data-genre="{{ item.genre|default:'' }}">
+                                                    <span class="genre-label">{{ item.genre|default:"—" }}</span>
+                                                    <span class="genre-value">{{ item.percentage|default:0 }}%</span>
+                                                </li>
+                                            {% empty %}
+                                                <li class="genre-empty" data-genre>
+                                                    Waiting on genre data – remix to analyze fresh tracks.
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                    {% if playlist_stats.genre_remaining %}
+                                        <div>
+                                            <h5>More to Explore</h5>
+                                            <ul class="genre-legend genre-legend--hidden" data-genre-list="remaining">
+                                                {% for item in playlist_stats.genre_remaining %}
+                                                    <li data-genre="{{ item.genre|default:'' }}">
+                                                        <span class="genre-label">{{ item.genre|default:"—" }}</span>
+                                                        <span class="genre-value">{{ item.percentage|default:0 }}%</span>
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </article>
+
                             <article class="analytics-card analytics-card--meter">
                                 <h4 class="analytics-card__title">Average Popularity</h4>
                                 <div class="analytics-meter">
@@ -1161,6 +1201,17 @@
                     if (!searchInput.contains(event.target) && !searchResults.contains(event.target)) {
                         hideSearchResults();
                     }
+                });
+            }
+
+            const genreToggle = document.querySelector('.genre-toggle');
+            const remainingGenreList = document.querySelector('[data-genre-list="remaining"]');
+            if (genreToggle && remainingGenreList) {
+                genreToggle.addEventListener('click', () => {
+                    const expanded = genreToggle.getAttribute('aria-expanded') === 'true';
+                    genreToggle.setAttribute('aria-expanded', String(!expanded));
+                    remainingGenreList.classList.toggle('genre-legend--hidden', expanded);
+                    genreToggle.textContent = expanded ? 'Show All Genres' : 'Hide Genres';
                 });
             }
         })();
