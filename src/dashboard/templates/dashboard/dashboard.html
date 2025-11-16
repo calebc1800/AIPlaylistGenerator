@@ -53,19 +53,6 @@
                             </div>
                         </section>
 
-                        <div class="suggestions-section" id="listening-suggestions-section">
-                            <div class="suggestions-header">
-                                <h3>Suggestions Based on Your Listening</h3>
-                                <button type="button" class="refresh-suggestions-btn" id="refresh-suggestions-btn">
-                                    Refresh
-                                </button>
-                            </div>
-                            <div class="suggestion-grid" id="listening-suggestions"></div>
-                            <div class="empty-state small" id="suggestions-empty-state">
-                                Generate a playlist to unlock personalized suggestions.
-                            </div>
-                        </div>
-
                         <form class="create-form" action="{% url 'recommender:generate_playlist' %}" method="POST">
                             {% csrf_token %}
                             <div class="input-card">
@@ -104,6 +91,19 @@
                             
                             <button type="submit" class="create-btn">Create Playlist</button>
                         </form>
+
+                        <div class="suggestions-section" id="listening-suggestions-section">
+                            <div class="suggestions-header">
+                                <h3>Suggestions Based on Your Listening</h3>
+                                <button type="button" class="refresh-suggestions-btn" id="refresh-suggestions-btn">
+                                    Refresh
+                                </button>
+                            </div>
+                            <div class="suggestion-grid" id="listening-suggestions"></div>
+                            <div class="empty-state small" id="suggestions-empty-state">
+                                Generate a playlist to unlock personalized suggestions.
+                            </div>
+                        </div>
                     </div>
 
                     <aside class="create-sidebar">
