@@ -13,6 +13,7 @@ from recommender.services.stats_service import (
     get_genre_breakdown,
     summarize_generation_stats,
 )
+from recommender.services.listening_suggestions import generate_listening_suggestions
 
 
 def _resolve_generation_identifier(request, spotify_user_id: str | None = None) -> str:
@@ -123,6 +124,8 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
 class DashboardView(View):
     """Display user's Spotify dashboard"""
 
+    default_tab = "explore"
+
     def get(self, request):
         if not ensure_valid_spotify_session(request):
             return redirect('spotify_auth:login')
@@ -177,6 +180,15 @@ class DashboardView(View):
             generated_stats = summarize_generation_stats(generation_identifier)
             genre_breakdown = get_genre_breakdown(generation_identifier)
 
+            allowed_tabs = {"explore", "create", "stats", "account"}
+            requested_tab = (request.GET.get('tab') or "").strip().lower()
+            default_tab = requested_tab if requested_tab in allowed_tabs else (self.default_tab or "explore")
+            default_tab = (default_tab or "explore").lower()
+            if request.GET.get('prompt'):
+                default_tab = "create"
+            if default_tab not in allowed_tabs:
+                default_tab = "explore"
+
             context = {
                 'username': username,
                 'user_id': user_id,
@@ -192,6 +204,7 @@ class DashboardView(View):
                 'generated_stats': generated_stats,
                 'genre_breakdown': genre_breakdown,
                 'spotify_highlights': {},
+                'default_tab': default_tab,
             }
             return render(request, 'dashboard/dashboard.html', context)
 
@@ -200,6 +213,11 @@ class DashboardView(View):
                 clear_spotify_session(request.session)
                 return redirect('spotify_auth:login')
             return render(request, 'dashboard/dashboard.html', {'error': f'Error fetching Spotify data: {str(e)}'})
+
+class CreateView(DashboardView):
+    """Dedicated entry point that loads the create tab by default."""
+
+    default_tab = "create"
 
 
 class UserStatsAPIView(View):
@@ -228,3 +246,21 @@ class UserStatsAPIView(View):
             'spotify': spotify_highlights,
         }
         return JsonResponse(payload)
+
+
+class ListeningSuggestionsAPIView(View):
+    """Return listening-based prompt suggestions for the dashboard grid."""
+
+    def get(self, request):
+        if not ensure_valid_spotify_session(request):
+            return JsonResponse({'error': 'Authentication required'}, status=401)
+        access_token = request.session.get('spotify_access_token')
+        if not access_token:
+            return JsonResponse({'error': 'Authentication required'}, status=401)
+
+        user_identifier = _resolve_generation_identifier(request)
+        spotify_user_id = request.session.get('spotify_user_id')
+        profile_cache = cache.get(f"recommender:user-profile:{spotify_user_id}") if spotify_user_id else None
+        suggestions = generate_listening_suggestions(user_identifier, profile_cache=profile_cache)
+
+        return JsonResponse({'suggestions': suggestions})
