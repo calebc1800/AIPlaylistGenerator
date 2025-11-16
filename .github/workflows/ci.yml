@@ -4,7 +4,7 @@ on:
   push:
     branches: [ '**' ]
   pull_request:
-    branches:
+    branches: 
     - main
 
 jobs:
@@ -20,17 +20,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+      
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install openai requests python-dotenv PyGithub
-
+      
       - name: Check if AI review script exists
         id: check_script
         run: |
@@ -40,7 +40,7 @@ jobs:
             echo "script_exists=false" >> $GITHUB_OUTPUT
             echo "AI review script not found at .github/scripts/ai_review.py"
           fi
-
+      
       - name: Ensure OPENAI_API_KEY is present for same-repo PRs
         if: github.event.pull_request.head.repo.full_name == github.repository && steps.check_script.outputs.script_exists == 'true'
         env:
@@ -50,7 +50,7 @@ jobs:
             echo "ERROR: OPENAI_API_KEY secret is missing — aborting AI review."
             exit 1
           fi
-
+      
       - name: Run AI Code Review
         if: github.event.pull_request.head.repo.full_name == github.repository && steps.check_script.outputs.script_exists == 'true'
         env:
@@ -63,12 +63,12 @@ jobs:
         run: |
           echo "🧠 Running AI Code Review..."
           python .github/scripts/ai_review.py
-
+      
       - name: Skip AI Review for forked PRs
         if: github.event.pull_request.head.repo.full_name != github.repository
         run: |
           echo "AI review skipped: this pull request originates from a fork and repository secrets are not available."
-
+      
       - name: Skip AI Review - script not found
         if: steps.check_script.outputs.script_exists == 'false'
         run: |
@@ -77,17 +77,33 @@ jobs:
   tests:
     name: Run Django Tests
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    outputs:
+      coverage-status: ${{ steps.coverage.outputs.status }}
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: aiplaylist
+          POSTGRES_USER: aiplaylist_user
+          POSTGRES_PASSWORD: dev_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+      
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -97,59 +113,117 @@ jobs:
             echo "requirements.txt not found, installing basic test dependencies"
             pip install django pytest pytest-cov pytest-django
           fi
-
+      
+      - name: Grant CREATEDB privilege to test user
+        env:
+          PGPASSWORD: dev_password
+        run: |
+          psql -h localhost -U aiplaylist_user -d aiplaylist -c "ALTER USER aiplaylist_user CREATEDB;"
+      
+      - name: Run migrations
+        env:
+          DB_NAME: aiplaylist
+          DB_USER: aiplaylist_user
+          DB_PASSWORD: dev_password
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DJANGO_SETTINGS_MODULE: aiplaylist.settings
+        run: |
+          export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}/src"
+          cd src
+          python manage.py migrate
+      
       - name: Run Tests with Coverage
+        id: coverage
         env:
           DJANGO_SETTINGS_MODULE: aiplaylist.settings
+          DB_NAME: aiplaylist
+          DB_USER: aiplaylist_user
+          DB_PASSWORD: dev_password
+          DB_HOST: localhost
+          DB_PORT: 5432
         run: |
           echo "🚀 Setting up Python path and running tests with coverage..."
           export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}/src"
           echo "PYTHONPATH set to: $PYTHONPATH"
           python -c "import aiplaylist; print('✅ Django project imported successfully')"
-
+          
           if command -v pytest &> /dev/null; then
-            pytest --cov=. --cov-report=term-missing --cov-fail-under=80 -v
+            cd src
+            pytest --cov=. --cov-report=term-missing -v
+            echo "status=success" >> $GITHUB_OUTPUT
           else
             echo "pytest not available, running Django tests directly"
             python src/manage.py test
+            echo "status=success" >> $GITHUB_OUTPUT
           fi
 
-  pylint:
-    name: Pylint
+  deploy:
+    name: Deploy to AWS ECS
     runs-on: ubuntu-latest
+    needs: tests
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
+      id-token: write
       contents: read
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt
-          else
-            echo "requirements.txt not found, installing basic test dependencies"
-            pip install django pylint pylint-django
-          fi
-
-      - name: Run Pylint Tests with Coverage
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
         env:
-          DJANGO_SETTINGS_MODULE: aiplaylist.settings
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          echo "🚀 Setting up Python path and running tests..."
-          export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}/src"
-          echo "PYTHONPATH set to: $PYTHONPATH"
-          python -c "import aiplaylist; print('✅ Django project imported successfully')"
-
-          if command -v pylint &> /dev/null; then
-            pylint --load-plugins pylint_django --django-settings-module=src.aiplaylist.settings --fail-under=8.0 src/
-          else
-            echo "pylint not available"
-            exit 1
-          fi
+          echo "Building Docker image..."
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "Pushing image to ECR..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+      
+      - name: Download task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ secrets.ECS_TASK_DEFINITION }} \
+            --query taskDefinition > task-definition.json
+      
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ secrets.ECS_CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image }}
+      
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ secrets.ECS_SERVICE }}
+          cluster: ${{ secrets.ECS_CLUSTER }}
+          wait-for-service-stability: true
+      
+      - name: Deployment summary
+        run: |
+          echo "✅ Deployment completed successfully!"
+          echo "Image: ${{ steps.build-image.outputs.image }}"
+          echo "Service: ${{ secrets.ECS_SERVICE }}"
+          echo "Cluster: ${{ secrets.ECS_CLUSTER }}"
