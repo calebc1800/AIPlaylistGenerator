@@ -431,6 +431,24 @@ main {
     font-weight: 700;
 }
 
+.genre-toggle {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.genre-toggle:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
 .playlist-stats {
     margin-top: 32px;
     padding: 28px;
