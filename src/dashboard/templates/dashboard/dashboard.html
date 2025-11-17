@@ -7,7 +7,7 @@
     <title>Dashboard</title>
     <link rel="stylesheet" href="{% static 'dashboard.css' %}">
 </head>
-<body>
+<body data-default-tab="{{ default_tab|default:'explore' }}">
     <div class="dashboard-container">
         <header class="header">
             <div class="top-bar">
@@ -25,10 +25,10 @@
                 </div>
             </div>
             <nav class="nav-tabs">
-                <button class="tab active" data-tab="explore">Explore</button>
-                <button class="tab" data-tab="create">Create</button>
-                <button class="tab" data-tab="stats">Stats</button>
-                <button class="tab" data-tab="account">Account</button>
+                <button type="button" class="tab active" data-tab="explore">Explore</button>
+                <button type="button" class="tab" data-tab="create">Create</button>
+                <button type="button" class="tab" data-tab="stats">Stats</button>
+                <button type="button" class="tab" data-tab="account">Account</button>
             </nav>
         </header>
 
@@ -41,43 +41,86 @@
 
             <!-- Create Tab -->
             <div class="tab-content" id="create">
-                <div class="welcome-card">
-                    <h2>Create Your Perfect Playlist</h2>
-                    <p>Use AI to generate custom playlists based on your mood, activity, or favorite artists.</p>
-                </div>
-                
-                <form class="create-form" action="{% url 'recommender:generate_playlist' %}" method="POST">
-                    {% csrf_token %}
-                    <div class="form-group">
-                        <div class="form-group-header">
-                            <label for="playlist_prompt">Playlist Prompt</label>
+                <div class="create-layout">
+                    <div class="create-primary">
+                        <section class="create-hero">
+                            <div>
+                                <p class="eyebrow">Create with AI</p>
+                                <h2>Tell us the vibe, we'll handle the rest.</h2>
+                                <p class="hero-copy">
+                                    Describe a scene, mood, or artist blend and the generator will craft a Spotify-ready playlist.
+                                </p>
+                            </div>
+                        </section>
+
+                        <form class="create-form" action="{% url 'recommender:generate_playlist' %}" method="POST">
+                            {% csrf_token %}
+                            <div class="input-card">
+                                <div class="form-group-header">
+                                    <label for="playlist_prompt">Playlist Prompt</label>
+                                    <span class="helper-text">Think mood, activity, era, or artist mashups.</span>
+                                </div>
+                                <textarea 
+                                    id="playlist_prompt" 
+                                    name="prompt" 
+                                    placeholder="E.g., 'Upbeat indie rock for a road trip' or 'Relaxing jazz for studying'"
+                                    required
+                                ></textarea>
+                                <div class="prompt-toolbar">
+                                    <div class="prompt-limit" id="prompt-char-limit">0 / 128 characters</div>
+                                    <div class="prompt-chips" data-prompt-chip-pool>
+                                        <!-- prompt chips populated via JS -->
+                                    </div>
+                                </div>
+                                <input
+                                    type="hidden"
+                                    name="llm_provider"
+                                    value="{{ llm_provider_default|default:'openai' }}"
+                                >
+                            </div>
+                            
+                            <div class="input-card">
+                                <label for="playlist_name">Playlist Name (Optional)</label>
+                                <input 
+                                    type="text" 
+                                    id="playlist_name" 
+                                    name="playlist_name" 
+                                    placeholder="Leave empty to auto-generate"
+                                >
+                            </div>
+                            
+                            <button type="submit" class="create-btn">Create Playlist</button>
+                        </form>
+
+                        <div class="suggestions-section" id="listening-suggestions-section">
+                            <div class="suggestions-header">
+                                <h3>Suggestions Based on Your Listening</h3>
+                                <button type="button" class="refresh-suggestions-btn" id="refresh-suggestions-btn">
+                                    Refresh
+                                </button>
+                            </div>
+                            <div class="suggestion-grid" id="listening-suggestions"></div>
+                            <div class="empty-state small" id="suggestions-empty-state">
+                                Generate a playlist to unlock personalized suggestions.
+                            </div>
                         </div>
-                        <textarea 
-                            id="playlist_prompt" 
-                            name="prompt" 
-                            placeholder="E.g., 'Upbeat indie rock for a road trip' or 'Relaxing jazz for studying'"
-                            required
-                        ></textarea>
-                        <div class="prompt-limit" id="prompt-char-limit">0 / 128 characters</div>
-                        <input
-                            type="hidden"
-                            name="llm_provider"
-                            value="{{ llm_provider_default|default:'openai' }}"
-                        >
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="playlist_name">Playlist Name (Optional)</label>
-                        <input 
-                            type="text" 
-                            id="playlist_name" 
-                            name="playlist_name" 
-                            placeholder="Leave empty to auto-generate"
-                        >
-                    </div>
-                    
-                    <button type="submit" class="create-btn">Create Playlist</button>
-                </form>
+
+                    <aside class="create-sidebar">
+                        <div class="tip-card">
+                            <h4>Prompt Tips</h4>
+                            <ul>
+                                <li>Mention a mood or activity (“sunset rooftop”)</li>
+                                <li>Blend genres or decades (“90s R&B + modern disco”)</li>
+                                <li>Call out must-have artists or energy level</li>
+                            </ul>
+                        </div>
+                        <div class="tip-card">
+                            <h4>What you get</h4>
+                            <p>Detailed playlist stats, editable track lists, and one-click save to Spotify.</p>
+                        </div>
+                    </aside>
+                </div>
             </div>
 
             <!-- Stats Tab -->
@@ -274,6 +317,20 @@
         const createButton = document.querySelector('.create-btn');
         const promptLimit = 128;
         const charLimitDisplay = document.getElementById('prompt-char-limit');
+        const defaultTabData = (document.body && document.body.dataset && document.body.dataset.defaultTab) || 'explore';
+        const defaultTab = defaultTabData.toLowerCase();
+
+        const activateTab = (targetTab) => {
+            if (!targetTab) {
+                return;
+            }
+            tabs.forEach((tab) => {
+                tab.classList.toggle('active', tab.dataset.tab === targetTab);
+            });
+            tabContents.forEach((content) => {
+                content.classList.toggle('active', content.id === targetTab);
+            });
+        };
 
         const updatePromptState = () => {
             if (!promptInput || !createButton) {
@@ -295,19 +352,65 @@
             promptInput.addEventListener('input', updatePromptState);
         }
 
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                const targetTab = tab.dataset.tab;
-                
-                // Remove active class from all tabs and contents
-                tabs.forEach(t => t.classList.remove('active'));
-                tabContents.forEach(content => content.classList.remove('active'));
-                
-                // Add active class to clicked tab and corresponding content
-                tab.classList.add('active');
-                document.getElementById(targetTab).classList.add('active');
-            });
+        tabs.forEach((tab) => {
+            tab.addEventListener('click', () => activateTab(tab.dataset.tab));
         });
+
+        activateTab(defaultTab);
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const promptFromQuery = urlParams.get('prompt');
+        if (promptFromQuery && promptInput) {
+            promptInput.value = promptFromQuery.slice(0, promptLimit);
+            updatePromptState();
+            activateTab('create');
+            setTimeout(() => promptInput.focus(), 0);
+        }
+
+        const promptChipPool = [
+            { label: "Feel-good commute", template: "Feel-good indie for a sunny commute" },
+            { label: "Late-night focus", template: "Moody electronic playlist for late-night coding" },
+            { label: "Empower pop", template: "High-energy pop with fearless female vocals" },
+            { label: "Sunset chill", template: "Laid-back house for a beach sunset" },
+            { label: "Throwback mix", template: "90s R&B blended with modern neo-soul" },
+            { label: "Weekend energy", template: "High-energy EDM and pop for weekend workouts" },
+            { label: "Deep focus jazz", template: "Instrumental jazz for deep work sessions" },
+            { label: "Festival build-up", template: "Progressive house and techno to warm up a festival crowd" },
+            { label: "Cozy acoustic", template: "Warm acoustic folk for a rainy afternoon indoors" },
+            { label: "Global groove", template: "Afrobeat meets Latin rhythms for lively dinner parties" },
+            { label: "Morning reset", template: "Gentle piano and lo-fi beats to start the day calm" },
+            { label: "Hype anthems", template: "Modern pop-punk and alt rock for gym motivation" }
+        ];
+        const promptChipContainer = document.querySelector('[data-prompt-chip-pool]');
+
+        const attachPromptChip = (chip) => {
+            chip.addEventListener('click', () => {
+                const template = chip.dataset.template || chip.textContent || "";
+                if (!template) {
+                    return;
+                }
+                promptInput.value = template.slice(0, promptLimit);
+                updatePromptState();
+                promptInput.focus();
+            });
+        };
+
+        if (promptInput && promptChipContainer) {
+            try {
+                const shuffled = [...promptChipPool].sort(() => Math.random() - 0.5).slice(0, 3);
+                shuffled.forEach((entry) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'prompt-chip';
+                    button.dataset.template = entry.template;
+                    button.textContent = `+ ${entry.label}`;
+                    promptChipContainer.appendChild(button);
+                    attachPromptChip(button);
+                });
+            } catch (error) {
+                console.warn('Failed to populate prompt chips', error);
+            }
+        }
 
         // Playlist generation progress overlay
         const generationOverlay = document.getElementById('generation-overlay');
@@ -450,6 +553,11 @@
             artists: document.getElementById('spotify-top-artists'),
             tracks: document.getElementById('spotify-top-tracks'),
         };
+        const suggestionsEndpoint = "{% url 'dashboard:listening-suggestions' %}";
+        const createPageUrl = "{% url 'create' %}";
+        const suggestionGrid = document.getElementById('listening-suggestions');
+        const suggestionEmptyState = document.getElementById('suggestions-empty-state');
+        const refreshSuggestionsBtn = document.getElementById('refresh-suggestions-btn');
 
         const formatNumber = (value) => {
             const number = Number(value || 0);
@@ -544,6 +652,69 @@
             }
         };
 
+        const goToCreateWithPrompt = (prompt) => {
+            const trimmed = (prompt || '').trim();
+            if (!trimmed) {
+                return;
+            }
+            try {
+                const destination = new URL(createPageUrl, window.location.origin);
+                destination.searchParams.set('prompt', trimmed);
+                window.location.href = destination.toString();
+            } catch (error) {
+                window.location.href = `${createPageUrl}?prompt=${encodeURIComponent(trimmed)}`;
+            }
+        };
+
+        const renderSuggestions = (items) => {
+            if (!suggestionGrid) {
+                return;
+            }
+            if (!items || !items.length) {
+                suggestionGrid.innerHTML = '';
+                if (suggestionEmptyState) {
+                    suggestionEmptyState.style.display = '';
+                }
+                return;
+            }
+            suggestionGrid.innerHTML = items
+                .map(
+                    (prompt) =>
+                        `<button type="button" class="suggestion-card" data-prompt="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>`
+                )
+                .join('');
+            if (suggestionEmptyState) {
+                suggestionEmptyState.style.display = 'none';
+            }
+            suggestionGrid.querySelectorAll('.suggestion-card').forEach((card) => {
+                card.addEventListener('click', () => {
+                    const promptValue = card.dataset.prompt || card.textContent || '';
+                    goToCreateWithPrompt(promptValue);
+                });
+            });
+        };
+
+        const requestSuggestions = async () => {
+            if (!suggestionGrid) {
+                return;
+            }
+            try {
+                const response = await fetch(suggestionsEndpoint, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    renderSuggestions([]);
+                    return;
+                }
+                const payload = await response.json();
+                renderSuggestions(payload.suggestions || []);
+            } catch (error) {
+                console.warn('Failed to load listening suggestions', error);
+                renderSuggestions([]);
+            }
+        };
+
         const hydrateStats = () => {
             applyGeneratedStats(parseJsonScript('initial_generated_stats', {}));
             renderGenreBreakdown(parseJsonScript('initial_genre_breakdown', []));
@@ -569,8 +740,19 @@
         };
 
         hydrateStats();
-        refreshStats();
-        setInterval(refreshStats, 120000);
+       refreshStats();
+       setInterval(refreshStats, 120000);
+
+        if (suggestionGrid) {
+            requestSuggestions();
+        }
+        if (refreshSuggestionsBtn) {
+            refreshSuggestionsBtn.addEventListener('click', async () => {
+                refreshSuggestionsBtn.disabled = true;
+                await requestSuggestions();
+                refreshSuggestionsBtn.disabled = false;
+            });
+        }
 
         // Playlist search functionality
         const searchForm = document.getElementById('playlist-search-form');

@@ -336,6 +336,79 @@ body {
     margin: 0 auto 30px;
 }
 
+.suggestions-section {
+    background: rgba(40, 40, 40, 0.45);
+    border-radius: 12px;
+    padding: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    margin: 40px 0;
+}
+
+.suggestions-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.suggestions-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.refresh-suggestions-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    color: #fff;
+    padding: 8px 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.refresh-suggestions-btn:hover:not(:disabled) {
+    background: rgba(66, 165, 245, 0.2);
+    border-color: rgba(66, 165, 245, 0.6);
+}
+
+.refresh-suggestions-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.suggestion-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+}
+
+.suggestion-card {
+    background: rgba(2, 136, 209, 0.12);
+    border: 1px solid rgba(2, 136, 209, 0.3);
+    border-radius: 10px;
+    padding: 16px 18px;
+    color: #fff;
+    text-align: left;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.suggestion-card:hover {
+    background: rgba(2, 136, 209, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(2, 136, 209, 0.25);
+}
+
+.suggestion-card:focus-visible {
+    outline: 2px solid #42a5f5;
+    outline-offset: 2px;
+}
+
 .feature-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -675,13 +748,64 @@ body {
     transform: scale(0.95);
 }
 
-.create-form {
-    max-width: 600px;
-    margin: 0 auto;
+.create-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr);
+    gap: 32px;
 }
 
-.form-group {
-    margin-bottom: 25px;
+.create-primary {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.create-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.create-hero {
+    background: linear-gradient(135deg, rgba(2, 136, 209, 0.18), rgba(66, 165, 245, 0.08));
+    border-radius: 24px;
+    padding: 32px 36px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.create-hero h2 {
+    font-size: 2.3rem;
+    margin-bottom: 8px;
+}
+
+.eyebrow {
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.25em;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.hero-copy {
+    color: #d2e3f8;
+    max-width: 720px;
+}
+
+.create-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.input-card {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 18px;
+    padding: 22px 24px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 15px 45px rgba(0, 0, 0, 0.35);
 }
 
 .form-group-header {
@@ -689,13 +813,14 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    margin-bottom: 12px;
 }
 
 .form-group-header label {
     margin-bottom: 0;
 }
 
-.form-group label {
+.input-card label {
     display: block;
     font-weight: 600;
     color: #fff;
@@ -703,26 +828,26 @@ body {
     font-size: 1rem;
 }
 
-.form-group input,
-.form-group textarea {
+.input-card input,
+.input-card textarea {
     width: 100%;
     padding: 15px;
-    border-radius: 8px;
+    border-radius: 12px;
     border: 2px solid rgba(255, 255, 255, 0.1);
-    background: rgba(40, 40, 40, 0.5);
+    background: rgba(40, 40, 40, 0.55);
     color: #fff;
     font-size: 1rem;
     transition: all 0.3s ease;
 }
 
-.form-group input:focus,
-.form-group textarea:focus {
+.input-card input:focus,
+.input-card textarea:focus {
     outline: none;
     border-color: #0288D1;
-    background: rgba(40, 40, 40, 0.8);
+    background: rgba(40, 40, 40, 0.85);
 }
 
-.form-group textarea {
+.input-card textarea {
     min-height: 120px;
     resize: vertical;
 }
@@ -745,6 +870,66 @@ body {
 .create-btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 30px rgba(2, 136, 209, 0.6);
+}
+
+.helper-text {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.prompt-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 10px;
+}
+
+.prompt-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.prompt-chip {
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.04);
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.prompt-chip:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-1px);
+}
+
+.tip-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 18px;
+    padding: 24px;
+    color: #e3f2fd;
+}
+
+.tip-card ul {
+    margin: 12px 0 0;
+    padding-left: 18px;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.6;
+}
+
+@media (max-width: 1024px) {
+    .create-layout {
+        grid-template-columns: 1fr;
+    }
+    .create-sidebar {
+        order: -1;
+    }
 }
 
 .llm-toggle {

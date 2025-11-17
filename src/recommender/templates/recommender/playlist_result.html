@@ -25,76 +25,186 @@
                 {% endfor %}
             </div>
 
-            <section class="playlist-card">
-                <form id="playlist-save-form" method="post" action="{% url 'recommender:save_playlist' %}">
+            <section class="playlist-hero">
+                <form id="playlist-save-form" class="playlist-form" method="post" action="{% url 'recommender:save_playlist' %}">
                     {% csrf_token %}
                     <input type="hidden" name="cache_key" value="{{ cache_key }}">
                     {% if prompt %}
                         <input type="hidden" name="prompt" value="{{ prompt }}">
                     {% endif %}
-                    <div class="playlist-header">
-                        {% with current_name=playlist_name|default:suggested_playlist_name %}
-                            <input
-                                type="text"
-                                name="playlist_name"
-                                id="playlist-name-input"
-                                class="playlist-name-input"
-                                maxlength="100"
-                                placeholder="Name your playlist"
-                                value="{{ current_name }}">
-                        {% endwith %}
-                        <div class="action-buttons">
-                            <button
-                                type="submit"
-                                class="btn btn-ghost"
-                                formaction="{% url 'recommender:remix_playlist' %}"
-                                formmethod="post"
-                                id="remix-button"
-                                {% if not cache_key or not playlist_tracks %}disabled{% endif %}>
-                                Remix Playlist
-                            </button>
-                            <button type="submit" class="btn btn-primary" id="save-playlist-button">
-                                Save to Spotify
-                            </button>
+                    <div class="playlist-hero__grid">
+                        <div class="playlist-hero__primary">
+                            <p class="eyebrow-label">Your AI-powered mix</p>
+                            {% with current_name=playlist_name|default:suggested_playlist_name %}
+                                <input
+                                    type="text"
+                                    name="playlist_name"
+                                    id="playlist-name-input"
+                                    class="playlist-name-input"
+                                    maxlength="100"
+                                    placeholder="Name your playlist"
+                                    value="{{ current_name }}">
+                            {% endwith %}
+                            <div class="prompt-pill">
+                                <span class="prompt-pill__label">Prompt</span>
+                                <span class="prompt-pill__value">{{ prompt|default:"Custom AI blend" }}</span>
+                            </div>
+                            <div class="hero-meta">
+                                <div class="hero-chip">
+                                    <span class="hero-chip__label">Tracks</span>
+                                    <span class="hero-chip__value">{{ playlist_tracks|length }}</span>
+                                </div>
+                                {% if playlist_stats %}
+                                    <div class="hero-chip">
+                                        <span class="hero-chip__label">Duration</span>
+                                        <span class="hero-chip__value">{{ playlist_stats.total_duration }}</span>
+                                    </div>
+                                    {% if playlist_stats.novelty %}
+                                        <div class="hero-chip">
+                                            <span class="hero-chip__label">New discoveries</span>
+                                            <span class="hero-chip__value">{{ playlist_stats.novelty }}%</span>
+                                        </div>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="playlist-hero__actions">
+                            <div class="action-buttons">
+                                <button
+                                    type="submit"
+                                    class="btn btn-ghost"
+                                    formaction="{% url 'recommender:remix_playlist' %}"
+                                    formmethod="post"
+                                    id="remix-button"
+                                    {% if not cache_key or not playlist_tracks %}disabled{% endif %}>
+                                    Remix Playlist
+                                </button>
+                                <button type="submit" class="btn btn-primary" id="save-playlist-button">
+                                    Save to Spotify
+                                </button>
+                            </div>
+                            <p class="hero-tip">
+                                Need a different direction? Update the prompt above or search for specific tracks.
+                            </p>
+                            <a href="{% url 'create' %}" class="hero-link">Start a new idea →</a>
                         </div>
                     </div>
                 </form>
+            </section>
 
+            <section class="search-card">
+                <div class="search-card__header">
+                    <h3>Add more songs</h3>
+                    <p>Blend in any must-have tracks or artists before saving to Spotify.</p>
+                </div>
                 <div class="search-bar">
                     <input
                         type="text"
                         id="song-search-input"
                         class="search-input"
-                        placeholder="Search to add songs..."
+                        placeholder="Search for tracks or artists..."
                         data-search-url="{% url 'recommender:search_songs' %}"
                         data-add-url="{% url 'recommender:add_song_to_playlist' %}"
                         data-cache-key="{{ cache_key }}">
+                    <button type="button" class="search-trigger" id="song-search-trigger">Search</button>
                     <div id="search-results" class="search-results" style="display: none;"></div>
                 </div>
+            </section>
 
-                {% if playlist_stats %}
-                    <section class="playlist-stats" data-has-stats>
-                        <div class="playlist-stats__intro">
-                            <div>
-                                <h3 class="playlist-stats__title">Playlist Insights</h3>
-                                <p class="playlist-stats__tagline">
-                                    A quick snapshot of the vibe you just generated.
-                                </p>
-                            </div>
-                            <div class="playlist-stats__totals">
-                                <span class="analytics-chip">
-                                    <span class="analytics-chip__value">{{ playlist_stats.total_tracks }}</span>
-                                    <span class="analytics-chip__label">Tracks</span>
-                                </span>
-                                <span class="analytics-chip">
-                                    <span class="analytics-chip__value">{{ playlist_stats.total_duration }}</span>
-                                    <span class="analytics-chip__label">Duration</span>
-                                </span>
-                            </div>
+            {% if playlist_stats and playlist_stats.genre_top %}
+                <section class="inspiration-panel">
+                    <div class="inspiration-header">
+                        <h3>Signature Sounds</h3>
+                        <p>Top genres fueling this playlist.</p>
+                    </div>
+                    <div class="chip-group">
+                        {% for genre in playlist_stats.genre_top|slice:":4" %}
+                            <span class="genre-chip">
+                                <span class="genre-chip__label">{{ genre.genre }}</span>
+                                <span class="genre-chip__value">{{ genre.percentage }}%</span>
+                            </span>
+                        {% endfor %}
+                    </div>
+                </section>
+            {% endif %}
+
+            {% if prompt_artist_candidates %}
+                <section class="inspiration-panel subtle">
+                    <div class="inspiration-header">
+                        <h3>Referenced Artists</h3>
+                        <p>Based on your prompt. Tap a name to search for more tracks.</p>
+                    </div>
+                    <div class="chip-group chip-group--interactive">
+                        {% for artist in prompt_artist_candidates %}
+                            <button
+                                type="button"
+                                class="chip-button"
+                                data-search-term="{{ artist }}"
+                                data-target-input="song-search-input">
+                                {{ artist }}
+                            </button>
+                        {% endfor %}
+                    </div>
+                </section>
+            {% endif %}
+
+            {% if playlist_stats and playlist_stats.top_popular_tracks %}
+                <section class="spotlight-panel">
+                    <div class="spotlight-header">
+                        <div>
+                            <h3>Spotlight Recommendations</h3>
+                            <p>Standout picks from this mix — perfect for sharing.</p>
                         </div>
+                    </div>
+                    <div class="spotlight-grid">
+                        {% for track in playlist_stats.top_popular_tracks|slice:":3" %}
+                            <article class="spotlight-card">
+                                <div class="spotlight-rank">#{{ forloop.counter }}</div>
+                                <div class="spotlight-track">
+                                    {% if track.album_image_url %}
+                                        <img src="{{ track.album_image_url }}" alt="" class="spotlight-art">
+                                    {% endif %}
+                                    <div>
+                                        <p class="spotlight-name">{{ track.name }}</p>
+                                        <p class="spotlight-artist">{{ track.artists }}</p>
+                                    </div>
+                                </div>
+                                <div class="spotlight-meta">
+                                    <span class="spotlight-label">Energy</span>
+                                    <span class="spotlight-value">{{ track.popularity }}</span>
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                </section>
+            {% endif %}
 
-                        <div class="playlist-stats__grid">
-                            <article class="analytics-card analytics-card--overview">
+            {% if playlist_stats %}
+                <section class="playlist-stats elevated" data-has-stats>
+                    <div class="playlist-stats__intro">
+                        <div>
+                            <h3 class="playlist-stats__title">Playlist Insights</h3>
+                            <p class="playlist-stats__tagline">
+                                A quick snapshot of the vibe you just generated.
+                            </p>
+                        </div>
+                        <div class="playlist-stats__totals">
+                            <span class="analytics-chip">
+                                <span class="analytics-chip__value">{{ playlist_stats.total_tracks }}</span>
+                                <span class="analytics-chip__label">Tracks</span>
+                            </span>
+                            <span class="analytics-chip">
+                                <span class="analytics-chip__value">{{ playlist_stats.total_duration }}</span>
+                                <span class="analytics-chip__label">Duration</span>
+                            </span>
+                        </div>
+                        <button type="button" class="genre-toggle" aria-expanded="false">
+                            Show All Genres
+                        </button>
+                    </div>
+
+                    <div class="playlist-stats__grid">
+                        <article class="analytics-card analytics-card--overview">
                                 <h4 class="analytics-card__title">Quick Stats</h4>
                                 <div class="analytics-overview">
                                     <div class="overview-row">
@@ -115,6 +225,46 @@
                                 <p class="analytics-card__note">
                                     Based on your latest AI-generated mix.
                                 </p>
+                            </article>
+
+                            <article class="analytics-card analytics-card--genre">
+                                <div class="analytics-card__header">
+                                    <h4 class="analytics-card__title">Genre Blend</h4>
+                                    <span class="stat-caption">Breakdown of dominant styles</span>
+                                </div>
+                                <div class="analytics-chart analytics-chart--genre">
+                                    <canvas id="genre-distribution-chart" data-chart="genre"></canvas>
+                                </div>
+                                <div class="genre-lists">
+                                    <div>
+                                        <h5>Top Genres</h5>
+                                        <ul class="genre-legend" data-genre-list="top">
+                                            {% for item in playlist_stats.genre_top %}
+                                                <li data-genre="{{ item.genre|default:'' }}">
+                                                    <span class="genre-label">{{ item.genre|default:"—" }}</span>
+                                                    <span class="genre-value">{{ item.percentage|default:0 }}%</span>
+                                                </li>
+                                            {% empty %}
+                                                <li class="genre-empty" data-genre>
+                                                    Waiting on genre data – remix to analyze fresh tracks.
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                    {% if playlist_stats.genre_remaining %}
+                                        <div>
+                                            <h5>More to Explore</h5>
+                                            <ul class="genre-legend genre-legend--hidden" data-genre-list="remaining">
+                                                {% for item in playlist_stats.genre_remaining %}
+                                                    <li data-genre="{{ item.genre|default:'' }}">
+                                                        <span class="genre-label">{{ item.genre|default:"—" }}</span>
+                                                        <span class="genre-value">{{ item.percentage|default:0 }}%</span>
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        </div>
+                                    {% endif %}
+                                </div>
                             </article>
 
                             <article class="analytics-card analytics-card--meter">
@@ -139,58 +289,11 @@
                                 <p class="analytics-card__note">Spotify popularity score (0-100).</p>
                             </article>
 
-                            <article class="analytics-card analytics-card--wide">
-                                <div class="analytics-card__header analytics-card__header--row">
-                                    <div>
-                                        <h4 class="analytics-card__title">Genre Mix</h4>
-                                        {% if playlist_stats.genre_top %}
-                                            <span class="stat-caption">Tap a slice to reveal the percentage</span>
-                                        {% else %}
-                                            <span class="stat-caption">Genre data unavailable for this playlist</span>
-                                        {% endif %}
-                                    </div>
-                                    {% if playlist_stats.genre_remaining %}
-                                        <button
-                                            type="button"
-                                            class="analytics-toggle"
-                                            data-role="genre-toggle"
-                                            aria-expanded="false"
-                                            aria-controls="genre-legend-top genre-legend-remaining">
-                                            Show All Genres
-                                        </button>
-                                    {% endif %}
-                                </div>
-                                <div class="analytics-chart">
-                                    <canvas id="genre-distribution-chart" data-chart="genre"></canvas>
-                                </div>
-                                <ul class="genre-legend" id="genre-legend-top" data-genre-list="top">
-                                    {% for item in playlist_stats.genre_top %}
-                                        <li data-genre="{{ item.genre }}">
-                                            <span class="genre-label">{{ item.genre|title }}</span>
-                                            <span class="genre-value">{{ item.percentage }}%</span>
-                                        </li>
-                                    {% empty %}
-                                        <li class="genre-empty">We need a bit more listening history to map genres.</li>
-                                    {% endfor %}
-                                </ul>
-                                {% if playlist_stats.genre_remaining %}
-                                    <ul class="genre-legend genre-legend--hidden" id="genre-legend-remaining" data-genre-list="remaining">
-                                        {% for item in playlist_stats.genre_remaining %}
-                                            <li data-genre="{{ item.genre }}">
-                                                <span class="genre-label">{{ item.genre|title }}</span>
-                                                <span class="genre-value">{{ item.percentage }}%</span>
-                                            </li>
-                                        {% endfor %}
-                                    </ul>
-                                {% endif %}
-                            </article>
-
                             <article class="analytics-card analytics-card--popularity">
                                 <div class="analytics-card__header">
                                     <h4 class="analytics-card__title">Popularity Highlights</h4>
-                                    <span class="stat-caption">Based on Spotify popularity scores</span>
+                                    <span class="stat-caption">Where the crowd favorites sit</span>
                                 </div>
-
                                 <div class="popularity-columns">
                                     <div class="popularity-column">
                                         <h5 class="popularity-heading">Most Popular</h5>
@@ -288,12 +391,20 @@
                                     </div>
                                 </div>
                             </article>
+
                         </div>
 
                         {{ playlist_stats|json_script:"playlist-stats-data" }}
-                    </section>
-                {% endif %}
+                </section>
+            {% endif %}
 
+            <section class="track-stack">
+                <div class="track-stack__header">
+                    <div>
+                        <h3>Your playlist</h3>
+                        <p>Edit, reorder, or remove tracks before saving.</p>
+                    </div>
+                </div>
                 <ul
                     class="track-list"
                     id="track-list"
@@ -304,6 +415,7 @@
                             class="track-item"
                             data-track-id="{{ track.id }}"
                             data-position="{{ forloop.counter0 }}">
+                            <div class="track-position">#{{ forloop.counter }}</div>
                             <div class="track-artwork">
                                 {% if track.album_image_url %}
                                     <img src="{{ track.album_image_url }}" alt="Album artwork for {{ track.name }}">
@@ -336,6 +448,7 @@
                     {% endfor %}
                 </ul>
             </section>
+
 
             {% if debug_enabled %}
                 <section class="debug-panel">
@@ -721,6 +834,10 @@
                 const items = trackList.querySelectorAll('.track-item');
                 items.forEach((item, index) => {
                     item.dataset.position = String(index);
+                    const marker = item.querySelector('.track-position');
+                    if (marker) {
+                        marker.textContent = `#${index + 1}`;
+                    }
                 });
             }
 
@@ -818,6 +935,28 @@
 
             // Song search functionality
             const searchInput = document.getElementById('song-search-input');
+            const searchTrigger = document.getElementById('song-search-trigger');
+            const chipButtons = document.querySelectorAll('.chip-button[data-target-input]');
+
+            if (chipButtons.length) {
+                chipButtons.forEach((button) => {
+                    button.addEventListener('click', () => {
+                        const targetId = button.dataset.targetInput;
+                        const searchTerm = (button.dataset.searchTerm || button.textContent || '').trim();
+                        if (!targetId || !searchTerm) {
+                            return;
+                        }
+                        const input = document.getElementById(targetId);
+                        if (!input) {
+                            return;
+                        }
+                        input.value = searchTerm;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.focus();
+                    });
+                });
+            }
+
             const searchResults = document.getElementById('search-results');
             if (searchInput && searchResults) {
                 const searchUrl = searchInput.dataset.searchUrl;
@@ -953,6 +1092,14 @@
                     }
                 });
 
+                if (searchTrigger) {
+                    searchTrigger.addEventListener('click', () => {
+                        const query = searchInput.value.trim();
+                        performSearch(query);
+                        searchInput.focus();
+                    });
+                }
+
                 searchResults.addEventListener('click', (event) => {
                     const button = event.target.closest('.search-result-add');
                     if (!button) {
@@ -999,19 +1146,22 @@
 
                             // Add track to the track list
                             if (trackList && data.track) {
+                                const existingCount = trackList.querySelectorAll('.track-item').length;
                                 const trackItem = document.createElement('li');
                                 trackItem.className = 'track-item';
                                 trackItem.dataset.trackId = data.track.id;
+                                trackItem.dataset.position = String(existingCount);
 
                                 const track = data.track;
                                 const durationFormatted = formatDuration(track.duration_ms || 0);
+                                const fallbackInitial = (track.name || '?').charAt(0);
 
                                 trackItem.innerHTML = `
+                                    <div class="track-position">#${existingCount + 1}</div>
                                     <div class="track-artwork">
-                                        ${track.album_image_url ?
-                                            `<img src="${track.album_image_url}" alt="Album artwork for ${track.name}">` :
-                                            track.name.charAt(0)
-                                        }
+                                        ${track.album_image_url
+                                            ? `<img src="${track.album_image_url}" alt="Album artwork for ${track.name}">`
+                                            : fallbackInitial}
                                     </div>
                                     <div class="track-info">
                                         <span class="track-name">${track.name}</span>
@@ -1026,7 +1176,7 @@
 
                                 trackList.appendChild(trackItem);
                                 updateTrackPositions();
-                                setTrackCount(data.track_count || (trackList.querySelectorAll('.track-item').length));
+                                setTrackCount(data.track_count || trackList.querySelectorAll('.track-item').length);
                             }
 
                             pushMessage('success', `Added "${data.track.name}" to playlist`);
@@ -1051,6 +1201,17 @@
                     if (!searchInput.contains(event.target) && !searchResults.contains(event.target)) {
                         hideSearchResults();
                     }
+                });
+            }
+
+            const genreToggle = document.querySelector('.genre-toggle');
+            const remainingGenreList = document.querySelector('[data-genre-list="remaining"]');
+            if (genreToggle && remainingGenreList) {
+                genreToggle.addEventListener('click', () => {
+                    const expanded = genreToggle.getAttribute('aria-expanded') === 'true';
+                    genreToggle.setAttribute('aria-expanded', String(!expanded));
+                    remainingGenreList.classList.toggle('genre-legend--hidden', expanded);
+                    genreToggle.textContent = expanded ? 'Show All Genres' : 'Hide Genres';
                 });
             }
         })();

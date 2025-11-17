@@ -681,6 +681,43 @@ class DashboardStatsAPITests(TestCase):
         self.assertEqual(payload['spotify']['top_tracks'], [])
 
 
+class ListeningSuggestionsAPITests(TestCase):
+    """Tests for the listening suggestions endpoint."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse('dashboard:listening-suggestions')
+
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=False)
+    def test_requires_valid_session(self, mock_session_check):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('Authentication required', response.content.decode())
+
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
+    def test_requires_access_token(self, mock_session_check):
+        session = self.client.session
+        session.save()
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 401)
+
+    @patch('dashboard.views.generate_listening_suggestions')
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
+    def test_returns_suggestions(self, mock_session_check, mock_generate):
+        session = self.client.session
+        session['spotify_access_token'] = 'token'
+        session['spotify_user_id'] = 'spotify-user'
+        session.save()
+
+        mock_generate.return_value = ['Prompt A', 'Prompt B']
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual(payload['suggestions'], ['Prompt A', 'Prompt B'])
+        mock_generate.assert_called_once()
+
+
 class DashboardIntegrationTests(TestCase):
     """Integration tests for dashboard functionality"""
 
