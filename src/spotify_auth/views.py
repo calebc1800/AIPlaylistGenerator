@@ -1,3 +1,5 @@
+"""Authentication views that integrate Spotify OAuth."""
+
 import logging
 import secrets
 from urllib.parse import urlencode
@@ -15,9 +17,10 @@ SPOTIFY_HTTP_TIMEOUT = int(getattr(settings, "SPOTIFY_HTTP_TIMEOUT", 15))
 
 
 class SpotifyLoginView(View):
-    """Initiates the Spotify OAuth flow"""
+    """Initiate the Spotify OAuth flow."""
 
     def get(self, request):
+        """Redirect the user to Spotify's authorization page or reuse tokens."""
         if ensure_valid_spotify_session(request):
             return redirect('dashboard:dashboard')
 
@@ -41,9 +44,10 @@ class SpotifyLoginView(View):
 
 
 class SpotifyCallbackView(View):
-    """Handles the OAuth callback from Spotify"""
+    """Handle the OAuth callback from Spotify."""
 
     def get(self, request):
+        """Verify the callback state and persist the resulting tokens."""
         # Get the authorization code and state from query params
         code = request.GET.get('code')
         state = request.GET.get('state')
@@ -117,6 +121,7 @@ class SpotifyRefreshTokenView(View):
     """Refreshes the Spotify access token"""
 
     def post(self, request):
+        """Refresh the requester's Spotify access token."""
         refresh_token = request.session.get('spotify_refresh_token')
 
         if not refresh_token:

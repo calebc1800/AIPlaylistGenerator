@@ -1,4 +1,4 @@
-# spotify_auth/tests.py
+"""Tests for spotify_auth views and session helpers."""
 
 import json
 import time
@@ -8,6 +8,8 @@ from django.conf import settings
 from django.test import Client, TestCase
 from django.urls import reverse
 from requests.exceptions import RequestException
+from spotipy.exceptions import SpotifyException
+from spotify_auth.views import SpotifyCallbackView
 
 
 class SpotifyLoginViewTests(TestCase):
@@ -29,7 +31,7 @@ class SpotifyLoginViewTests(TestCase):
 
     def test_login_sets_state_in_session(self):
         """Test that a state token is set in the session for CSRF protection"""
-        response = self.client.get(self.login_url)
+        self.client.get(self.login_url)
 
         # State should be stored in session
         self.assertIn('spotify_auth_state', self.client.session)
@@ -280,8 +282,6 @@ class SpotifyCallbackViewTests(TestCase):
     @patch('spotify_auth.views.requests.get')
     def test_get_user_profile_with_network_error(self, mock_get):
         """Test get_user_profile handles network errors gracefully"""
-        from spotify_auth.views import SpotifyCallbackView
-
         # Mock a network error
         mock_get.side_effect = RequestException("Network error")
 
@@ -294,8 +294,6 @@ class SpotifyCallbackViewTests(TestCase):
     @patch('spotify_auth.views.requests.get')
     def test_get_user_profile_with_failed_response(self, mock_get):
         """Test get_user_profile handles non-200 responses"""
-        from spotify_auth.views import SpotifyCallbackView
-
         # Mock a failed response
         mock_response = Mock()
         mock_response.status_code = 401
@@ -531,7 +529,7 @@ class SpotifyDashboardViewTests(TestCase):
         # Should redirect to login
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('spotify_auth:login'))
-    
+
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_with_valid_token(self, mock_spotify):
         """Test dashboard displays user data with valid token"""
@@ -657,7 +655,6 @@ class SpotifyDashboardViewTests(TestCase):
         mock_spotify.return_value = mock_sp_instance
 
         # Create a SpotifyException with 401 status
-        from spotipy.exceptions import SpotifyException
         mock_sp_instance.current_user.side_effect = SpotifyException(
             http_status=401,
             code=-1,
@@ -683,7 +680,6 @@ class SpotifyDashboardViewTests(TestCase):
         mock_sp_instance = Mock()
         mock_spotify.return_value = mock_sp_instance
 
-        from spotipy.exceptions import SpotifyException
         mock_sp_instance.current_user.side_effect = SpotifyException(
             http_status=500,
             code=-1,
@@ -742,7 +738,10 @@ class SpotifyDashboardViewTests(TestCase):
         response = self.client.get(self.dashboard_url)
 
         # Should format multiple artists correctly
-        self.assertEqual(response.context['last_song']['artist'], 'Artist One, Artist Two, Artist Three')
+        self.assertEqual(
+            response.context['last_song']['artist'],
+            'Artist One, Artist Two, Artist Three',
+        )
 
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_creates_spotify_client_with_token(self, mock_spotify):

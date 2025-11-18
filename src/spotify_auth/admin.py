@@ -1,3 +1,1 @@
-from django.contrib import admin
-
-# Register your models here.
+"""Admin bindings for the spotify_auth app (currently empty)."""
