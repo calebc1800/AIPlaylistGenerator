@@ -103,7 +103,11 @@ def _collect_genres(
 ) -> List[str]:
     """Aggregate the best-available genres from stats + profile cache."""
     breakdown = get_genre_breakdown(user_identifier, sample_size=sample_size)
-    breakdown_genres = [_format_genre_label(entry.get("genre")) for entry in breakdown if entry.get("genre")]
+    breakdown_genres = [
+        _format_genre_label(entry.get("genre"))
+        for entry in breakdown
+        if entry.get("genre")
+    ]
     summary_genre = _format_genre_label(summary.get("top_genre"))
     profile_genres = _top_genres_from_profile(profile_cache)
     merged = _merge_unique([*breakdown_genres, summary_genre, *profile_genres])
@@ -138,6 +142,7 @@ def generate_listening_suggestions(
     history summary metrics. Returns an empty list when insufficient data is
     available so the UI can show a gentle fallback.
     """
+    # pylint: disable=too-many-branches
     if not user_identifier:
         return []
 
@@ -169,7 +174,12 @@ def generate_listening_suggestions(
         )
 
     for artist in artists[:3]:
-        _add_prompt(prompts, f"Something like {artist} with fresh finds", seen, max_prompts)
+        _add_prompt(
+            prompts,
+            f"Something like {artist} with fresh finds",
+            seen,
+            max_prompts,
+        )
         _add_prompt(prompts, f"Deep cuts inspired by {artist}", seen, max_prompts)
 
     if genres and artists:
@@ -182,17 +192,42 @@ def generate_listening_suggestions(
 
     profile_source = (profile_cache or {}).get("source")
     if profile_source == "recently_played":
-        _add_prompt(prompts, "Replay my recent listens with new discoveries", seen, max_prompts)
+        _add_prompt(
+            prompts,
+            "Replay my recent listens with new discoveries",
+            seen,
+            max_prompts,
+        )
     elif profile_source == "top_tracks":
-        _add_prompt(prompts, "High-energy mix from my top tracks", seen, max_prompts)
+        _add_prompt(
+            prompts,
+            "High-energy mix from my top tracks",
+            seen,
+            max_prompts,
+        )
 
     avg_novelty = summary.get("avg_novelty")
     if isinstance(avg_novelty, (int, float)):
         if avg_novelty < 70:
-            _add_prompt(prompts, "Blend familiar favorites with deeper cuts I've missed", seen, max_prompts)
+            _add_prompt(
+                prompts,
+                "Blend familiar favorites with deeper cuts I've missed",
+                seen,
+                max_prompts,
+            )
         else:
-            _add_prompt(prompts, "Keep the discovery streak from my recent playlists", seen, max_prompts)
+            _add_prompt(
+                prompts,
+                "Keep the discovery streak from my recent playlists",
+                seen,
+                max_prompts,
+            )
     elif summary.get("total_playlists"):
-        _add_prompt(prompts, "Remix what I've been generating lately", seen, max_prompts)
+        _add_prompt(
+            prompts,
+            "Remix what I've been generating lately",
+            seen,
+            max_prompts,
+        )
 
     return prompts[:max_prompts]
