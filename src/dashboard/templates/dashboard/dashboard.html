@@ -29,6 +29,7 @@
                 <button type="button" class="tab" data-tab="create">Create</button>
                 <button type="button" class="tab" data-tab="stats">Stats</button>
                 <button type="button" class="tab" data-tab="account">Account</button>
+                <button type="button" class="tab" data-tab="following">Following</button>
             </nav>
         </header>
 
@@ -275,6 +276,55 @@
                     </button>
                 </div>
             </div>
+
+            <div class="tab-content" id="following">
+    <h2 class="section-title">Following</h2>
+    
+    <!-- Following Users List -->
+    <div id="following-users-container">
+        <div class="loading-state" id="following-loading">
+            <div class="loader-ring"></div>
+            <p>Loading users you follow...</p>
+        </div>
+        
+        <div class="empty-state" id="following-empty" style="display: none;">
+            You're not following anyone yet. Visit user profiles and click Follow to see their playlists here.
+        </div>
+        
+        <div class="users-grid" id="following-users-grid" style="display: none;"></div>
+    </div>
+    
+    <!-- User Profile Modal -->
+    <div class="user-profile-modal" id="user-profile-modal" style="display: none;">
+        <div class="modal-backdrop" id="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="user-profile-info">
+                    <h3 id="modal-user-name">User Name</h3>
+                    <p id="modal-user-stats"></p>
+                </div>
+                <div class="modal-actions">
+                    <button class="follow-button" id="modal-follow-btn" data-user-id="" data-user-name="">
+                        <span class="follow-text">Follow</span>
+                    </button>
+                    <button class="modal-close-btn" id="modal-close-btn">×</button>
+                </div>
+            </div>
+            
+            <div class="modal-body">
+                <h4>Playlists</h4>
+                <div id="user-playlists-container">
+                    <div class="loading-state" id="playlists-loading">
+                        <div class="loader-ring"></div>
+                        <p>Loading playlists...</p>
+                    </div>
+                    <div class="playlists-grid" id="user-playlists-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
         </main>
 
         <footer class="search-footer">
@@ -817,6 +867,241 @@
                 }
             }
         }
+        (function() {
+    const followingTab = document.querySelector('[data-tab="following"]');
+    const followingUsersGrid = document.getElementById('following-users-grid');
+    const followingLoading = document.getElementById('following-loading');
+    const followingEmpty = document.getElementById('following-empty');
+    const userProfileModal = document.getElementById('user-profile-modal');
+    const modalBackdrop = document.getElementById('modal-backdrop');
+    const modalCloseBtn = document.getElementById('modal-close-btn');
+    const modalUserName = document.getElementById('modal-user-name');
+    const modalUserStats = document.getElementById('modal-user-stats');
+    const modalFollowBtn = document.getElementById('modal-follow-btn');
+    const userPlaylistsGrid = document.getElementById('user-playlists-grid');
+    const playlistsLoading = document.getElementById('playlists-loading');
+    
+    let followingData = [];
+    let currentUserId = "{{ user_id }}";
+    
+    // Load following list
+    async function loadFollowing() {
+        followingLoading.style.display = 'flex';
+        followingEmpty.style.display = 'none';
+        followingUsersGrid.style.display = 'none';
+        
+        try {
+            const response = await fetch("{% url 'dashboard:get-following' %}", {
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to load following list');
+            }
+            
+            const data = await response.json();
+            followingData = data.following || [];
+            
+            followingLoading.style.display = 'none';
+            
+            if (followingData.length === 0) {
+                followingEmpty.style.display = 'block';
+            } else {
+                followingUsersGrid.style.display = 'grid';
+                renderFollowingUsers();
+            }
+        } catch (error) {
+            console.error('Error loading following:', error);
+            followingLoading.style.display = 'none';
+            followingEmpty.innerHTML = 'Failed to load following list. Please try again.';
+            followingEmpty.style.display = 'block';
+        }
+    }
+    
+    // Render following users grid
+    function renderFollowingUsers() {
+        followingUsersGrid.innerHTML = followingData.map(user => `
+            <div class="user-card" data-user-id="${user.user_id}">
+                <div class="user-card-avatar">
+                    ${user.display_name.charAt(0).toUpperCase()}
+                </div>
+                <div class="user-card-info">
+                    <h3 class="user-card-name">${escapeHtml(user.display_name)}</h3>
+                    <p class="user-card-stats">${user.playlist_count} playlist${user.playlist_count !== 1 ? 's' : ''}</p>
+                </div>
+                <button class="view-profile-btn" data-user-id="${user.user_id}" data-user-name="${escapeHtml(user.display_name)}">
+                    View Profile
+                </button>
+            </div>
+        `).join('');
+        
+        // Add click handlers
+        document.querySelectorAll('.view-profile-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const userId = btn.dataset.userId;
+                const userName = btn.dataset.userName;
+                openUserProfile(userId, userName);
+            });
+        });
+    }
+    
+    // Open user profile modal
+    async function openUserProfile(userId, userName) {
+        modalUserName.textContent = userName;
+        modalUserStats.textContent = 'Loading...';
+        modalFollowBtn.dataset.userId = userId;
+        modalFollowBtn.dataset.userName = userName;
+        userProfileModal.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+        
+        userPlaylistsGrid.innerHTML = '';
+        playlistsLoading.style.display = 'flex';
+        
+        try {
+            const response = await fetch(`/dashboard/api/user/${userId}/playlists/`, {
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to load user playlists');
+            }
+            
+            const data = await response.json();
+            
+            modalUserStats.textContent = `${data.count} playlist${data.count !== 1 ? 's' : ''}`;
+            
+            // Update follow button state
+            updateFollowButton(data.is_following);
+            
+            playlistsLoading.style.display = 'none';
+            
+            if (data.playlists.length === 0) {
+                userPlaylistsGrid.innerHTML = '<div class="empty-state">No playlists yet</div>';
+            } else {
+                renderUserPlaylists(data.playlists);
+            }
+        } catch (error) {
+            console.error('Error loading user playlists:', error);
+            playlistsLoading.style.display = 'none';
+            userPlaylistsGrid.innerHTML = '<div class="empty-state">Failed to load playlists</div>';
+        }
+    }
+    
+    // Render user playlists
+    function renderUserPlaylists(playlists) {
+        userPlaylistsGrid.innerHTML = playlists.map(playlist => `
+            <div class="playlist-card">
+                <div class="playlist-image">
+                    ${playlist.cover_image 
+                        ? `<img src="${playlist.cover_image}" alt="${escapeHtml(playlist.playlist_name)}">` 
+                        : '🎵'}
+                </div>
+                <div class="playlist-info-compact">
+                    <div class="playlist-title">${escapeHtml(playlist.playlist_name)}</div>
+                    <div class="playlist-meta">
+                        <span class="creator-name">🎵 ${playlist.track_count} tracks</span>
+                        <span class="playlist-likes">${playlist.like_count} 👍</span>
+                    </div>
+                    ${playlist.spotify_uri 
+                        ? `<a href="https://open.spotify.com/playlist/${playlist.playlist_id}" target="_blank" class="spotify-link">View on Spotify →</a>` 
+                        : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    // Update follow button state
+    function updateFollowButton(isFollowing) {
+        const followText = modalFollowBtn.querySelector('.follow-text');
+        if (isFollowing) {
+            modalFollowBtn.classList.add('following');
+            followText.textContent = 'Following';
+        } else {
+            modalFollowBtn.classList.remove('following');
+            followText.textContent = 'Follow';
+        }
+    }
+    
+    // Toggle follow
+    async function toggleFollow(userId, userName) {
+        try {
+            const response = await fetch("{% url 'dashboard:toggle-follow' %}", {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({
+                    following_user_id: userId,
+                    following_display_name: userName
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to toggle follow');
+            }
+            
+            const data = await response.json();
+            updateFollowButton(data.following);
+            
+            // Reload following list
+            loadFollowing();
+            
+            return data.following;
+        } catch (error) {
+            console.error('Error toggling follow:', error);
+            alert('Failed to update follow status');
+        }
+    }
+    
+    // Close modal
+    function closeModal() {
+        userProfileModal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+    
+    // Event listeners
+    modalCloseBtn.addEventListener('click', closeModal);
+    modalBackdrop.addEventListener('click', closeModal);
+    
+    modalFollowBtn.addEventListener('click', async () => {
+        const userId = modalFollowBtn.dataset.userId;
+        const userName = modalFollowBtn.dataset.userName;
+        await toggleFollow(userId, userName);
+    });
+    
+    // Load following when tab is activated
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            if (tab.dataset.tab === 'following') {
+                loadFollowing();
+            }
+        });
+    });
+    
+    // Helper functions
+    function escapeHtml(unsafe) {
+        return String(unsafe)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+    
+    function getCsrfToken() {
+        const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        return tokenInput ? tokenInput.value : '';
+    }
+})();  
     </script>
 </body>
 </html>

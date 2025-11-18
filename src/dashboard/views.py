@@ -14,6 +14,12 @@ from recommender.services.stats_service import (
     summarize_generation_stats,
 )
 from recommender.services.listening_suggestions import generate_listening_suggestions
+import json
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
+from dashboard.models import UserFollow
+from recommender.models import SavedPlaylist
 
 
 def _resolve_generation_identifier(request, spotify_user_id: str | None = None) -> str:
@@ -264,3 +270,131 @@ class ListeningSuggestionsAPIView(View):
         suggestions = generate_listening_suggestions(user_identifier, profile_cache=profile_cache)
 
         return JsonResponse({'suggestions': suggestions})
+
+@require_POST
+@csrf_exempt
+def toggle_follow(request):
+    """Toggle follow status for a user"""
+    import json
+    
+    try:
+        data = json.loads(request.body)
+        following_user_id = data.get('following_user_id')
+        following_display_name = data.get('following_display_name')
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({'error': 'Invalid request'}, status=400)
+    
+    follower_user_id = request.session.get('spotify_user_id')
+    follower_display_name = request.session.get('spotify_display_name', follower_user_id)
+    
+    if not follower_user_id:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    
+    if follower_user_id == following_user_id:
+        return JsonResponse({'error': 'Cannot follow yourself'}, status=400)
+    
+    # Check if already following
+    existing_follow = UserFollow.objects.filter(
+        follower_user_id=follower_user_id,
+        following_user_id=following_user_id
+    ).first()
+    
+    if existing_follow:
+        # Unfollow
+        existing_follow.delete()
+        return JsonResponse({
+            'success': True,
+            'following': False,
+            'message': f'Unfollowed {following_display_name}'
+        })
+    else:
+        # Follow
+        UserFollow.objects.create(
+            follower_user_id=follower_user_id,
+            follower_display_name=follower_display_name,
+            following_user_id=following_user_id,
+            following_display_name=following_display_name
+        )
+        return JsonResponse({
+            'success': True,
+            'following': True,
+            'message': f'Now following {following_display_name}'
+        })
+
+
+def get_following_list(request):
+    """Get list of users the current user is following"""
+    user_id = request.session.get('spotify_user_id')
+    
+    if not user_id:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    
+    # Get all users this user is following
+    following = UserFollow.objects.filter(
+        follower_user_id=user_id
+    ).values(
+        'following_user_id',
+        'following_display_name',
+        'created_at'
+    )
+    
+    # Get playlist counts for each followed user
+    following_list = []
+    for follow in following:
+        playlist_count = SavedPlaylist.objects.filter(
+            creator_user_id=follow['following_user_id']
+        ).count()
+        
+        following_list.append({
+            'user_id': follow['following_user_id'],
+            'display_name': follow['following_display_name'],
+            'playlist_count': playlist_count,
+            'followed_at': follow['created_at'].isoformat()
+        })
+    
+    return JsonResponse({
+        'following': following_list,
+        'count': len(following_list)
+    })
+
+
+def get_user_playlists(request, user_id):
+    """Get all playlists for a specific user"""
+    current_user_id = request.session.get('spotify_user_id')
+    
+    if not current_user_id:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    
+    # Get user's playlists
+    playlists = SavedPlaylist.objects.filter(
+        creator_user_id=user_id
+    ).order_by('-created_at')
+    
+    # Check if current user is following this user
+    is_following = UserFollow.objects.filter(
+        follower_user_id=current_user_id,
+        following_user_id=user_id
+    ).exists()
+    
+    playlist_data = []
+    for playlist in playlists:
+        playlist_data.append({
+            'playlist_id': playlist.playlist_id,
+            'playlist_name': playlist.playlist_name,
+            'description': playlist.description,
+            'cover_image': playlist.cover_image,
+            'track_count': playlist.track_count,
+            'like_count': playlist.like_count,
+            'created_at': playlist.created_at.isoformat(),
+            'spotify_uri': playlist.spotify_uri
+        })
+    
+    user_display_name = playlists.first().creator_display_name if playlists.exists() else user_id
+    
+    return JsonResponse({
+        'user_id': user_id,
+        'display_name': user_display_name,
+        'is_following': is_following,
+        'playlists': playlist_data,
+        'count': len(playlist_data)
+    })
