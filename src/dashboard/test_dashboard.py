@@ -1,10 +1,16 @@
+"""Tests for dashboard views and Spotify integrations."""
+
+# pylint: disable=duplicate-code
+
 import json
 
-from django.test import TestCase, Client, override_settings
-from django.urls import reverse
 from django.contrib.auth.models import User
-from unittest.mock import patch, Mock
+from django.test import Client, TestCase, override_settings
+from django.urls import reverse
+from unittest.mock import Mock, patch
+
 from recommender.models import SavedPlaylist
+from recommender.services.session_utils import ensure_session_key
 
 
 class DashboardViewTests(TestCase):
@@ -1020,24 +1026,21 @@ class HelperFunctionTests(TestCase):
         self.assertEqual(identifier, 'anonymous')
 
     def test_ensure_session_key_with_existing_key(self):
-        """Test _ensure_session_key with existing session key"""
-        from dashboard.views import _ensure_session_key
-
+        """Test ensure_session_key with existing session key"""
         session = self.client.session
         session['test'] = 'data'
         session.save()
 
         request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
 
-        session_key = _ensure_session_key(request)
+        session_key = ensure_session_key(request)
 
         # Should return the existing session key
         self.assertIsNotNone(session_key)
         self.assertEqual(session_key, request.session.session_key)
 
     def test_ensure_session_key_creates_new_key(self):
-        """Test _ensure_session_key creates new session key if missing"""
-        from dashboard.views import _ensure_session_key
+        """Test ensure_session_key creates new session key if missing"""
         from django.test import RequestFactory
         from django.contrib.sessions.middleware import SessionMiddleware
 
@@ -1052,7 +1055,7 @@ class HelperFunctionTests(TestCase):
         # Ensure session key is None initially
         self.assertIsNone(request.session.session_key)
 
-        session_key = _ensure_session_key(request)
+        session_key = ensure_session_key(request)
 
         # Should create and return a session key
         self.assertIsNotNone(session_key)

@@ -1,14 +1,21 @@
 """Unit tests for the recommender app services and views."""
 
+# Pylint is relaxed for this module since the tests intentionally trade
+# readability for exhaustive coverage.
+# pylint: disable=line-too-long,too-many-lines,missing-function-docstring
+# pylint: disable=missing-class-docstring,too-few-public-methods
+# pylint: disable=too-many-arguments,too-many-positional-arguments
+# pylint: disable=import-outside-toplevel,unused-argument
+
 import json
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.messages import get_messages
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
-from unittest.mock import patch
 
 from recommender.models import PlaylistGenerationStat, SavedPlaylist
 from recommender.services.spotify_handler import (
@@ -79,7 +86,6 @@ class ModelTests(TestCase):
 
     def test_playlist_generation_stat_str(self):
         """Test __str__ method of PlaylistGenerationStat"""
-        import datetime
         stat = PlaylistGenerationStat.objects.create(
             user_identifier="testuser",
             prompt="test prompt",

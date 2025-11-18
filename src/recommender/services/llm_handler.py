@@ -1,5 +1,10 @@
 """Lightweight adapters around the OpenAI LLMs used for playlist generation."""
 
+# The routines in this module intentionally trade compact code for clarity when
+# orchestrating the many OpenAI interactions required for playlist generation.
+# pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+# pylint: disable=too-many-branches,too-many-statements
+
 import json
 import logging
 import os
@@ -7,15 +12,17 @@ import re
 from threading import local
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_ATTRIBUTES = {"mood": "chill", "genre": "pop", "energy": "medium"}
 try:
-    from django.conf import settings  # type: ignore
-except Exception:  # pragma: no cover - settings may not be ready during import time
-    settings = None
+    from django.conf import settings as django_settings  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency in some contexts
+    DJANGO_SETTINGS = None
+else:
+    DJANGO_SETTINGS = django_settings
 
 _GENRE_FALLBACKS = {
     "pop": [
@@ -69,7 +76,7 @@ _DEFAULT_FALLBACKS = [
     {"title": "September", "artist": "Earth, Wind & Fire"},
 ]
 
-_OPENAI_CLIENT: Optional[OpenAI] = None
+_CLIENT_STATE: Dict[str, Optional[OpenAI]] = {"client": None}
 _JSON_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
 _THREAD_STATE = local()
 
@@ -119,16 +126,15 @@ def get_llm_usage_snapshot() -> Dict[str, int]:
 
 
 def _get_setting(name: str, default=None):
-    if settings is not None and hasattr(settings, name):
-        return getattr(settings, name)
+    if DJANGO_SETTINGS is not None and hasattr(DJANGO_SETTINGS, name):
+        return getattr(DJANGO_SETTINGS, name)
     return os.getenv(name, default)
 
 
 def _get_openai_client() -> Optional[OpenAI]:
     """Lazily initialize the shared OpenAI client."""
-    global _OPENAI_CLIENT
-    if _OPENAI_CLIENT is not None:
-        return _OPENAI_CLIENT
+    if _CLIENT_STATE["client"] is not None:
+        return _CLIENT_STATE["client"]
 
     api_key = _get_setting("OPENAI_API_KEY")
     if not api_key:
@@ -146,12 +152,12 @@ def _get_openai_client() -> Optional[OpenAI]:
         client_kwargs["organization"] = organization
 
     try:
-        _OPENAI_CLIENT = OpenAI(**client_kwargs)
-    except Exception as exc:  # pragma: no cover - defensive logging
+        _CLIENT_STATE["client"] = OpenAI(**client_kwargs)
+    except (OpenAIError, ValueError) as exc:  # pragma: no cover - defensive logging
         logger.error("Failed to initialize OpenAI client: %s", exc)
         return None
 
-    return _OPENAI_CLIENT
+    return _CLIENT_STATE["client"]
 
 
 
@@ -249,7 +255,7 @@ def query_openai(
 
     try:
         response = client.responses.create(**request_kwargs)
-    except Exception as exc:  # pragma: no cover - defensive logging
+    except (OpenAIError, ValueError, TypeError) as exc:  # pragma: no cover - defensive logging
         logger.error("OpenAI request failed: %s", exc)
         return ""
 
@@ -269,7 +275,7 @@ def query_openai(
                 if value:
                     segments.append(str(value))
         return "".join(segments).strip()
-    except Exception:  # pragma: no cover - fallback only
+    except (AttributeError, TypeError):  # pragma: no cover - fallback only
         return ""
 
 
@@ -317,7 +323,7 @@ def _extract_usage_value(source: object, *keys: str) -> Optional[int]:
         if value is None and hasattr(source, "get"):
             try:
                 value = source.get(key)
-            except Exception:  # pragma: no cover - defensive fallback
+            except (AttributeError, TypeError):  # pragma: no cover - defensive fallback
                 value = None
         if value is not None:
             try:
@@ -354,11 +360,12 @@ def extract_playlist_attributes(
 ) -> Dict[str, object]:
     """Pull mood, genre, and energy descriptors from a free-form user prompt."""
     query = (
-        "Extract the mood, genre, energy level, and any explicitly referenced primary artists or bands "
-        "from this user playlist request. Respond with JSON containing the keys `mood`, `genre`, and `energy`, "
-        "plus optional `artist` (string) and `artists` (array of strings) when specific performers are mentioned. "
-        "If no artist is present, set those fields to null or an empty list. Request: "
-        f"{prompt}"
+        "Extract the mood, genre, energy level, and any explicitly referenced primary artists "
+        "or bands from this user playlist request. Respond with JSON containing the keys "
+        "`mood`, `genre`, and `energy`, plus optional `artist` (string) and `artists` "
+        "(array of strings) when specific performers are mentioned. "
+        "If no artist is present, set those fields to null or an empty list. "
+        f"Request: {prompt}"
     )
     _log(debug_steps, log_step, f"LLM prompt (attribute extraction): {query}")
     response = dispatch_llm_query(query, provider=provider)
@@ -394,11 +401,17 @@ def extract_playlist_attributes(
         if isinstance(artists_field, str) and artists_field.strip():
             artists_list = [artists_field.strip()]
         elif isinstance(artists_field, list):
-            artists_list = [str(item).strip() for item in artists_field if isinstance(item, (str, int)) and str(item).strip()]
+            artists_list = [
+                str(item).strip()
+                for item in artists_field
+                if isinstance(item, (str, int)) and str(item).strip()
+            ]
         else:
             artists_list = []
-        if artist_hint and artist_hint.lower() not in {name.lower() for name in artists_list}:
-            artists_list.insert(0, artist_hint)
+        if artist_hint:
+            lower_names = {name.lower() for name in artists_list}
+            if artist_hint.lower() not in lower_names:
+                artists_list.insert(0, artist_hint)
 
         attributes = {key: (value or DEFAULT_ATTRIBUTES[key]) for key, value in attributes.items()}
         attributes["artist"] = artist_hint
@@ -537,7 +550,9 @@ def suggest_remix_tracks(
     if not track_snapshot:
         track_snapshot = ["(playlist currently empty)"]
 
-    numbered_tracks = "\n".join(f"{index + 1}. {entry}" for index, entry in enumerate(track_snapshot))
+    numbered_tracks = "\n".join(
+        f"{index + 1}. {entry}" for index, entry in enumerate(track_snapshot)
+    )
     attribute_label = json.dumps(attributes, ensure_ascii=False)
     prompt_label = prompt or "Unnamed playlist request"
     query = (
@@ -546,10 +561,12 @@ def suggest_remix_tracks(
         f"Target attributes: {attribute_label}\n"
         "Current playlist tracks:\n"
         f"{numbered_tracks}\n\n"
-        f"Remix the playlist by returning exactly {desired_count} songs that match the same mood, genre, and energy."
-        " You may keep some of the existing songs, but avoid duplicates overall and ensure the list feels refreshed."
-        " Return a JSON array where each object contains the keys \"title\" and \"artist\"."
-        " Prefer well-known tracks that are likely available on Spotify US."
+        "Remix the playlist by returning exactly "
+        f"{desired_count} songs that match the same mood, genre, and energy. "
+        "You may keep some of the existing songs, but avoid duplicates overall "
+        "and ensure the list feels refreshed. Return a JSON array where each "
+        "object contains the keys \"title\" and \"artist\". Prefer well-known "
+        "tracks that are likely available on Spotify US."
     )
     _log(debug_steps, log_step, f"LLM prompt (remix suggestions): {query}")
     response = dispatch_llm_query(query, provider=provider)

@@ -1,5 +1,11 @@
 """Spotify helper utilities for the recommender app."""
 
+# The Spotify integration trades structural simplicity for handling many
+# branches and large payloads from the API, so relax several pylint limits.
+# pylint: disable=too-many-lines,too-many-arguments,too-many-locals
+# pylint: disable=too-many-branches,too-many-statements,too-many-nested-blocks
+# pylint: disable=too-many-positional-arguments,line-too-long
+
 import random
 import re
 import time
@@ -91,11 +97,21 @@ def _tracks_to_strings(tracks: List[Dict]) -> List[str]:
 
 def _filter_by_market(tracks: List[Dict], market: str) -> List[Dict]:
     """Filter tracks that are not available in the desired market."""
+    if not market:
+        return tracks
+
+    normalized_market = market.upper()
     filtered: List[Dict] = []
     for track in tracks:
         markets = track.get("available_markets")
-        if not markets or market in markets:
+        if not markets:
             filtered.append(track)
+            continue
+        if isinstance(markets, Iterable):
+            for entry in markets:
+                if isinstance(entry, str) and entry.upper() == normalized_market:
+                    filtered.append(track)
+                    break
     return filtered
 
 
@@ -436,7 +452,7 @@ def compute_playlist_statistics(
     genre_items = sorted(genre_distribution.items(), key=lambda item: item[1], reverse=True)
     top_genre_items = genre_items[:3]
     remaining_genre_items = genre_items[3:]
-    top_distribution = {genre: pct for genre, pct in top_genre_items}
+    top_distribution = dict(top_genre_items)
     top_genres_list = [
         {"genre": genre, "percentage": pct} for genre, pct in top_genre_items
     ]
@@ -476,6 +492,8 @@ def build_user_profile_seed_snapshot(
     try:
         response = sp.current_user_top_tracks(limit=limit, time_range="medium_term")
         raw_tracks = response.get("items", []) if isinstance(response, dict) else []
+        raw_tracks = [track for track in raw_tracks if isinstance(track, dict)]
+        raw_tracks = _filter_by_market(raw_tracks, market)
         source_label = "top_tracks"
         if raw_tracks:
             _log(debug_steps, log_step, f"Seed snapshot fetched {len(raw_tracks)} top tracks.")
@@ -494,6 +512,7 @@ def build_user_profile_seed_snapshot(
             items = response.get("items", []) if isinstance(response, dict) else []
             raw_tracks = [entry.get("track") for entry in items if isinstance(entry, dict) and entry.get("track")]
             raw_tracks = [track for track in raw_tracks if track]
+            raw_tracks = _filter_by_market(raw_tracks, market)
             source_label = "recently_played"
             if raw_tracks:
                 _log(debug_steps, log_step, f"Seed snapshot fell back to {len(raw_tracks)} recent tracks.")
@@ -651,7 +670,7 @@ def build_user_profile_seed_snapshot(
             artist_name_map[normalized_key] = artist_id
 
     top_tracks_sorted = sorted(
-        [payload for payload in track_lookup.values()],
+        list(track_lookup.values()),
         key=lambda item: (item.get("popularity", 0), item.get("year") or 0),
         reverse=True,
     )

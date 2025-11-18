@@ -7,13 +7,14 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
 from recommender.models import SavedPlaylist
-from spotify_auth.session import clear_spotify_session, ensure_valid_spotify_session
+from recommender.services.listening_suggestions import generate_listening_suggestions
+from recommender.services.session_utils import ensure_session_key
 from recommender.services.spotify_handler import build_user_profile_seed_snapshot
 from recommender.services.stats_service import (
     get_genre_breakdown,
     summarize_generation_stats,
 )
-from recommender.services.listening_suggestions import generate_listening_suggestions
+from spotify_auth.session import clear_spotify_session, ensure_valid_spotify_session
 
 
 def _resolve_generation_identifier(request, spotify_user_id: str | None = None) -> str:
@@ -33,22 +34,6 @@ def _resolve_generation_identifier(request, spotify_user_id: str | None = None) 
     return str(request.session.get("spotify_user_id") or "anonymous")
 
 
-def _ensure_session_key(request) -> str:
-    """Checks for session key
-
-    Args:
-        request (django request): http session information request
-
-    Returns:
-        str: Session Key
-    """
-    session_key = request.session.session_key
-    if not session_key:
-        request.session.save()
-        session_key = request.session.session_key or ""
-    return session_key
-
-
 def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     """Uses Spotify API to get the current user's top artists and songs
 
@@ -59,7 +44,7 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     Returns:
         dict: Top genres, artists and tracks
     """
-    cache_key = f"dashboard:spotify-highlights:{_ensure_session_key(request)}"
+    cache_key = f"dashboard:spotify-highlights:{ensure_session_key(request)}"
     cached = cache.get(cache_key)
     if cached:
         return cached
