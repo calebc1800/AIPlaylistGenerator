@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Dict, List, Optional
+
 import spotipy
 from django.conf import settings
 from django.core.cache import cache
@@ -8,6 +10,7 @@ from django.shortcuts import redirect, render
 from django.views import View
 from recommender.models import SavedPlaylist
 from recommender.services import artist_recommendation_service
+from recommender.services.artist_ai_service import generate_ai_artist_cards
 from recommender.services.listening_suggestions import generate_listening_suggestions
 from recommender.services.session_utils import ensure_session_key
 from recommender.services.spotify_handler import build_user_profile_seed_snapshot
@@ -107,6 +110,31 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     return highlights
 
 
+def _get_ai_artist_suggestions(
+    request,
+    user_id: Optional[str],
+    sp: Optional[spotipy.Spotify],
+    profile_cache: Optional[Dict[str, object]],
+    *,
+    limit: int = 6,
+) -> List[Dict[str, object]]:
+    if not user_id:
+        return []
+    session_key = f"artist_ai_suggestions:{user_id}"
+    cached = request.session.get(session_key)
+    if isinstance(cached, dict) and isinstance(cached.get("artists"), list):
+        return cached["artists"]
+    cards = generate_ai_artist_cards(
+        user_id,
+        sp=sp,
+        profile_cache=profile_cache,
+        limit=limit,
+    )
+    request.session[session_key] = {"artists": cards}
+    request.session.modified = True
+    return cards
+
+
 class DashboardView(View):
     """Display user's Spotify dashboard"""
 
@@ -131,13 +159,16 @@ class DashboardView(View):
             if user_id:
                 request.session['spotify_user_id'] = user_id
 
+            profile_cache: Optional[Dict[str, object]] = None
             if user_id:
                 cache_key = f"recommender:user-profile:{user_id}"
-                if not cache.get(cache_key):
+                profile_cache = cache.get(cache_key)
+                if not profile_cache:
                     snapshot = build_user_profile_seed_snapshot(sp)
                     if snapshot:
                         ttl = getattr(settings, "RECOMMENDER_USER_PROFILE_CACHE_TTL", 3600)
                         cache.set(cache_key, snapshot, ttl)
+                        profile_cache = snapshot
 
             last_song = None
             if recently_played and recently_played.get('items'):
@@ -165,12 +196,14 @@ class DashboardView(View):
             generation_identifier = _resolve_generation_identifier(request, user_id)
             generated_stats = summarize_generation_stats(generation_identifier)
             genre_breakdown = get_genre_breakdown(generation_identifier)
-            recommended_artists = []
-            if user_id:
-                recommended_artists = artist_recommendation_service.generate_recommended_artists(
-                    user_id,
-                    limit=10,
-                )
+            favorite_artists = artist_recommendation_service.fetch_seed_artists(user_id, limit=10) if user_id else []
+            ai_artist_suggestions = _get_ai_artist_suggestions(
+                request,
+                user_id,
+                sp,
+                profile_cache,
+                limit=6,
+            )
 
             allowed_tabs = {"explore", "create", "artists", "stats", "account"}
             requested_tab = (request.GET.get('tab') or "").strip().lower()
@@ -196,7 +229,8 @@ class DashboardView(View):
                 'generated_stats': generated_stats,
                 'genre_breakdown': genre_breakdown,
                 'spotify_highlights': {},
-                'recommended_artists': recommended_artists,
+                'favorite_artists': favorite_artists,
+                'ai_artist_suggestions': ai_artist_suggestions,
                 'default_tab': default_tab,
             }
             return render(request, 'dashboard/dashboard.html', context)
@@ -271,13 +305,18 @@ class RecommendedArtistsAPIView(View):
             return JsonResponse({'error': 'Authentication required'}, status=401)
 
         try:
-            requested_limit = int(request.GET.get('limit', 10))
+            requested_limit = int(request.GET.get('limit', 6))
         except (TypeError, ValueError):
-            requested_limit = 10
-        limit = max(1, min(requested_limit, 20))
+            requested_limit = 6
+        limit = max(1, min(requested_limit, 12))
 
-        recommended_artists = artist_recommendation_service.generate_recommended_artists(
+        sp = spotipy.Spotify(auth=access_token)
+        profile_cache = cache.get(f"recommender:user-profile:{user_id}") if user_id else None
+        recommended_artists = _get_ai_artist_suggestions(
+            request,
             user_id,
+            sp,
+            profile_cache,
             limit=limit,
         )
         meta_seed_count = sum(len(entry.get('seed_artist_ids') or []) for entry in recommended_artists)

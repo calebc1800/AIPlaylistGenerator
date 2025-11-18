@@ -9,7 +9,6 @@
 </head>
 <body 
     data-default-tab="{{ default_tab|default:'explore' }}"
-    data-recommended-endpoint="{% url 'dashboard:recommended-artists' %}"
 >
     <div class="dashboard-container">
         <header class="header">
@@ -129,32 +128,60 @@
 
             <!-- Artists Tab -->
             <div class="tab-content" id="artists">
-                <section class="recommended-artists">
-                    <div class="section-header artist-header">
-                        <div>
-                            <h2 class="section-title">Recommended Artists</h2>
-                            <p class="section-subtitle">
-                                Discover related artists based on your Spotify listening history.
-                            </p>
+                <section class="artist-tab">
+                    <div class="section-header">
+                        <h2 class="section-title">Artists</h2>
+                        <p class="section-subtitle">Your current heavy rotation.</p>
+                    </div>
+                    <div class="artist-showcase-grid">
+                        {% if favorite_artists %}
+                            {% for artist in favorite_artists %}
+                            <article class="artist-showcase-card">
+                                <div class="artist-avatar">
+                                    {% if artist.image %}
+                                    <img src="{{ artist.image }}" alt="{{ artist.name }}">
+                                    {% else %}
+                                    <div class="artist-avatar-fallback">
+                                        {{ artist.name|slice:":1"|default:"?"|upper }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="artist-showcase-info">
+                                    <h3>{{ artist.name }}</h3>
+                                    <p>{{ artist.genres|slice:":3"|join:" • "|default:"Genres updating soon" }}</p>
+                                    <span class="artist-metric">
+                                        {{ artist.play_count|default:0 }} plays · Popularity {{ artist.popularity|default:0 }}
+                                    </span>
+                                </div>
+                            </article>
+                            {% endfor %}
+                        {% else %}
+                            <div class="empty-state small">
+                                We’ll highlight your top artists here after a bit more listening.
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="ai-suggestions">
+                        <div class="section-header">
+                            <div>
+                                <h3 class="section-title">AI Suggestions</h3>
+                                <p class="section-subtitle">Generated once per session to keep things fresh.</p>
+                            </div>
                         </div>
-                        <div class="artist-controls">
-                            <button type="button" class="ghost-btn" id="recommended-artists-refresh">
-                                Refresh
+                        <div class="recommended-grid" id="recommended-artists-grid">
+                            <div class="empty-state" id="recommended-artists-empty">
+                                AI suggestions will appear here once your listening data loads.
+                            </div>
+                        </div>
+                        <div class="recommended-footer">
+                            <p class="selection-label" id="artist-selection-label">
+                                Select up to 5 AI-suggested artists to craft a playlist.
+                            </p>
+                            <button type="button" class="create-btn" id="artists-generate-btn" disabled>
+                                Select artists first
                             </button>
                         </div>
-                    </div>
-                    <div class="recommended-grid" id="recommended-artists-grid">
-                        <div class="empty-state" id="recommended-artists-empty">
-                            Artist recommendations will appear here once your listening data loads.
-                        </div>
-                    </div>
-                    <div class="recommended-footer">
-                        <p class="selection-label" id="artist-selection-label">
-                            Select up to 5 artists to craft a playlist.
-                        </p>
-                        <button type="button" class="create-btn" id="artists-generate-btn" disabled>
-                            Select artists first
-                        </button>
                     </div>
                 </section>
                 <form
@@ -361,7 +388,7 @@
     {{ generated_stats|json_script:"initial_generated_stats" }}
     {{ genre_breakdown|json_script:"initial_genre_breakdown" }}
     {{ spotify_highlights|json_script:"initial_spotify_highlights" }}
-    {{ recommended_artists|json_script:"initial_recommended_artists" }}
+    {{ ai_artist_suggestions|json_script:"initial_ai_artists" }}
 
     <script>
         // Tab switching functionality
@@ -592,10 +619,7 @@
         };
 
         const recommendedGrid = document.getElementById('recommended-artists-grid');
-        const recommendedRefreshBtn = document.getElementById('recommended-artists-refresh');
         const recommendedEmptyState = document.getElementById('recommended-artists-empty');
-        const recommendedEndpoint =
-            (document.body && document.body.dataset && document.body.dataset.recommendedEndpoint) || '';
         const artistSelectionLabel = document.getElementById('artist-selection-label');
         const artistGenerateBtn = document.getElementById('artists-generate-btn');
         const artistForm = document.getElementById('artist-generate-form');
@@ -616,7 +640,7 @@
             const selectedCount = selectedIds.length;
             if (artistSelectionLabel) {
                 if (selectedCount === 0) {
-                    artistSelectionLabel.textContent = 'Select up to 5 artists to craft a playlist.';
+                    artistSelectionLabel.textContent = 'Select up to 5 AI-suggested artists to craft a playlist.';
                     artistSelectionLabel.classList.remove('error');
                 } else if (selectedCount === 1) {
                     artistSelectionLabel.textContent = 'Great pick! Add a few more or generate now.';
@@ -740,7 +764,7 @@
             updateArtistSelectionUI();
         };
 
-        const recommendedArtistsInitial = parseJsonScript('initial_recommended_artists', []);
+        const recommendedArtistsInitial = parseJsonScript('initial_ai_artists', []);
         renderRecommendedArtists(recommendedArtistsInitial);
 
         const toggleArtistSelection = (artistId) => {
@@ -797,36 +821,6 @@
                 artistNamesInput.value = JSON.stringify(artistNames);
                 artistForm.submit();
             });
-        }
-
-        const requestRecommendedArtists = async () => {
-            if (!recommendedEndpoint) {
-                return;
-            }
-            try {
-                if (recommendedRefreshBtn) {
-                    recommendedRefreshBtn.disabled = true;
-                }
-                const response = await fetch(recommendedEndpoint, {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                });
-                if (!response.ok) {
-                    return;
-                }
-                const payload = await response.json();
-                renderRecommendedArtists(payload.recommended_artists || []);
-            } catch (error) {
-                console.warn('Failed to refresh recommended artists', error);
-            } finally {
-                if (recommendedRefreshBtn) {
-                    recommendedRefreshBtn.disabled = false;
-                }
-            }
-        };
-
-        if (recommendedRefreshBtn) {
-            recommendedRefreshBtn.addEventListener('click', requestRecommendedArtists);
         }
 
         const statsEndpoint = "{% url 'dashboard:user-stats' %}";
