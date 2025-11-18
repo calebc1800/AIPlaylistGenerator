@@ -129,6 +129,12 @@ def generate_recommended_artists(
             }
         )
 
-    recommendations.sort(key=lambda entry: (entry.get("score", 0), entry.get("popularity", 0)), reverse=True)
+    recommendations.sort(
+        key=lambda entry: (
+            entry.get("score", 0),
+            entry.get("popularity", 0),
+            entry.get("play_count", 0),
+        ),
+        reverse=True,
+    )
     return recommendations[:limit]
-

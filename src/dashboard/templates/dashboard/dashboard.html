@@ -128,43 +128,55 @@
 
             <!-- Artists Tab -->
             <div class="tab-content" id="artists">
-                <section class="artist-tab">
-                    <div class="section-header">
-                        <h2 class="section-title">Artists</h2>
-                        <p class="section-subtitle">Your current heavy rotation.</p>
-                    </div>
-                    <div class="artist-showcase-grid">
-                        {% if favorite_artists %}
-                            {% for artist in favorite_artists %}
-                            <article class="artist-showcase-card">
-                                <div class="artist-avatar">
-                                    {% if artist.image %}
-                                    <img src="{{ artist.image }}" alt="{{ artist.name }}">
-                                    {% else %}
-                                    <div class="artist-avatar-fallback">
-                                        {{ artist.name|slice:":1"|default:"?"|upper }}
-                                    </div>
-                                    {% endif %}
-                                </div>
-                                <div class="artist-showcase-info">
-                                    <h3>{{ artist.name }}</h3>
-                                    <p>{{ artist.genres|slice:":3"|join:" • "|default:"Genres updating soon" }}</p>
-                                    <span class="artist-metric">
-                                        {{ artist.play_count|default:0 }} plays · Popularity {{ artist.popularity|default:0 }}
-                                    </span>
-                                </div>
-                            </article>
-                            {% endfor %}
-                        {% else %}
-                            <div class="empty-state small">
-                                We’ll highlight your top artists here after a bit more listening.
-                            </div>
-                        {% endif %}
-                    </div>
-
-                    <div class="ai-suggestions">
+                <section class="artist-panel">
+                    <div class="artist-panel-card">
                         <div class="section-header">
                             <div>
+                                <p class="eyebrow">Your Listening DNA</p>
+                                <h2 class="section-title">Artists</h2>
+                                <p class="section-subtitle">A quick look at the names you keep coming back to.</p>
+                            </div>
+                        </div>
+                        <div class="artist-showcase-grid">
+                            {% if favorite_artists %}
+                                {% for artist in favorite_artists|slice:":10" %}
+                                <article class="artist-showcase-card">
+                                    <div class="artist-avatar">
+                                        {% if artist.image %}
+                                        <img src="{{ artist.image }}" alt="{{ artist.name }}">
+                                        {% else %}
+                                        <div class="artist-avatar-fallback">
+                                            {{ artist.name|slice:":1"|default:"?"|upper }}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="artist-showcase-info">
+                                        <div class="artist-showcase-header">
+                                            <h3>{{ artist.name }}</h3>
+                                            {% if artist.url %}
+                                            <a href="{{ artist.url }}" target="_blank" rel="noopener noreferrer">Open</a>
+                                            {% endif %}
+                                        </div>
+                                        <p>{{ artist.genres|slice:":3"|join:" • "|default:"Genres updating soon" }}</p>
+                                        <div class="artist-badges">
+                                            <span class="artist-metric">{{ artist.play_count|default:0 }} plays</span>
+                                            <span class="artist-metric">Popularity {{ artist.popularity|default:0 }}</span>
+                                        </div>
+                                    </div>
+                                </article>
+                                {% endfor %}
+                            {% else %}
+                                <div class="empty-state small">
+                                    We’ll highlight your top artists here after a bit more listening.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="artist-panel-card ai-panel-card">
+                        <div class="section-header">
+                            <div>
+                                <p class="eyebrow">Session Picks</p>
                                 <h3 class="section-title">AI Suggestions</h3>
                                 <p class="section-subtitle">Generated once per session to keep things fresh.</p>
                             </div>

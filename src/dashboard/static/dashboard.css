@@ -689,6 +689,19 @@ body {
     gap: 32px;
 }
 
+.artist-panel-card {
+    background: rgba(18, 18, 18, 0.75);
+    border-radius: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 32px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+}
+
+.ai-panel-card {
+    background: linear-gradient(135deg, rgba(2, 136, 209, 0.18), rgba(10, 10, 10, 0.9));
+    border: 1px solid rgba(2, 136, 209, 0.3);
+}
+
 .artist-showcase-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -714,15 +727,41 @@ body {
     font-size: 1rem;
 }
 
+.artist-showcase-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.artist-showcase-header a {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+}
+
+.artist-showcase-header a:hover {
+    color: #42a5f5;
+}
+
 .artist-showcase-info p {
     color: rgba(255, 255, 255, 0.7);
     font-size: 0.85rem;
     margin-bottom: 6px;
 }
 
+.artist-badges {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .artist-metric {
     font-size: 0.75rem;
     color: rgba(255, 255, 255, 0.6);
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .ai-suggestions {
