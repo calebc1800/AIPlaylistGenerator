@@ -33,6 +33,7 @@ from .services.llm_handler import (
     get_llm_usage_snapshot,
     reset_llm_usage_tracker,
 )
+from .services.session_utils import ensure_session_key, resolve_request_user_id
 from .services.spotify_handler import (
     cached_tracks_for_genre,
     ensure_artist_seed,
@@ -51,22 +52,6 @@ from .services.user_preferences import (
 
 logger = logging.getLogger(__name__)
 PLAYLIST_NAME_MAX_LENGTH = 100
-
-
-def _ensure_session_key(request) -> str:
-    """Ensure the request has a session key and return it."""
-    session_key = request.session.session_key
-    if not session_key:
-        request.session.save()
-        session_key = request.session.session_key or ""
-    return session_key
-
-
-def _resolve_request_user_id(request) -> str:
-    """Return a stable identifier for the current user/session."""
-    if request.user.is_authenticated:
-        return str(request.user.pk)
-    return str(request.session.get("spotify_user_id") or "anonymous")
 
 
 def _persist_generation_stat(
@@ -127,8 +112,8 @@ def _attach_cache_metadata(
 ) -> Dict[str, object]:
     """Attach ownership metadata to playlist payloads."""
     payload["cache_key"] = cache_key
-    payload["owner_user_id"] = _resolve_request_user_id(request)
-    payload["owner_session_key"] = _ensure_session_key(request)
+    payload["owner_user_id"] = resolve_request_user_id(request)
+    payload["owner_session_key"] = ensure_session_key(request)
     return payload
 
 
@@ -139,8 +124,8 @@ def _payload_owned_by_request(request, payload: Dict[str, object]) -> bool:
     if not expected_user or not expected_session:
         return False
     return (
-        expected_user == _resolve_request_user_id(request)
-        and expected_session == _ensure_session_key(request)
+        expected_user == resolve_request_user_id(request)
+        and expected_session == ensure_session_key(request)
     )
 
 
@@ -154,7 +139,7 @@ def _resolve_cache_key_from_request(request, provided_key: str) -> str:
         if provided and provided != session_cache_key:
             logger.warning(
                 "Cache key mismatch for session %s (provided=%s, session=%s).",
-                _ensure_session_key(request),
+                ensure_session_key(request),
                 provided,
                 session_cache_key,
             )
@@ -356,7 +341,7 @@ def generate_playlist(request):
         log("Missing Spotify access token; redirecting to login.")
         return redirect("spotify_auth:login")
 
-    user_id = _resolve_request_user_id(request)
+    user_id = resolve_request_user_id(request)
 
     profile_cache: Optional[Dict[str, object]] = None
     if user_id:

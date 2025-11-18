@@ -1,5 +1,7 @@
 """Tests for spotify_auth views and session helpers."""
 
+# pylint: disable=duplicate-code
+
 import json
 import time
 from unittest.mock import Mock, patch
