@@ -109,7 +109,6 @@ INSTALLED_APPS = [
     'explorer',
     'spotify_auth',
     'recommender',
-    'following',
 ]
 
 MIDDLEWARE = [

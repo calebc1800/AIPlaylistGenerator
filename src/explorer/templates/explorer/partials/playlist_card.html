@@ -9,7 +9,15 @@
     <div class="playlist-info-compact">
         <div class="playlist-title">{{ playlist.playlist_name }}</div>
         <div class="playlist-meta">
-            <span class="creator-name">👤 {{ playlist.creator_display_name }}</span>
+            <span class="creator-name">
+                👤
+                <a href="#"
+                   class="creator-link"
+                   data-user-id="{{ playlist.creator_user_id }}"
+                   data-user-name="{{ playlist.creator_display_name }}">
+                    {{ playlist.creator_display_name }}
+                </a>
+            </span>
             {% if user_id %}
             <form method="POST" action="/explorer/playlist/{{ user_id }}/{{ playlist.playlist_id }}/like/" class="like-form" style="display: inline;">
                 {% csrf_token %}
@@ -26,5 +34,121 @@
         {% if playlist.spotify_uri %}
         <a href="https://open.spotify.com/playlist/{{ playlist.playlist_id }}" target="_blank" class="spotify-link">View on Spotify →</a>
         {% endif %}
+        <button class="follow-creator-btn"
+                data-user-id="{{ playlist.creator_user_id }}"
+                data-user-name="{{ playlist.creator_display_name }}"
+                style="margin-top: 8px;">
+            Follow Creator
+        </button>
     </div>
 </div>
+
+<style>
+.creator-link {
+    color: #42a5f5;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.creator-link:hover {
+    color: #64B5F6;
+    text-decoration: underline;
+}
+
+.follow-creator-btn {
+    width: 100%;
+    background: rgba(2, 136, 209, 0.1);
+    border: 1px solid rgba(2, 136, 209, 0.3);
+    color: #42a5f5;
+    padding: 8px 16px;
+    border-radius: 50px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.follow-creator-btn:hover {
+    background: rgba(2, 136, 209, 0.2);
+    border-color: rgba(2, 136, 209, 0.5);
+}
+
+.follow-creator-btn.following {
+    background: rgba(46, 204, 113, 0.1);
+    border-color: rgba(46, 204, 113, 0.3);
+    color: #2ecc71;
+}
+</style>
+
+<script>
+(function() {
+    // Handle follow button clicks
+    document.addEventListener('click', async function(e) {
+        const followBtn = e.target.closest('.follow-creator-btn');
+        if (!followBtn) return;
+
+        e.preventDefault();
+        const userId = followBtn.dataset.userId;
+        const userName = followBtn.dataset.userName;
+        const currentUserId = "{{ user_id }}"; // Make sure this is available in context
+
+        if (userId === currentUserId) {
+            alert("You can't follow yourself!");
+            return;
+        }
+
+        try {
+            const response = await fetch('/dashboard/api/follow/toggle/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({
+                    following_user_id: userId,
+                    following_display_name: userName
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to toggle follow');
+            }
+
+            const data = await response.json();
+
+            if (data.following) {
+                followBtn.classList.add('following');
+                followBtn.textContent = 'Following ✓';
+            } else {
+                followBtn.classList.remove('following');
+                followBtn.textContent = 'Follow Creator';
+            }
+        } catch (error) {
+            console.error('Error toggling follow:', error);
+            alert('Failed to update follow status');
+        }
+    });
+
+    // Handle creator link clicks to open profile modal
+    document.addEventListener('click', function(e) {
+        const creatorLink = e.target.closest('.creator-link');
+        if (!creatorLink) return;
+
+        e.preventDefault();
+        const userId = creatorLink.dataset.userId;
+        const userName = creatorLink.dataset.userName;
+
+        // Trigger the user profile modal if on dashboard
+        const event = new CustomEvent('openUserProfile', {
+            detail: { userId, userName }
+        });
+        window.dispatchEvent(event);
+    });
+
+    function getCsrfToken() {
+        const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        return tokenInput ? tokenInput.value : '';
+    }
+})();
+</script>
