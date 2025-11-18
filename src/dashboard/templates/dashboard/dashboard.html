@@ -7,7 +7,10 @@
     <title>Dashboard</title>
     <link rel="stylesheet" href="{% static 'dashboard.css' %}">
 </head>
-<body data-default-tab="{{ default_tab|default:'explore' }}">
+<body 
+    data-default-tab="{{ default_tab|default:'explore' }}"
+    data-recommended-endpoint="{% url 'dashboard:recommended-artists' %}"
+>
     <div class="dashboard-container">
         <header class="header">
             <div class="top-bar">
@@ -27,6 +30,7 @@
             <nav class="nav-tabs">
                 <button type="button" class="tab active" data-tab="explore">Explore</button>
                 <button type="button" class="tab" data-tab="create">Create</button>
+                <button type="button" class="tab" data-tab="artists">Artists</button>
                 <button type="button" class="tab" data-tab="stats">Stats</button>
                 <button type="button" class="tab" data-tab="account">Account</button>
             </nav>
@@ -121,6 +125,55 @@
                         </div>
                     </aside>
                 </div>
+            </div>
+
+            <!-- Artists Tab -->
+            <div class="tab-content" id="artists">
+                <section class="recommended-artists">
+                    <div class="section-header artist-header">
+                        <div>
+                            <h2 class="section-title">Recommended Artists</h2>
+                            <p class="section-subtitle">
+                                Discover related artists based on your Spotify listening history.
+                            </p>
+                        </div>
+                        <div class="artist-controls">
+                            <button type="button" class="ghost-btn" id="recommended-artists-refresh">
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="recommended-grid" id="recommended-artists-grid">
+                        <div class="empty-state" id="recommended-artists-empty">
+                            Artist recommendations will appear here once your listening data loads.
+                        </div>
+                    </div>
+                    <div class="recommended-footer">
+                        <p class="selection-label" id="artist-selection-label">
+                            Select up to 5 artists to craft a playlist.
+                        </p>
+                        <button type="button" class="create-btn" id="artists-generate-btn" disabled>
+                            Select artists first
+                        </button>
+                    </div>
+                </section>
+                <form
+                    id="artist-generate-form"
+                    action="{% url 'recommender:generate_playlist' %}"
+                    method="POST"
+                    style="display: none;"
+                >
+                    {% csrf_token %}
+                    <input type="hidden" name="prompt" id="artist-prompt-input">
+                    <input type="hidden" name="playlist_name" id="artist-playlist-name">
+                    <input type="hidden" name="selected_artist_ids" id="artist-ids-input">
+                    <input type="hidden" name="selected_artist_names" id="artist-names-input">
+                    <input
+                        type="hidden"
+                        name="llm_provider"
+                        value="{{ llm_provider_default|default:'openai' }}"
+                    >
+                </form>
             </div>
 
             <!-- Stats Tab -->
@@ -308,6 +361,7 @@
     {{ generated_stats|json_script:"initial_generated_stats" }}
     {{ genre_breakdown|json_script:"initial_genre_breakdown" }}
     {{ spotify_highlights|json_script:"initial_spotify_highlights" }}
+    {{ recommended_artists|json_script:"initial_recommended_artists" }}
 
     <script>
         // Tab switching functionality
@@ -536,6 +590,244 @@
                 return fallback;
             }
         };
+
+        const recommendedGrid = document.getElementById('recommended-artists-grid');
+        const recommendedRefreshBtn = document.getElementById('recommended-artists-refresh');
+        const recommendedEmptyState = document.getElementById('recommended-artists-empty');
+        const recommendedEndpoint =
+            (document.body && document.body.dataset && document.body.dataset.recommendedEndpoint) || '';
+        const artistSelectionLabel = document.getElementById('artist-selection-label');
+        const artistGenerateBtn = document.getElementById('artists-generate-btn');
+        const artistForm = document.getElementById('artist-generate-form');
+        const artistPromptInput = document.getElementById('artist-prompt-input');
+        const artistIdsInput = document.getElementById('artist-ids-input');
+        const artistNamesInput = document.getElementById('artist-names-input');
+        const ARTIST_SELECTION_LIMIT = 5;
+        const recommendedState = {
+            lookup: new Map(),
+            selection: new Map(),
+        };
+
+        const updateArtistSelectionUI = () => {
+            if (!recommendedGrid) {
+                return;
+            }
+            const selectedIds = Array.from(recommendedState.selection.keys());
+            const selectedCount = selectedIds.length;
+            if (artistSelectionLabel) {
+                if (selectedCount === 0) {
+                    artistSelectionLabel.textContent = 'Select up to 5 artists to craft a playlist.';
+                    artistSelectionLabel.classList.remove('error');
+                } else if (selectedCount === 1) {
+                    artistSelectionLabel.textContent = 'Great pick! Add a few more or generate now.';
+                    artistSelectionLabel.classList.remove('error');
+                } else {
+                    artistSelectionLabel.textContent = `${selectedCount} artists selected. Ready to blend.`;
+                    artistSelectionLabel.classList.remove('error');
+                }
+            }
+            if (artistGenerateBtn) {
+                artistGenerateBtn.disabled = selectedCount === 0;
+                artistGenerateBtn.textContent = selectedCount
+                    ? `Generate playlist (${selectedCount})`
+                    : 'Select artists first';
+            }
+            recommendedGrid
+                .querySelectorAll('[data-artist-card]')
+                .forEach((card) => {
+                    const cardId = card.dataset.artistId;
+                    card.classList.toggle('selected', recommendedState.selection.has(cardId));
+                });
+        };
+
+        const renderRecommendedArtists = (artists) => {
+            if (!recommendedGrid) {
+                return;
+            }
+            const previouslySelected = new Map(recommendedState.selection);
+            recommendedState.selection.clear();
+            recommendedState.lookup.clear();
+            recommendedGrid.innerHTML = '';
+
+            if (!artists || !artists.length) {
+                if (recommendedEmptyState) {
+                    recommendedEmptyState.style.display = '';
+                    recommendedGrid.appendChild(recommendedEmptyState);
+                }
+                updateArtistSelectionUI();
+                return;
+            }
+
+            if (recommendedEmptyState) {
+                recommendedEmptyState.style.display = 'none';
+            }
+
+            artists.forEach((artist) => {
+                if (!artist || !artist.id) {
+                    return;
+                }
+                recommendedState.lookup.set(artist.id, artist);
+                const card = document.createElement('article');
+                card.className = 'artist-card';
+                card.dataset.artistCard = 'true';
+                card.dataset.artistId = artist.id;
+
+                const avatar = document.createElement('div');
+                avatar.className = 'artist-avatar';
+                if (artist.image) {
+                    const img = document.createElement('img');
+                    img.src = artist.image;
+                    img.alt = artist.name || 'Artist';
+                    avatar.appendChild(img);
+                } else {
+                    const fallback = document.createElement('div');
+                    fallback.className = 'artist-avatar-fallback';
+                    fallback.textContent = (artist.name || '?').charAt(0).toUpperCase();
+                    avatar.appendChild(fallback);
+                }
+
+                const info = document.createElement('div');
+                info.className = 'artist-info';
+                const name = document.createElement('h3');
+                name.textContent = artist.name || 'Unknown Artist';
+                info.appendChild(name);
+
+                const genres = document.createElement('p');
+                genres.className = 'artist-genres';
+                genres.textContent = (artist.genres && artist.genres.length)
+                    ? artist.genres.slice(0, 3).join(' • ')
+                    : 'Genres updating soon';
+                info.appendChild(genres);
+
+                const reason = document.createElement('p');
+                reason.className = 'artist-meta';
+                const seeds = artist.seed_artist_names || [];
+                const reasonLabel = artist.reason
+                    || (seeds.length ? `Because you listen to ${seeds.slice(0, 2).join(', ')}` : 'Based on your listening profile');
+                reason.textContent = reasonLabel;
+                info.appendChild(reason);
+
+                const actions = document.createElement('div');
+                actions.className = 'artist-actions';
+                const selectButton = document.createElement('button');
+                selectButton.type = 'button';
+                selectButton.className = 'artist-select-toggle';
+                selectButton.dataset.artistToggle = 'true';
+                selectButton.textContent = 'Select';
+                actions.appendChild(selectButton);
+
+                if (artist.url) {
+                    const link = document.createElement('a');
+                    link.href = artist.url;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.className = 'artist-link';
+                    link.textContent = 'Open in Spotify';
+                    actions.appendChild(link);
+                }
+
+                card.appendChild(avatar);
+                card.appendChild(info);
+                card.appendChild(actions);
+
+                recommendedGrid.appendChild(card);
+
+                if (previouslySelected.has(artist.id)) {
+                    recommendedState.selection.set(artist.id, artist);
+                }
+            });
+
+            updateArtistSelectionUI();
+        };
+
+        const recommendedArtistsInitial = parseJsonScript('initial_recommended_artists', []);
+        renderRecommendedArtists(recommendedArtistsInitial);
+
+        const toggleArtistSelection = (artistId) => {
+            if (!artistId) {
+                return;
+            }
+            if (recommendedState.selection.has(artistId)) {
+                recommendedState.selection.delete(artistId);
+                updateArtistSelectionUI();
+                return;
+            }
+            if (recommendedState.selection.size >= ARTIST_SELECTION_LIMIT) {
+                if (artistSelectionLabel) {
+                    artistSelectionLabel.textContent = `You can select up to ${ARTIST_SELECTION_LIMIT} artists.`;
+                    artistSelectionLabel.classList.add('error');
+                    window.setTimeout(() => artistSelectionLabel.classList.remove('error'), 1200);
+                }
+                return;
+            }
+            const artist = recommendedState.lookup.get(artistId);
+            if (!artist) {
+                return;
+            }
+            recommendedState.selection.set(artistId, artist);
+            updateArtistSelectionUI();
+        };
+
+        if (recommendedGrid) {
+            recommendedGrid.addEventListener('click', (event) => {
+                const toggle = event.target.closest('[data-artist-toggle]');
+                if (!toggle) {
+                    return;
+                }
+                const card = toggle.closest('[data-artist-card]');
+                if (!card) {
+                    return;
+                }
+                toggleArtistSelection(card.dataset.artistId);
+            });
+        }
+
+        if (artistGenerateBtn && artistForm && artistPromptInput && artistIdsInput && artistNamesInput) {
+            artistGenerateBtn.addEventListener('click', () => {
+                if (!recommendedState.selection.size) {
+                    return;
+                }
+                const selectedArtists = Array.from(recommendedState.selection.values());
+                const artistNames = selectedArtists.map((artist) => artist.name).filter(Boolean);
+                const prompt = selectedArtists.length === 1
+                    ? `Create a playlist inspired by ${artistNames[0]}. Use my top genres and listening history for cohesion.`
+                    : `Create a playlist blending these artists: ${artistNames.join(', ')}. Use my listening history to connect their styles.`;
+                artistPromptInput.value = prompt.slice(0, promptLimit);
+                artistIdsInput.value = JSON.stringify(selectedArtists.map((artist) => artist.id));
+                artistNamesInput.value = JSON.stringify(artistNames);
+                artistForm.submit();
+            });
+        }
+
+        const requestRecommendedArtists = async () => {
+            if (!recommendedEndpoint) {
+                return;
+            }
+            try {
+                if (recommendedRefreshBtn) {
+                    recommendedRefreshBtn.disabled = true;
+                }
+                const response = await fetch(recommendedEndpoint, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    return;
+                }
+                const payload = await response.json();
+                renderRecommendedArtists(payload.recommended_artists || []);
+            } catch (error) {
+                console.warn('Failed to refresh recommended artists', error);
+            } finally {
+                if (recommendedRefreshBtn) {
+                    recommendedRefreshBtn.disabled = false;
+                }
+            }
+        };
+
+        if (recommendedRefreshBtn) {
+            recommendedRefreshBtn.addEventListener('click', requestRecommendedArtists);
+        }
 
         const statsEndpoint = "{% url 'dashboard:user-stats' %}";
         const statElements = {

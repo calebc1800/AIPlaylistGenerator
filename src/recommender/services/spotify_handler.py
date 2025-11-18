@@ -586,6 +586,10 @@ def build_user_profile_seed_snapshot(
                 "id": artist_id,
                 "name": artist.get("name", ""),
                 "genres": normalized_genres,
+                "image": _primary_image_url(artist.get("images")),
+                "popularity": int(artist.get("popularity") or 0),
+                "followers": int((artist.get("followers") or {}).get("total") or 0),
+                "url": (artist.get("external_urls") or {}).get("spotify", ""),
             }
 
     if not artist_details:
@@ -664,6 +668,10 @@ def build_user_profile_seed_snapshot(
             "name": info.get("name", ""),
             "genres": info.get("genres", []),
             "play_count": int(artist_counts.get(artist_id, 0)),
+            "image": info.get("image", ""),
+            "popularity": info.get("popularity") or 0,
+            "followers": info.get("followers") or 0,
+            "url": info.get("url", ""),
         }
         normalized_key = _normalize_artist_key(info.get("name", ""))
         if normalized_key:

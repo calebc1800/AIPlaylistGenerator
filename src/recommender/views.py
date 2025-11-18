@@ -170,6 +170,27 @@ def _determine_llm_provider(
     return provider
 
 
+def _parse_json_list(value: str | None) -> List[str]:
+    """Parse a JSON list payload from a form field."""
+    if not value:
+        return []
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    items: List[str] = []
+    if isinstance(payload, list):
+        for entry in payload:
+            label = str(entry).strip()
+            if label:
+                items.append(label)
+    elif isinstance(payload, str):
+        label = payload.strip()
+        if label:
+            items.append(label)
+    return items
+
+
 def _cache_key(user_identifier: str, prompt: str) -> str:
     """Return a deterministically hashed cache key for a user/prompt pair."""
     digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
@@ -318,6 +339,13 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
 def generate_playlist(request):
     """Generate a playlist based on the submitted prompt and render results."""
     prompt = request.POST.get("prompt", "").strip()
+    selected_artist_ids_raw = request.POST.get("selected_artist_ids")
+    selected_artist_names = _parse_json_list(request.POST.get("selected_artist_names"))
+    selected_artist_ids = [
+        artist_id
+        for artist_id in _parse_json_list(selected_artist_ids_raw)
+        if artist_id
+    ]
     reset_llm_usage_tracker()
     debug_steps: List[str] = []
     errors: List[str] = []
@@ -539,7 +567,29 @@ def generate_playlist(request):
                     if normalized.lower() not in existing_names:
                         prompt_artist_candidates.append(normalized)
 
+        if selected_artist_names:
+            merged_candidates: List[str] = []
+            seen_candidates: Set[str] = set()
+
+            def _append_candidate(name: str) -> None:
+                normalized = (name or "").strip()
+                if not normalized:
+                    return
+                lowered = normalized.lower()
+                if lowered in seen_candidates:
+                    return
+                seen_candidates.add(lowered)
+                merged_candidates.append(normalized)
+
+            for candidate in selected_artist_names:
+                _append_candidate(candidate)
+            for candidate in prompt_artist_candidates:
+                _append_candidate(candidate)
+            prompt_artist_candidates = merged_candidates
+
         prompt_artist_ids: Set[str] = set()
+        if selected_artist_ids:
+            prompt_artist_ids.update(selected_artist_ids)
         resolved_seed_tracks: List[Dict[str, object]] = []
         seed_seen: Set[str] = set()
         seed_sources: Dict[str, int] = {}

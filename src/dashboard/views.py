@@ -7,6 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
 from recommender.models import SavedPlaylist
+from recommender.services import artist_recommendation_service
 from recommender.services.listening_suggestions import generate_listening_suggestions
 from recommender.services.session_utils import ensure_session_key
 from recommender.services.spotify_handler import build_user_profile_seed_snapshot
@@ -164,8 +165,14 @@ class DashboardView(View):
             generation_identifier = _resolve_generation_identifier(request, user_id)
             generated_stats = summarize_generation_stats(generation_identifier)
             genre_breakdown = get_genre_breakdown(generation_identifier)
+            recommended_artists = []
+            if user_id:
+                recommended_artists = artist_recommendation_service.generate_recommended_artists(
+                    user_id,
+                    limit=10,
+                )
 
-            allowed_tabs = {"explore", "create", "stats", "account"}
+            allowed_tabs = {"explore", "create", "artists", "stats", "account"}
             requested_tab = (request.GET.get('tab') or "").strip().lower()
             default_tab = requested_tab if requested_tab in allowed_tabs else (self.default_tab or "explore")
             default_tab = (default_tab or "explore").lower()
@@ -189,6 +196,7 @@ class DashboardView(View):
                 'generated_stats': generated_stats,
                 'genre_breakdown': genre_breakdown,
                 'spotify_highlights': {},
+                'recommended_artists': recommended_artists,
                 'default_tab': default_tab,
             }
             return render(request, 'dashboard/dashboard.html', context)
@@ -249,3 +257,35 @@ class ListeningSuggestionsAPIView(View):
         suggestions = generate_listening_suggestions(user_identifier, profile_cache=profile_cache)
 
         return JsonResponse({'suggestions': suggestions})
+
+
+class RecommendedArtistsAPIView(View):
+    """Serve recommended artists for the dashboard tab."""
+
+    def get(self, request):
+        if not ensure_valid_spotify_session(request):
+            return JsonResponse({'error': 'Authentication required'}, status=401)
+        access_token = request.session.get('spotify_access_token')
+        user_id = request.session.get('spotify_user_id')
+        if not access_token or not user_id:
+            return JsonResponse({'error': 'Authentication required'}, status=401)
+
+        try:
+            requested_limit = int(request.GET.get('limit', 10))
+        except (TypeError, ValueError):
+            requested_limit = 10
+        limit = max(1, min(requested_limit, 20))
+
+        recommended_artists = artist_recommendation_service.generate_recommended_artists(
+            user_id,
+            limit=limit,
+        )
+        meta_seed_count = sum(len(entry.get('seed_artist_ids') or []) for entry in recommended_artists)
+        payload = {
+            'recommended_artists': recommended_artists,
+            'meta': {
+                'seed_count': meta_seed_count,
+                'limit': limit,
+            },
+        }
+        return JsonResponse(payload)
