@@ -20,6 +20,7 @@ class ArtistAISuggestionsTests(SimpleTestCase):
     @patch("recommender.services.artist_ai_service.dispatch_llm_query")
     @patch("recommender.services.artist_ai_service.fetch_seed_artists")
     def test_uses_profile_cache_metadata(self, mock_fetch_seeds, mock_dispatch):
+        """Cards should reuse artist metadata from the cache."""
         mock_fetch_seeds.return_value = self.seed_artists
         mock_dispatch.return_value = '[{"name": "Top Artist", "reason": "AI pick"}]'
         profile_cache = {
@@ -51,6 +52,7 @@ class ArtistAISuggestionsTests(SimpleTestCase):
     @patch("recommender.services.artist_ai_service.dispatch_llm_query")
     @patch("recommender.services.artist_ai_service.fetch_seed_artists")
     def test_searches_spotify_when_not_in_cache(self, mock_fetch_seeds, mock_dispatch):
+        """Fallback to Spotify search when artist is not cached."""
         mock_fetch_seeds.return_value = self.seed_artists
         mock_dispatch.return_value = '[{"name": "Newcomer", "reason": "Fresh sound"}]'
         mock_sp = Mock()
@@ -85,16 +87,43 @@ class ArtistAISuggestionsTests(SimpleTestCase):
     @patch("recommender.services.artist_ai_service.dispatch_llm_query")
     @patch("recommender.services.artist_ai_service.fetch_seed_artists")
     @patch("recommender.services.artist_ai_service._search_artist")
-    def test_skips_artists_without_followers_or_tracks(self, mock_search, mock_fetch_seeds, mock_dispatch):
+    def test_skips_artists_without_followers_or_tracks(
+        self,
+        mock_search,
+        mock_fetch_seeds,
+        mock_dispatch,
+    ):
+        """Invalid AI picks should be dropped in favor of seeds."""
         mock_fetch_seeds.return_value = [
-            {"id": "seed-1", "name": "Seed One", "genres": ["pop"], "popularity": 55, "followers": 5000, "url": "https://open.spotify.com/artist/seed1"}
+            {
+                "id": "seed-1",
+                "name": "Seed One",
+                "genres": ["pop"],
+                "popularity": 55,
+                "followers": 5000,
+                "url": "https://open.spotify.com/artist/seed1",
+            }
         ]
         mock_dispatch.return_value = '[{"name": "Fake Artist"}, {"name": "Real Artist"}]'
 
-        def fake_search(sp_instance, name):
+        def fake_search(_sp_instance, name):
             if name == "Fake Artist":
-                return {"id": "fake", "name": "Fake Artist", "followers": 0, "popularity": 0, "url": "", "image": ""}
-            return {"id": "real", "name": "Real Artist", "followers": 4000, "popularity": 70, "url": "https://open.spotify.com/artist/real", "image": ""}
+                return {
+                    "id": "fake",
+                    "name": "Fake Artist",
+                    "followers": 0,
+                    "popularity": 0,
+                    "url": "",
+                    "image": "",
+                }
+            return {
+                "id": "real",
+                "name": "Real Artist",
+                "followers": 4000,
+                "popularity": 70,
+                "url": "https://open.spotify.com/artist/real",
+                "image": "",
+            }
 
         mock_search.side_effect = fake_search
         mock_sp = Mock()

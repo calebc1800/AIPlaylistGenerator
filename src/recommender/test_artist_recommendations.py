@@ -13,10 +13,12 @@ class GenerateRecommendedArtistsTests(SimpleTestCase):
     """Unit-level expectations for the artist recommendation service."""
 
     def test_returns_empty_list_when_no_cache(self):
+        """Service should return [] when profile cache missing."""
         with patch.object(service.cache, "get", return_value=None):
             self.assertEqual(service.generate_recommended_artists("user-123"), [])
 
     def test_includes_metadata_from_snapshot(self):
+        """Returned cards should include stored artist metadata."""
         profile_cache = {
             "artists": {
                 "a1": {

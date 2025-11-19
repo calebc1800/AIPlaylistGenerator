@@ -7,9 +7,19 @@ from typing import Dict, List, Sequence
 from django.conf import settings
 from django.core.cache import cache
 
+from .artist_card_utils import build_artist_card
 
-DEFAULT_RECOMMENDATION_LIMIT = getattr(settings, "RECOMMENDER_RECOMMENDATION_LIMIT", 10)
-SEED_ARTIST_LIMIT = getattr(settings, "RECOMMENDER_SEED_ARTIST_LIMIT", 12)
+
+DEFAULT_RECOMMENDATION_LIMIT = getattr(
+    settings,
+    "RECOMMENDER_RECOMMENDATION_LIMIT",
+    10,
+)
+SEED_ARTIST_LIMIT = getattr(
+    settings,
+    "RECOMMENDER_SEED_ARTIST_LIMIT",
+    12,
+)
 
 
 def _profile_cache_key(user_identifier: str) -> str:
@@ -23,7 +33,11 @@ def _load_profile_cache(user_identifier: str) -> Dict[str, object] | None:
     return cached if isinstance(cached, dict) else None
 
 
-def fetch_seed_artists(user_identifier: str, *, limit: int = SEED_ARTIST_LIMIT) -> Sequence[Dict[str, object]]:
+def fetch_seed_artists(
+    user_identifier: str,
+    *,
+    limit: int = SEED_ARTIST_LIMIT,
+) -> Sequence[Dict[str, object]]:
     """Return the user's most-heard artists from the cached profile snapshot."""
     profile_cache = _load_profile_cache(user_identifier)
     if not profile_cache or limit <= 0:
@@ -90,7 +104,7 @@ def _score_artist(
 def generate_recommended_artists(
     user_identifier: str,
     *,
-    sp=None,  # kept for backwards compatibility; not used.
+    _sp=None,  # kept for backwards compatibility; not used.
     limit: int = DEFAULT_RECOMMENDATION_LIMIT,
 ) -> List[Dict[str, object]]:
     """Generate artist recommendations using cached listening history only."""
@@ -114,19 +128,12 @@ def generate_recommended_artists(
             continue
         score, reason = _score_artist(artist, genre_weights=genre_weights)
         recommendations.append(
-            {
-                "id": artist_id,
-                "name": name,
-                "image": artist.get("image", ""),
-                "genres": artist.get("genres", []),
-                "popularity": int(artist.get("popularity") or 0),
-                "followers": int(artist.get("followers") or 0),
-                "url": artist.get("url", ""),
-                "seed_artist_ids": [artist_id],
-                "seed_artist_names": [],
-                "reason": reason,
-                "score": score,
-            }
+            build_artist_card(
+                artist,
+                reason=reason,
+                score=score,
+                seed_artist_ids=[artist_id],
+            )
         )
 
     recommendations.sort(
