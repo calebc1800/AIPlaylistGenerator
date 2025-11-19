@@ -89,6 +89,38 @@ class DashboardViewTests(TestCase):
         self.assertEqual(response.context['email'], 'test@example.com')
         self.assertEqual(response.context['followers'], 100)
 
+    @patch('dashboard.views._cached_user_top_artists')
+    @patch('dashboard.views.generate_ai_artist_cards')
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_includes_ai_artist_context(self, mock_spotify, mock_ai_cards, mock_cached_artists):
+        """Dashboard should expose favorite + AI artists for the tab."""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'display_name': 'Test User',
+            'followers': {'total': 10},
+            'external_urls': {},
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+        mock_cached_artists.return_value = [
+            {'id': 'fav-1', 'name': 'Fav Artist'},
+        ]
+        mock_ai_cards.return_value = [
+            {'id': 'artist-1', 'name': 'Artist 1', 'genres': ['indie'], 'seed_artist_ids': ['seed-1']},
+        ]
+
+        response = self.client.get(self.dashboard_url)
+
+        mock_ai_cards.assert_called_once()
+        mock_cached_artists.assert_called_once()
+        self.assertEqual(response.context.get('favorite_artists'), mock_cached_artists.return_value)
+        self.assertEqual(response.context.get('ai_artist_suggestions'), mock_ai_cards.return_value)
+
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_uses_user_id_when_no_display_name(self, mock_spotify):
         """Test dashboard uses user ID when display name is not available"""
@@ -722,6 +754,45 @@ class ListeningSuggestionsAPITests(TestCase):
         payload = json.loads(response.content.decode())
         self.assertEqual(payload['suggestions'], ['Prompt A', 'Prompt B'])
         mock_generate.assert_called_once()
+
+
+class RecommendedArtistsAPITests(TestCase):
+    """Integration expectations for the artist recommendation endpoints."""
+
+    def setUp(self):
+        self.client = Client()
+
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=False)
+    def test_endpoint_requires_spotify_session(self, mock_session_check):
+        """A user must have a valid Spotify session before requesting recommendations."""
+        url = reverse('dashboard:recommended-artists')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 401)
+
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
+    @patch('dashboard.views._get_ai_artist_suggestions')
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_endpoint_returns_recommendations_payload(self, mock_spotify, mock_get_ai, mock_session_check):
+        """The endpoint should proxy recommendations from the service as JSON."""
+        session = self.client.session
+        session['spotify_access_token'] = 'token'
+        session['spotify_user_id'] = 'user-99'
+        session.save()
+
+        mock_get_ai.return_value = [
+            {'id': 'artist-1', 'name': 'Artist 1', 'seed_artist_ids': ['seed-a']},
+            {'id': 'artist-2', 'name': 'Artist 2', 'seed_artist_ids': ['seed-b', 'seed-c']},
+        ]
+
+        url = reverse('dashboard:recommended-artists')
+        response = self.client.get(url, {'limit': 4})
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content)
+        self.assertEqual(payload['recommended_artists'], mock_get_ai.return_value)
+        self.assertEqual(payload['meta']['seed_count'], 3)
+        mock_get_ai.assert_called_once()
+        mock_spotify.assert_called_once_with(auth='token')
 
 
 class DashboardIntegrationTests(TestCase):

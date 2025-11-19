@@ -675,6 +675,289 @@ body {
     font-style: italic;
 }
 
+.recommended-artists {
+    background: rgba(18, 18, 18, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 24px;
+    padding: 32px;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+}
+
+.artist-tab {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.artist-panel-card {
+    background: rgba(18, 18, 18, 0.75);
+    border-radius: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 32px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+}
+
+.ai-panel-card {
+    background: linear-gradient(135deg, rgba(2, 136, 209, 0.18), rgba(10, 10, 10, 0.9));
+    border: 1px solid rgba(2, 136, 209, 0.3);
+}
+
+.artist-showcase-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+}
+
+.artist-showcase-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.artist-card-media {
+    border-radius: 18px;
+    overflow: hidden;
+    margin: -4px -4px 12px;
+    aspect-ratio: 1 / 1;
+}
+
+.artist-card-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.artist-card-body h3 {
+    margin-bottom: 4px;
+    font-size: 1rem;
+}
+
+.artist-card-body p {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+}
+
+.artist-badges {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.artist-metric {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.ai-suggestions {
+    padding: 28px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(18, 18, 18, 0.6);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+}
+
+.artist-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+}
+
+.artist-controls {
+    display: flex;
+    gap: 12px;
+}
+
+.ghost-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    padding: 10px 20px;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.ghost-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.ghost-btn:not(:disabled):hover {
+    border-color: rgba(2, 136, 209, 0.8);
+    color: #42a5f5;
+}
+
+.recommended-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin-top: 24px;
+}
+
+.artist-card {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.02);
+    transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.artist-card.selected {
+    border-color: rgba(2, 136, 209, 0.8);
+    background: rgba(2, 136, 209, 0.08);
+    transform: translateY(-2px);
+}
+
+.artist-avatar {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 16px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.artist-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.artist-open-btn,
+.artist-generate-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 999px;
+    text-decoration: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.artist-open-btn {
+    background: #1DB954;
+    color: #0f111a;
+    box-shadow: 0 6px 16px rgba(29, 185, 84, 0.35);
+}
+
+.artist-open-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.artist-open-btn span {
+    white-space: nowrap;
+}
+
+.artist-open-btn:hover {
+    filter: brightness(1.05);
+}
+
+.artist-generate-btn {
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.artist-generate-btn:hover {
+    border-color: rgba(255, 255, 255, 0.45);
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.artist-avatar-fallback {
+    font-size: 2rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.artist-info h3 {
+    font-size: 1.1rem;
+    margin-bottom: 4px;
+}
+
+.artist-genres {
+    font-size: 0.85rem;
+    color: #b3b3b3;
+    margin-bottom: 4px;
+}
+
+.artist-meta {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.artist-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.artist-select-toggle {
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: transparent;
+    padding: 10px;
+    border-radius: 999px;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.artist-card.selected .artist-select-toggle {
+    border-color: rgba(2, 136, 209, 0.9);
+    background: rgba(2, 136, 209, 0.2);
+    color: #fff;
+}
+
+.artist-link {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+}
+
+.artist-link:hover {
+    color: #42a5f5;
+    text-decoration: underline;
+}
+
+.recommended-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 24px;
+    gap: 16px;
+}
+
+.selection-label {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+}
+
+.selection-label.error {
+    color: #ff7676;
+}
+
 .search-footer {
     position: fixed;
     bottom: 0;
@@ -1047,4 +1330,33 @@ body {
         flex-direction: column;
         text-align: center;
     }
+}
+.artist-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.artist-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.artist-generate-btn {
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.artist-generate-btn:hover {
+    border-color: rgba(255, 255, 255, 0.45);
+    background: rgba(255, 255, 255, 0.12);
 }

@@ -350,6 +350,57 @@ class GeneratePlaylistViewTests(TestCase):
         self.assertIn('Show All Genres', page)
         self.assertIn('Source Blend', page)
 
+    @patch("recommender.views.extract_playlist_attributes")
+    @patch("recommender.views.compute_playlist_statistics")
+    @patch("recommender.views.suggest_seed_tracks")
+    @patch("recommender.views.resolve_seed_tracks")
+    @patch("recommender.views.get_similar_tracks")
+    @patch("recommender.views.discover_top_tracks_for_genre")
+    @patch("recommender.views.ensure_artist_seed")
+    def test_selected_artists_focus_similarity_engine(
+        self,
+        mock_ensure_artist,
+        mock_discover,
+        mock_similar,
+        mock_resolve,
+        mock_suggest,
+        mock_stats,
+        mock_extract,
+    ):
+        session = self.client.session
+        session["spotify_access_token"] = "token"
+        session["spotify_user_id"] = "user123"
+        session.save()
+
+        mock_extract.return_value = {"genre": "pop"}
+        mock_stats.return_value = {"genre_top": []}
+        mock_suggest.return_value = []
+        mock_resolve.return_value = []
+        mock_discover.return_value = []
+        mock_similar.return_value = []
+        mock_ensure_artist.return_value = {
+            "artist_id": "artist-123",
+            "artist_name": "Special Artist",
+            "tracks": [
+                {"id": "seed-track", "name": "Seed Track", "artists": "Special Artist"},
+            ],
+            "source": "artist_seed",
+        }
+
+        response = self.client.post(
+            self.url,
+            {
+                "prompt": "Create a playlist from my selected artists",
+                "selected_artist_ids": json.dumps(["artist-123"]),
+                "selected_artist_names": json.dumps(["Special Artist"]),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(mock_similar.called)
+        kwargs = mock_similar.call_args.kwargs
+        focus_ids = kwargs.get("focus_artist_ids")
+        self.assertIn("artist-123", focus_ids)
 
     @patch("recommender.views.extract_playlist_attributes")
     @patch("recommender.views.compute_playlist_statistics")
