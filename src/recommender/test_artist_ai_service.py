@@ -91,7 +91,7 @@ class ArtistAISuggestionsTests(SimpleTestCase):
         ]
         mock_dispatch.return_value = '[{"name": "Fake Artist"}, {"name": "Real Artist"}]'
 
-        def fake_search(name):
+        def fake_search(sp_instance, name):
             if name == "Fake Artist":
                 return {"id": "fake", "name": "Fake Artist", "followers": 0, "popularity": 0, "url": "", "image": ""}
             return {"id": "real", "name": "Real Artist", "followers": 4000, "popularity": 70, "url": "https://open.spotify.com/artist/real", "image": ""}
