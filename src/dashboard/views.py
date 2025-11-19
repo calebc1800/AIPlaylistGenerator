@@ -250,7 +250,7 @@ class DashboardView(View):
                 user_id,
                 sp,
                 profile_cache,
-                limit=6,
+                limit=8,
             )
 
             allowed_tabs = {"explore", "create", "artists", "stats", "account"}
@@ -353,9 +353,9 @@ class RecommendedArtistsAPIView(View):
             return JsonResponse({'error': 'Authentication required'}, status=401)
 
         try:
-            requested_limit = int(request.GET.get('limit', 6))
+            requested_limit = int(request.GET.get('limit', 8))
         except (TypeError, ValueError):
-            requested_limit = 6
+            requested_limit = 8
         limit = max(1, min(requested_limit, 12))
 
         sp = spotipy.Spotify(auth=access_token)
