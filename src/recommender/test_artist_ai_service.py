@@ -111,6 +111,7 @@ class ArtistAISuggestionsTests(SimpleTestCase):
         )
 
         self.assertEqual(len(cards), 1)
-        self.assertEqual(cards[0]["id"], "real")
-        self.assertEqual(cards[0]["name"], "Real Artist")
+        # The invalid AI suggestion should be skipped and the seed fallback used.
+        self.assertEqual(cards[0]["id"], "seed-1")
+        self.assertEqual(cards[0]["reason"], "From your listening history")
         self.assertGreaterEqual(mock_sp.artist_top_tracks.call_count, 2)
