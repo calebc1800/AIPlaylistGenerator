@@ -89,9 +89,10 @@ class DashboardViewTests(TestCase):
         self.assertEqual(response.context['email'], 'test@example.com')
         self.assertEqual(response.context['followers'], 100)
 
+    @patch('dashboard.views._cached_user_top_artists')
     @patch('dashboard.views.generate_ai_artist_cards')
     @patch('dashboard.views.spotipy.Spotify')
-    def test_dashboard_includes_ai_artist_context(self, mock_spotify, mock_ai_cards):
+    def test_dashboard_includes_ai_artist_context(self, mock_spotify, mock_ai_cards, mock_cached_artists):
         """Dashboard should expose favorite + AI artists for the tab."""
         session = self.client.session
         session['spotify_access_token'] = 'test_access_token'
@@ -106,6 +107,9 @@ class DashboardViewTests(TestCase):
             'external_urls': {},
         }
         mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+        mock_cached_artists.return_value = [
+            {'id': 'fav-1', 'name': 'Fav Artist'},
+        ]
         mock_ai_cards.return_value = [
             {'id': 'artist-1', 'name': 'Artist 1', 'genres': ['indie'], 'seed_artist_ids': ['seed-1']},
         ]
@@ -113,7 +117,8 @@ class DashboardViewTests(TestCase):
         response = self.client.get(self.dashboard_url)
 
         mock_ai_cards.assert_called_once()
-        self.assertIn('favorite_artists', response.context)
+        mock_cached_artists.assert_called_once()
+        self.assertEqual(response.context.get('favorite_artists'), mock_cached_artists.return_value)
         self.assertEqual(response.context.get('ai_artist_suggestions'), mock_ai_cards.return_value)
 
     @patch('dashboard.views.spotipy.Spotify')

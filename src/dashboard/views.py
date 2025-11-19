@@ -110,6 +110,52 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     return highlights
 
 
+def _cached_user_top_artists(
+    sp: spotipy.Spotify,
+    user_id: Optional[str],
+    *,
+    limit: int = 12,
+    ttl: int = 600,
+) -> List[Dict[str, object]]:
+    """Cache and return Spotify's top artists endpoint for the current user."""
+    if not user_id:
+        return []
+    cache_key = f"dashboard:top-artists:{user_id}:{limit}"
+    cached = cache.get(cache_key)
+    if isinstance(cached, list):
+        return cached
+    try:
+        response = sp.current_user_top_artists(limit=limit, time_range="medium_term")
+    except spotipy.exceptions.SpotifyException:
+        return []
+    items = response.get("items", []) if isinstance(response, dict) else []
+    artists: List[Dict[str, object]] = []
+    for artist in items:
+        if not isinstance(artist, dict):
+            continue
+        artist_id = artist.get("id")
+        if not artist_id:
+            continue
+        artists.append(
+            {
+                "id": artist_id,
+                "name": artist.get("name", ""),
+                "image": (
+                    artist.get("images", [{}])[0].get("url")
+                    if artist.get("images")
+                    else ""
+                ),
+                "genres": artist.get("genres", []),
+                "popularity": int(artist.get("popularity") or 0),
+                "followers": int((artist.get("followers") or {}).get("total") or 0),
+                "url": (artist.get("external_urls") or {}).get("spotify", ""),
+                "play_count": int(artist.get("popularity") or 0),
+            }
+        )
+    cache.set(cache_key, artists, ttl)
+    return artists
+
+
 def _get_ai_artist_suggestions(
     request,
     user_id: Optional[str],
@@ -196,7 +242,9 @@ class DashboardView(View):
             generation_identifier = _resolve_generation_identifier(request, user_id)
             generated_stats = summarize_generation_stats(generation_identifier)
             genre_breakdown = get_genre_breakdown(generation_identifier)
-            favorite_artists = artist_recommendation_service.fetch_seed_artists(user_id, limit=10) if user_id else []
+            favorite_artists = _cached_user_top_artists(sp, user_id, limit=10)
+            if not favorite_artists and user_id:
+                favorite_artists = artist_recommendation_service.fetch_seed_artists(user_id, limit=10)
             ai_artist_suggestions = _get_ai_artist_suggestions(
                 request,
                 user_id,
