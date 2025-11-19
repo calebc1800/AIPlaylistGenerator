@@ -335,17 +335,56 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
     }
 
 
+def _playlist_generation_error_response(
+    request,
+    wants_json: bool,
+    *,
+    message: str,
+    status_code: int = 400,
+    redirect_url: str = "dashboard:dashboard",
+):
+    """Return either a JSON error payload or redirect with a flash message."""
+    if wants_json:
+        return JsonResponse({"error": message}, status=status_code)
+    if message:
+        messages.error(request, message)
+    if redirect_url:
+        return redirect(redirect_url)
+    return JsonResponse({"error": message}, status=status_code)
+
+
 @require_POST
 def generate_playlist(request):
-    """Generate a playlist based on the submitted prompt and render results."""
-    prompt = request.POST.get("prompt", "").strip()
-    selected_artist_ids_raw = request.POST.get("selected_artist_ids")
-    selected_artist_names = _parse_json_list(request.POST.get("selected_artist_names"))
-    selected_artist_ids = [
-        artist_id
-        for artist_id in _parse_json_list(selected_artist_ids_raw)
-        if artist_id
-    ]
+    """Generate a playlist response in HTML or JSON depending on the request."""
+    content_type = (request.content_type or request.META.get("CONTENT_TYPE") or "").lower()
+    wants_json = content_type.startswith("application/json")
+    if wants_json:
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+        prompt = str(payload.get("prompt") or "").strip()
+        selected_artist_ids = [
+            str(artist_id).strip()
+            for artist_id in payload.get("selected_artist_ids") or []
+            if str(artist_id).strip()
+        ]
+        selected_artist_names = [
+            str(name).strip()
+            for name in payload.get("selected_artist_names") or []
+            if str(name).strip()
+        ]
+        requested_provider = payload.get("llm_provider")
+    else:
+        prompt = request.POST.get("prompt", "").strip()
+        selected_artist_ids_raw = request.POST.get("selected_artist_ids")
+        selected_artist_names = _parse_json_list(request.POST.get("selected_artist_names"))
+        selected_artist_ids = [
+            artist_id
+            for artist_id in _parse_json_list(selected_artist_ids_raw)
+            if artist_id
+        ]
+        requested_provider = request.POST.get("llm_provider")
     reset_llm_usage_tracker()
     debug_steps: List[str] = []
     errors: List[str] = []
@@ -354,11 +393,17 @@ def generate_playlist(request):
 
     if not prompt:
         log("Prompt missing; redirecting to dashboard.")
-        return redirect("dashboard:dashboard")
+        return _playlist_generation_error_response(
+            request,
+            wants_json,
+            message="Prompt is required to generate a playlist.",
+            status_code=400,
+            redirect_url="dashboard:dashboard",
+        )
 
     llm_provider = _determine_llm_provider(
         request,
-        requested_provider=request.POST.get("llm_provider"),
+        requested_provider=requested_provider,
         debug_enabled=debug_enabled,
     )
 
@@ -367,7 +412,13 @@ def generate_playlist(request):
     access_token = request.session.get("spotify_access_token")
     if not access_token:
         log("Missing Spotify access token; redirecting to login.")
-        return redirect("spotify_auth:login")
+        return _playlist_generation_error_response(
+            request,
+            wants_json,
+            message="Spotify authentication required.",
+            status_code=401,
+            redirect_url="spotify_auth:login",
+        )
 
     user_id = resolve_request_user_id(request)
 
@@ -509,6 +560,15 @@ def generate_playlist(request):
         }
         context = _build_context_from_payload(updated_payload)
         context.setdefault("cache_key", cache_key)
+        if wants_json:
+            return JsonResponse(
+                {
+                    "status": "ok",
+                    "cache_key": cache_key,
+                    "payload": updated_payload,
+                    "context": context,
+                }
+            )
         return render(request, "recommender/playlist_result.html", context)
 
     playlist: List[str] = []
@@ -844,6 +904,15 @@ def generate_playlist(request):
 
     context = _build_context_from_payload(payload)
     context["cache_key"] = cache_key
+    if wants_json:
+        return JsonResponse(
+            {
+                "status": "ok",
+                "cache_key": cache_key,
+                "payload": payload,
+                "context": context,
+            }
+        )
     return render(request, "recommender/playlist_result.html", context)
 
 

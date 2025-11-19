@@ -1,6 +1,6 @@
 """URL routes for playlist generation and persistence."""
 
-from django.urls import path
+from django.urls import include, path
 
 from . import views
 
@@ -16,4 +16,6 @@ urlpatterns = [
     path("search/", views.search_songs, name="search_songs"),
     # POST endpoint for adding songs to playlist
     path("add-song/", views.add_song_to_playlist, name="add_song_to_playlist"),
+    # Internal API endpoints
+    path("api/", include("recommender.api.urls")),
 ]
