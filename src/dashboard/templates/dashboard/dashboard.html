@@ -187,11 +187,11 @@
                             </div>
                         </div>
                         <div class="recommended-footer">
-                            <p class="selection-label" id="artist-selection-label">
-                                Select up to 5 AI-suggested artists to craft a playlist.
+                            <p class="selection-label">
+                                Tap an artist to build instantly, or blend the top picks.
                             </p>
-                            <button type="button" class="create-btn" id="artists-generate-btn" disabled>
-                                Select artists first
+                            <button type="button" class="ghost-btn" id="artists-generate-top-btn">
+                                Generate playlist from AI Top 5
                             </button>
                         </div>
                     </div>
@@ -632,57 +632,22 @@
 
         const recommendedGrid = document.getElementById('recommended-artists-grid');
         const recommendedEmptyState = document.getElementById('recommended-artists-empty');
-        const artistSelectionLabel = document.getElementById('artist-selection-label');
-        const artistGenerateBtn = document.getElementById('artists-generate-btn');
         const artistForm = document.getElementById('artist-generate-form');
         const artistPromptInput = document.getElementById('artist-prompt-input');
         const artistIdsInput = document.getElementById('artist-ids-input');
         const artistNamesInput = document.getElementById('artist-names-input');
-        const ARTIST_SELECTION_LIMIT = 5;
+        const artistTopMixBtn = document.getElementById('artists-generate-top-btn');
         const recommendedState = {
             lookup: new Map(),
-            selection: new Map(),
-        };
-
-        const updateArtistSelectionUI = () => {
-            if (!recommendedGrid) {
-                return;
-            }
-            const selectedIds = Array.from(recommendedState.selection.keys());
-            const selectedCount = selectedIds.length;
-            if (artistSelectionLabel) {
-                if (selectedCount === 0) {
-                    artistSelectionLabel.textContent = 'Select up to 5 AI-suggested artists to craft a playlist.';
-                    artistSelectionLabel.classList.remove('error');
-                } else if (selectedCount === 1) {
-                    artistSelectionLabel.textContent = 'Great pick! Add a few more or generate now.';
-                    artistSelectionLabel.classList.remove('error');
-                } else {
-                    artistSelectionLabel.textContent = `${selectedCount} artists selected. Ready to blend.`;
-                    artistSelectionLabel.classList.remove('error');
-                }
-            }
-            if (artistGenerateBtn) {
-                artistGenerateBtn.disabled = selectedCount === 0;
-                artistGenerateBtn.textContent = selectedCount
-                    ? `Generate playlist (${selectedCount})`
-                    : 'Select artists first';
-            }
-            recommendedGrid
-                .querySelectorAll('[data-artist-card]')
-                .forEach((card) => {
-                    const cardId = card.dataset.artistId;
-                    card.classList.toggle('selected', recommendedState.selection.has(cardId));
-                });
+            orderedIds: [],
         };
 
         const renderRecommendedArtists = (artists) => {
             if (!recommendedGrid) {
                 return;
             }
-            const previouslySelected = new Map(recommendedState.selection);
-            recommendedState.selection.clear();
             recommendedState.lookup.clear();
+            recommendedState.orderedIds = [];
             recommendedGrid.innerHTML = '';
 
             if (!artists || !artists.length) {
@@ -690,7 +655,6 @@
                     recommendedEmptyState.style.display = '';
                     recommendedGrid.appendChild(recommendedEmptyState);
                 }
-                updateArtistSelectionUI();
                 return;
             }
 
@@ -703,135 +667,115 @@
                     return;
                 }
                 recommendedState.lookup.set(artist.id, artist);
+                recommendedState.orderedIds.push(artist.id);
                 const card = document.createElement('article');
-                card.className = 'artist-card';
+                card.className = 'artist-showcase-card ai-card';
                 card.dataset.artistCard = 'true';
                 card.dataset.artistId = artist.id;
 
-                const avatar = document.createElement('div');
-                avatar.className = 'artist-avatar';
+                const media = document.createElement('div');
+                media.className = 'artist-card-media';
                 if (artist.image) {
                     const img = document.createElement('img');
                     img.src = artist.image;
                     img.alt = artist.name || 'Artist';
-                    avatar.appendChild(img);
+                    media.appendChild(img);
                 } else {
                     const fallback = document.createElement('div');
                     fallback.className = 'artist-avatar-fallback';
                     fallback.textContent = (artist.name || '?').charAt(0).toUpperCase();
-                    avatar.appendChild(fallback);
+                    media.appendChild(fallback);
                 }
 
                 const info = document.createElement('div');
-                info.className = 'artist-info';
+                info.className = 'artist-card-body';
                 const name = document.createElement('h3');
                 name.textContent = artist.name || 'Unknown Artist';
                 info.appendChild(name);
 
                 const genres = document.createElement('p');
-                genres.className = 'artist-genres';
                 genres.textContent = (artist.genres && artist.genres.length)
-                    ? artist.genres.slice(0, 3).join(' • ')
-                    : 'Genres updating soon';
+                    ? artist.genres[0]
+                    : 'Genre updating soon';
                 info.appendChild(genres);
 
                 const reason = document.createElement('p');
                 reason.className = 'artist-meta';
                 const seeds = artist.seed_artist_names || [];
-                const reasonLabel = artist.reason
+                reason.textContent = artist.reason
                     || (seeds.length ? `Because you listen to ${seeds.slice(0, 2).join(', ')}` : 'Based on your listening profile');
-                reason.textContent = reasonLabel;
                 info.appendChild(reason);
 
                 const actions = document.createElement('div');
-                actions.className = 'artist-actions';
-                const selectButton = document.createElement('button');
-                selectButton.type = 'button';
-                selectButton.className = 'artist-select-toggle';
-                selectButton.dataset.artistToggle = 'true';
-                selectButton.textContent = 'Select';
-                actions.appendChild(selectButton);
+                actions.className = 'artist-card-actions';
 
                 if (artist.url) {
                     const link = document.createElement('a');
                     link.href = artist.url;
                     link.target = '_blank';
                     link.rel = 'noopener noreferrer';
-                    link.className = 'artist-link';
-                    link.textContent = 'Open in Spotify';
+                    link.className = 'artist-open-btn';
+                    link.innerHTML = `
+                        <svg viewBox="0 0 168 168" aria-hidden="true">
+                            <path d="M83.996.277C37.816.277.277 37.816.277 83.996c0 46.18 37.539 83.719 83.719 83.719s83.719-37.539 83.719-83.719C167.715 37.816 130.176.277 83.996.277zm38.525 120.084c-1.567 2.403-4.777 3.117-7.185 1.548-19.662-12.303-44.423-15.102-73.416-8.286-2.812.654-5.633-1.085-6.29-3.89-.657-2.812 1.085-5.633 3.891-6.29 31.884-7.455 59.591-4.23 81.306 9.582 2.407 1.576 3.118 4.777 1.694 7.286zm10.266-22.769c-1.983 2.769-5.805 3.542-8.573 1.705-22.48-14.238-56.836-18.4-83.456-9.84-3.162 1.005-6.512-.785-7.52-3.947-1.012-3.162.785-6.511 3.947-7.523 30.551-9.708 69.28-5.117 95.078 11.392 2.77,1.837 3.544,5.805 1.524,8.677zm1.203-23.344c-26.95-16.025-71.563-17.507-97.208-9.365-3.76 1.186-7.781-.862-8.97-4.623-1.186-3.76.864-7.78 4.624-8.968 29.732-9.36 79.645-7.63 110.983 11.054 3.414,2.03 4.5,6.432 2.47 9.846-2.03 3.418-6.434 4.502-9.899 2.056z" fill="#0f111a"/>
+                        </svg>
+                        <span>Open on Spotify</span>
+                    `;
                     actions.appendChild(link);
                 }
 
-                card.appendChild(avatar);
+                const generateBtn = document.createElement('button');
+                generateBtn.type = 'button';
+                generateBtn.className = 'artist-generate-btn';
+                generateBtn.dataset.artistGenerate = artist.id;
+                generateBtn.textContent = 'Generate playlist';
+                actions.appendChild(generateBtn);
+
+                card.appendChild(media);
                 card.appendChild(info);
                 card.appendChild(actions);
 
                 recommendedGrid.appendChild(card);
-
-                if (previouslySelected.has(artist.id)) {
-                    recommendedState.selection.set(artist.id, artist);
-                }
             });
-
-            updateArtistSelectionUI();
         };
 
         const recommendedArtistsInitial = parseJsonScript('initial_ai_artists', []);
         renderRecommendedArtists(recommendedArtistsInitial);
 
-        const toggleArtistSelection = (artistId) => {
-            if (!artistId) {
+        const submitArtistPlaylist = (artists) => {
+            if (!artistForm || !artistPromptInput || !artistIdsInput || !artistNamesInput) {
                 return;
             }
-            if (recommendedState.selection.has(artistId)) {
-                recommendedState.selection.delete(artistId);
-                updateArtistSelectionUI();
+            if (!artists || !artists.length) {
                 return;
             }
-            if (recommendedState.selection.size >= ARTIST_SELECTION_LIMIT) {
-                if (artistSelectionLabel) {
-                    artistSelectionLabel.textContent = `You can select up to ${ARTIST_SELECTION_LIMIT} artists.`;
-                    artistSelectionLabel.classList.add('error');
-                    window.setTimeout(() => artistSelectionLabel.classList.remove('error'), 1200);
-                }
-                return;
-            }
-            const artist = recommendedState.lookup.get(artistId);
-            if (!artist) {
-                return;
-            }
-            recommendedState.selection.set(artistId, artist);
-            updateArtistSelectionUI();
+            const artistNames = artists.map((artist) => artist.name).filter(Boolean);
+            const prompt = artistNames.length === 1
+                ? `Create a playlist inspired by ${artistNames[0]}. Use my top genres and listening history for cohesion.`
+                : `Create a playlist blending these artists: ${artistNames.join(', ')}. Use my listening history to connect their styles.`;
+            artistPromptInput.value = prompt.slice(0, promptLimit);
+            artistIdsInput.value = JSON.stringify(artists.map((artist) => artist.id));
+            artistNamesInput.value = JSON.stringify(artistNames);
+            artistForm.submit();
         };
 
         if (recommendedGrid) {
             recommendedGrid.addEventListener('click', (event) => {
-                const toggle = event.target.closest('[data-artist-toggle]');
-                if (!toggle) {
-                    return;
+                const generateBtn = event.target.closest('[data-artist-generate]');
+                if (generateBtn) {
+                    const artist = recommendedState.lookup.get(generateBtn.dataset.artistGenerate);
+                    if (artist) {
+                        submitArtistPlaylist([artist]);
+                    }
                 }
-                const card = toggle.closest('[data-artist-card]');
-                if (!card) {
-                    return;
-                }
-                toggleArtistSelection(card.dataset.artistId);
             });
         }
 
-        if (artistGenerateBtn && artistForm && artistPromptInput && artistIdsInput && artistNamesInput) {
-            artistGenerateBtn.addEventListener('click', () => {
-                if (!recommendedState.selection.size) {
-                    return;
-                }
-                const selectedArtists = Array.from(recommendedState.selection.values());
-                const artistNames = selectedArtists.map((artist) => artist.name).filter(Boolean);
-                const prompt = selectedArtists.length === 1
-                    ? `Create a playlist inspired by ${artistNames[0]}. Use my top genres and listening history for cohesion.`
-                    : `Create a playlist blending these artists: ${artistNames.join(', ')}. Use my listening history to connect their styles.`;
-                artistPromptInput.value = prompt.slice(0, promptLimit);
-                artistIdsInput.value = JSON.stringify(selectedArtists.map((artist) => artist.id));
-                artistNamesInput.value = JSON.stringify(artistNames);
-                artistForm.submit();
+        if (artistTopMixBtn) {
+            artistTopMixBtn.addEventListener('click', () => {
+                const topIds = recommendedState.orderedIds.slice(0, 5);
+                const artists = topIds.map((id) => recommendedState.lookup.get(id)).filter(Boolean);
+                submitArtistPlaylist(artists);
             });
         }
 

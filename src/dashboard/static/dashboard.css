@@ -838,25 +838,30 @@ body {
     object-fit: cover;
 }
 
-.artist-open-btn {
+.artist-open-btn,
+.artist-generate-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    background: #1DB954;
-    color: #0f111a;
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    padding: 5px 10px;
+    padding: 6px 12px;
     border-radius: 999px;
     text-decoration: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.artist-open-btn {
+    background: #1DB954;
+    color: #0f111a;
     box-shadow: 0 6px 16px rgba(29, 185, 84, 0.35);
-    margin-top: 8px;
 }
 
 .artist-open-btn svg {
-    width: 13px;
-    height: 13px;
+    width: 14px;
+    height: 14px;
 }
 
 .artist-open-btn span {
@@ -865,6 +870,19 @@ body {
 
 .artist-open-btn:hover {
     filter: brightness(1.05);
+}
+
+.artist-generate-btn {
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.artist-generate-btn:hover {
+    border-color: rgba(255, 255, 255, 0.45);
+    background: rgba(255, 255, 255, 0.18);
 }
 
 .artist-avatar-fallback {
@@ -1317,4 +1335,28 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+.artist-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.artist-generate-btn {
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.artist-generate-btn:hover {
+    border-color: rgba(255, 255, 255, 0.45);
+    background: rgba(255, 255, 255, 0.12);
 }
