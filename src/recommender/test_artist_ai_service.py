@@ -69,6 +69,7 @@ class ArtistAISuggestionsTests(SimpleTestCase):
                 ]
             }
         }
+        mock_sp.artist_top_tracks.return_value = {"tracks": [{"id": "track-1"}]}
 
         cards = service.generate_ai_artist_cards(
             "user-123",
@@ -80,3 +81,36 @@ class ArtistAISuggestionsTests(SimpleTestCase):
         self.assertEqual(cards[0]["id"], "new-1")
         self.assertEqual(cards[0]["reason"], "Fresh sound")
         mock_sp.search.assert_called_once()
+
+    @patch("recommender.services.artist_ai_service.dispatch_llm_query")
+    @patch("recommender.services.artist_ai_service.fetch_seed_artists")
+    @patch("recommender.services.artist_ai_service._search_artist")
+    def test_skips_artists_without_followers_or_tracks(self, mock_search, mock_fetch_seeds, mock_dispatch):
+        mock_fetch_seeds.return_value = [
+            {"id": "seed-1", "name": "Seed One", "genres": ["pop"], "popularity": 55, "followers": 5000, "url": "https://open.spotify.com/artist/seed1"}
+        ]
+        mock_dispatch.return_value = '[{"name": "Fake Artist"}, {"name": "Real Artist"}]'
+
+        def fake_search(name):
+            if name == "Fake Artist":
+                return {"id": "fake", "name": "Fake Artist", "followers": 0, "popularity": 0, "url": "", "image": ""}
+            return {"id": "real", "name": "Real Artist", "followers": 4000, "popularity": 70, "url": "https://open.spotify.com/artist/real", "image": ""}
+
+        mock_search.side_effect = fake_search
+        mock_sp = Mock()
+        mock_sp.artist_top_tracks.side_effect = [
+            {"tracks": []},
+            {"tracks": [{"id": "track-1"}]},
+        ]
+
+        cards = service.generate_ai_artist_cards(
+            "user-123",
+            sp=mock_sp,
+            profile_cache={},
+            limit=1,
+        )
+
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0]["id"], "real")
+        self.assertEqual(cards[0]["name"], "Real Artist")
+        self.assertGreaterEqual(mock_sp.artist_top_tracks.call_count, 2)

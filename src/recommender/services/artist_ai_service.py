@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import random
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence
 
 import requests
 from spotipy import Spotify, SpotifyException
@@ -11,6 +11,14 @@ from spotipy import Spotify, SpotifyException
 from .artist_recommendation_service import fetch_seed_artists
 from .llm_handler import dispatch_llm_query, _parse_json_response
 from .spotify_handler import _normalize_artist_key, _primary_image_url
+
+try:
+    from django.conf import settings
+except ImportError:  # pragma: no cover - when Django isn't configured
+    settings = None
+
+MIN_AI_ARTIST_FOLLOWERS = getattr(settings, "AI_ARTIST_MIN_FOLLOWERS", 1000) if settings else 1000
+MIN_AI_ARTIST_POPULARITY = getattr(settings, "AI_ARTIST_MIN_POPULARITY", 15) if settings else 15
 
 
 def _top_genres_from_profile(profile_cache: Optional[Dict[str, object]], limit: int = 5) -> List[str]:
@@ -134,21 +142,42 @@ def _prepare_card(artist: Dict[str, object], *, reason: str) -> Dict[str, object
     }
 
 
+def _has_listenable_tracks(sp: Optional[Spotify], artist_id: Optional[str]) -> bool:
+    if not sp or not artist_id:
+        return True
+    try:
+        response = sp.artist_top_tracks(artist_id, country="US")
+    except SpotifyException:
+        return True
+    except requests.exceptions.RequestException:
+        return True
+    tracks = response.get("tracks", []) if isinstance(response, dict) else []
+    return any(isinstance(track, dict) and track.get("id") for track in tracks)
+
+
+def _artist_is_valid(sp: Optional[Spotify], artist: Dict[str, object]) -> bool:
+    followers = int(artist.get("followers") or 0)
+    popularity = int(artist.get("popularity") or 0)
+    if followers < MIN_AI_ARTIST_FOLLOWERS or popularity < MIN_AI_ARTIST_POPULARITY:
+        return False
+    return _has_listenable_tracks(sp, artist.get("id"))
+
+
 def generate_ai_artist_cards(
     user_identifier: str,
     *,
     sp: Optional[Spotify],
     profile_cache: Optional[Dict[str, object]],
-    limit: int = 6,
+    limit: int = 8,
     provider: str = "openai",
 ) -> List[Dict[str, object]]:
     """Return AI-curated artist cards enriched with Spotify metadata."""
     if not user_identifier or limit <= 0:
         return []
 
-    seed_artists = fetch_seed_artists(user_identifier, limit=8)
+    seed_artists = fetch_seed_artists(user_identifier, limit=max(10, limit + 2))
     top_genres = _top_genres_from_profile(profile_cache)
-    prompt = _render_prompt(seed_artists, top_genres, limit + 2)
+    prompt = _render_prompt(seed_artists, top_genres, max(limit + 6, limit * 2))
     try:
         response = dispatch_llm_query(prompt, provider=provider)
     except Exception:  # pragma: no cover - defensive
@@ -174,6 +203,8 @@ def generate_ai_artist_cards(
         artist_id = artist_meta["id"]
         if artist_id in seen_ids:
             continue
+        if not _artist_is_valid(sp, artist_meta):
+            continue
         seen_ids.add(artist_id)
         cards.append(_prepare_card(artist_meta, reason=candidate["reason"]))
 
@@ -185,21 +216,18 @@ def generate_ai_artist_cards(
             artist_id = seed.get("id")
             if not artist_id or artist_id in seen_ids:
                 continue
+            fallback_meta = {
+                "id": seed.get("id"),
+                "name": seed.get("name"),
+                "image": seed.get("image", ""),
+                "genres": seed.get("genres", []),
+                "popularity": seed.get("popularity", 0),
+                "followers": seed.get("followers", 0),
+                "url": seed.get("url", ""),
+            }
+            if not _artist_is_valid(sp, fallback_meta):
+                continue
             seen_ids.add(artist_id)
-            cards.append(
-                _prepare_card(
-                    {
-                        "id": seed.get("id"),
-                        "name": seed.get("name"),
-                        "image": seed.get("image", ""),
-                        "genres": seed.get("genres", []),
-                        "popularity": seed.get("popularity", 0),
-                        "followers": seed.get("followers", 0),
-                        "url": seed.get("url", ""),
-                    },
-                    reason="From your listening history",
-                )
-            )
+            cards.append(_prepare_card(fallback_meta, reason="From your listening history"))
 
     return cards[:limit]
-
