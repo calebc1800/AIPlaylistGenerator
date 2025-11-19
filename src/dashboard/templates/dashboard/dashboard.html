@@ -141,7 +141,7 @@
                             {% if favorite_artists %}
                                 {% for artist in favorite_artists|slice:":10" %}
                                 <article class="artist-showcase-card">
-                                    <div class="artist-avatar">
+                                    <div class="artist-card-media">
                                         {% if artist.image %}
                                         <img src="{{ artist.image }}" alt="{{ artist.name }}">
                                         {% else %}
@@ -150,18 +150,17 @@
                                         </div>
                                         {% endif %}
                                     </div>
-                                    <div class="artist-showcase-info">
-                                        <div class="artist-showcase-header">
-                                            <h3>{{ artist.name }}</h3>
-                                            {% if artist.url %}
-                                            <a href="{{ artist.url }}" target="_blank" rel="noopener noreferrer">Open</a>
-                                            {% endif %}
-                                        </div>
-                                        <p>{{ artist.genres|slice:":3"|join:" • "|default:"Genres updating soon" }}</p>
-                                        <div class="artist-badges">
-                                            <span class="artist-metric">{{ artist.play_count|default:0 }} plays</span>
-                                            <span class="artist-metric">Popularity {{ artist.popularity|default:0 }}</span>
-                                        </div>
+                                    <div class="artist-card-body">
+                                        <h3>{{ artist.name }}</h3>
+                                        <p>{{ artist.genres|first|default:"Genre updating soon" }}</p>
+                                        {% if artist.url %}
+                                        <a href="{{ artist.url }}" target="_blank" rel="noopener noreferrer" class="artist-open-btn">
+                                            <svg viewBox="0 0 168 168" aria-hidden="true">
+                                                <path d="M83.996.277C37.816.277.277 37.816.277 83.996c0 46.18 37.539 83.719 83.719 83.719s83.719-37.539 83.719-83.719C167.715 37.816 130.176.277 83.996.277zm38.525 120.084c-1.567 2.403-4.777 3.117-7.185 1.548-19.662-12.303-44.423-15.102-73.416-8.286-2.812.654-5.633-1.085-6.29-3.89-.657-2.812 1.085-5.633 3.891-6.29 31.884-7.455 59.591-4.23 81.306 9.582 2.407 1.576 3.118 4.777 1.694 7.286zm10.266-22.769c-1.983 2.769-5.805 3.542-8.573 1.705-22.48-14.238-56.836-18.4-83.456-9.84-3.162 1.005-6.512-.785-7.52-3.947-1.012-3.162.785-6.511 3.947-7.523 30.551-9.708 69.28-5.117 95.078 11.392 2.77,1.837 3.544,5.805 1.524,8.677zm1.203-23.344c-26.95-16.025-71.563-17.507-97.208-9.365-3.76 1.186-7.781-.862-8.97-4.623-1.186-3.76.864-7.78 4.624-8.968 29.732-9.36 79.645-7.63 110.983 11.054 3.414,2.03 4.5,6.432 2.47 9.846-2.03 3.418-6.434 4.502-9.899 2.056z" fill="#0f111a"/>
+                                            </svg>
+                                            <span>Open on Spotify</span>
+                                        </a>
+                                        {% endif %}
                                     </div>
                                 </article>
                                 {% endfor %}
@@ -171,6 +170,7 @@
                                 </div>
                             {% endif %}
                         </div>
+
                     </div>
 
                     <div class="artist-panel-card ai-panel-card">
