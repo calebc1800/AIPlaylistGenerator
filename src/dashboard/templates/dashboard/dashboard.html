@@ -1197,8 +1197,11 @@
         modalUserStats.textContent = 'Loading...';
         modalFollowBtn.dataset.userId = userId;
         modalFollowBtn.dataset.userName = userName;
-        userProfileModal.style.display = 'block';
-        document.body.style.overflow = 'hidden';
+    userProfileModal.style.display = 'block';
+    // Use a class to indicate modal state so we can reliably remove it later.
+    // This is more robust than directly mutating inline styles and avoids
+    // leaving the page with overflow:hidden if an error occurs.
+    document.body.classList.add('modal-open');
         
         userPlaylistsGrid.innerHTML = '';
         playlistsLoading.style.display = 'flex';
@@ -1233,6 +1236,9 @@
             console.error('Error loading user playlists:', error);
             playlistsLoading.style.display = 'none';
             userPlaylistsGrid.innerHTML = '<div class="empty-state">Failed to load playlists</div>';
+            // If loading fails, close the modal to ensure we don't leave the body
+            // locked in a modal state.
+            try { closeModal(); } catch (e) { /* ignore */ }
         }
     }
     
@@ -1307,8 +1313,19 @@
     // Close modal
     function closeModal() {
         userProfileModal.style.display = 'none';
-        document.body.style.overflow = '';
+        // Remove the modal-open class to restore scrolling. We avoid touching
+        // inline styles directly so other code doesn't accidentally override us.
+        document.body.classList.remove('modal-open');
     }
+
+    // Close modal on Escape key for extra robustness
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (userProfileModal && userProfileModal.style.display === 'block') {
+                closeModal();
+            }
+        }
+    });
     
     // Event listeners
     modalCloseBtn.addEventListener('click', closeModal);
@@ -1320,9 +1337,17 @@
         await toggleFollow(userId, userName);
     });
     
-    // Load following when tab is activated
+    // Load following when tab is activated. Also ensure any open modals are closed
+    // so that body scrolling is restored when switching tabs.
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', () => {
+            // If a profile modal is open, close it and restore scrolling
+            try {
+                closeModal();
+            } catch (e) {
+                // closeModal may not be defined in some contexts; ignore errors
+            }
+
             if (tab.dataset.tab === 'following') {
                 loadFollowing();
             }
