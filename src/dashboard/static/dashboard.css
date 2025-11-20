@@ -1290,3 +1290,32 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* Ensure the following modal doesn't block scrolling when closed */
+.following-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 10, 0.92);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.following-modal.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Optional: Add scrollbar width compensation to prevent layout shift */
+/* Keep any scrollbar compensation, but avoid forcing overflow:hidden on body globally.
+   Locking overflow on the <body> can prevent scrolling in other in-page "tabs" or
+   sections if the class isn't removed properly by JavaScript. We only keep the
+   padding compensation here so layout doesn't shift when modals are opened. */
+body.modal-open {
+    padding-right: var(--scrollbar-width, 0);
+}
