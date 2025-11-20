@@ -144,7 +144,7 @@ WSGI_APPLICATION = 'aiplaylist.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASE_DIR = os.getenv("DATABASE_DIR", default=BASE_DIR)
+DATABASE_DIR = Path(os.getenv("DATABASE_DIR", default=BASE_DIR))
 
 DATABASES = {
     'default': {
