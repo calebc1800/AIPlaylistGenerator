@@ -231,7 +231,7 @@ def logout(request):
 @require_POST
 @csrf_exempt
 def like_playlist(request, user_id, playlist_id):
-    """Handle playlist like action"""
+    """Handle playlist like/unlike toggle action"""
 
     # Validate user_id
     if not user_id or user_id == 'None':
@@ -241,15 +241,23 @@ def like_playlist(request, user_id, playlist_id):
 
     playlist = get_object_or_404(SavedPlaylist, playlist_id=playlist_id)
 
-    # Create or get the unique like (this will not duplicate if already exists)
-    like, created = UniqueLike.objects.get_or_create(user_id=user_id, playlist_id=playlist_id)
+    # Try to get existing like
+    try:
+        like = UniqueLike.objects.get(user_id=user_id, playlist_id=playlist_id)
+        # If it exists, delete it (unlike)
+        like.delete()
+        liked = False
+    except UniqueLike.DoesNotExist:
+        # If it doesn't exist, create it (like)
+        UniqueLike.objects.create(user_id=user_id, playlist_id=playlist_id)
+        liked = True
 
     # Return JSON response for AJAX requests
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({
             'success': True,
             'likes': playlist.like_count,
-            'created': created
+            'liked': liked
         })
 
     # For non-AJAX requests, redirect back
