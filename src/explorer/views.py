@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from .models import Playlist, Song
-from recommender.models import SavedPlaylist
+from recommender.models import SavedPlaylist, UniqueLike
 
 
 class SpotifyAPIHelper:
@@ -132,7 +132,7 @@ class ExplorerView(View):
     """Display playlists from database"""
 
     def get(self, request):
-        playlists = SavedPlaylist.objects.all().order_by('-like_count')
+        playlists = sorted(SavedPlaylist.objects.all(), key=lambda p: p.like_count, reverse=True)
 
         context = {
             'playlists': playlists,
@@ -150,19 +150,20 @@ class SearchView(View):
 
         if query:
             # Search in local database
-            playlists = SavedPlaylist.objects.filter(
+            playlists = list(SavedPlaylist.objects.filter(
                 Q(playlist_name__icontains=query) |
                 Q(description__icontains=query) |
                 Q(creator_display_name__icontains=query) |
                 Q(creator_user_id__icontains=query)
-            ).distinct().order_by('-like_count')
+            ).distinct())
+            playlists = sorted(playlists, key=lambda p: p.like_count, reverse=True)
         else:
-            playlists = SavedPlaylist.objects.all().order_by('-like_count')
+            playlists = sorted(SavedPlaylist.objects.all(), key=lambda p: p.like_count, reverse=True)
 
         context = {
             'playlists': playlists,
             'query': query,
-            'results_count': playlists.count(),
+            'results_count': len(playlists),
         }
 
         return render(request, 'explorer/search.html', context)
@@ -173,15 +174,18 @@ class ProfileView(View):
 
     def get(self, request, user_id):
         # Filter playlists by Spotify user ID
-        playlists = SavedPlaylist.objects.filter(creator_user_id=user_id).order_by('-like_count')
+        playlists_qs = SavedPlaylist.objects.filter(creator_user_id=user_id)
 
-        if not playlists.exists():
+        if not playlists_qs.exists():
             return render(request, 'explorer/profile.html', {
                 'error': 'User not found or has no playlists'
             }, status=404)
 
+        # Sort by like_count
+        playlists = sorted(playlists_qs, key=lambda p: p.like_count, reverse=True)
+
         # Use the first playlist to get user info
-        first_playlist = playlists.first()
+        first_playlist = playlists[0]
 
         context = {
             'profile_user': {
@@ -226,24 +230,26 @@ def logout(request):
 
 @require_POST
 @csrf_exempt
-def like_playlist(request, spotify_id):
+def like_playlist(request, user_id, playlist_id):
     """Handle playlist like action"""
-    from recommender.models import SavedPlaylist
-    
-    playlist = get_object_or_404(SavedPlaylist, playlist_id=spotify_id)
 
-    # Increment the likes field using F expression for atomic operation
-    playlist.like_count = F('like_count') + 1
-    playlist.save()
+    # Validate user_id
+    if not user_id or user_id == 'None':
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'error': 'User not authenticated'}, status=401)
+        return redirect('spotify_auth:login')
 
-    # Refresh to get the actual value
-    playlist.refresh_from_db()
+    playlist = get_object_or_404(SavedPlaylist, playlist_id=playlist_id)
+
+    # Create or get the unique like (this will not duplicate if already exists)
+    like, created = UniqueLike.objects.get_or_create(user_id=user_id, playlist_id=playlist_id)
 
     # Return JSON response for AJAX requests
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({
             'success': True,
-            'likes': playlist.like_count
+            'likes': playlist.like_count,
+            'created': created
         })
 
     # For non-AJAX requests, redirect back

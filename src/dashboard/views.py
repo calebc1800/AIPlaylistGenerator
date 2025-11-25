@@ -232,7 +232,7 @@ class DashboardView(View):
                 }
 
             # Fetch saved playlists from database
-            playlists = SavedPlaylist.objects.all().order_by('-like_count')
+            playlists = sorted(SavedPlaylist.objects.all(), key=lambda p: p.like_count, reverse=True)
 
             debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
             session_provider = "openai"
