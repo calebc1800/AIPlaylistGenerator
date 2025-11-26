@@ -77,7 +77,6 @@ class ModelTests(TestCase):
         playlist = SavedPlaylist.objects.create(
             playlist_id="spotify123",
             playlist_name="My Awesome Playlist",
-            like_count=10,
             creator_user_id="user456",
             creator_display_name="Test User"
         )
@@ -1445,12 +1444,17 @@ class SavePlaylistViewTests(TestCase):
 
     @patch("recommender.views.create_playlist_with_tracks")
     def test_save_playlist_preserves_existing_like_count(self, mock_create_playlist):
+        from recommender.models import UniqueLike
+
         SavedPlaylist.objects.create(
             playlist_id="playlist123",
             creator_user_id="initial-user",
-            creator_display_name='initial name',
-            like_count=5,
+            creator_display_name='initial name'
         )
+        # Create 5 likes for the playlist
+        for i in range(5):
+            UniqueLike.objects.create(user_id=f'user{i}', playlist_id='playlist123')
+
         mock_create_playlist.return_value = {
             "playlist_id": "playlist123",
             "playlist_name": "TEST Summer Vibes",
