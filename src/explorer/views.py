@@ -1,5 +1,6 @@
 import requests
 from django.shortcuts import render, redirect, get_object_or_404
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.db.models import Q, F
 from django.conf import settings
 from django.views import View
@@ -261,4 +262,7 @@ def like_playlist(request, user_id, playlist_id):
         })
 
     # For non-AJAX requests, redirect back
-    return redirect(request.META.get('HTTP_REFERER', 'home'))
+    referer = request.META.get('HTTP_REFERER', '')
+    if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}):
+        return redirect(referer)
+    return redirect('home')
