@@ -11,6 +11,7 @@ import hashlib
 import logging
 import re
 import time
+import base64
 from dataclasses import asdict
 from typing import Callable, Dict, List, Optional, Set
 
@@ -1262,6 +1263,49 @@ def save_playlist(request):
         if resolved_display_name:
             request.session["spotify_display_name"] = resolved_display_name
 
+        # Upload cover image if one was generated and cached
+        cover_image_url = payload.get("cover_image_url")
+        if playlist_id and cover_image_url:
+            try:
+                import requests as requests_lib
+                sp = spotipy.Spotify(auth=access_token)
+
+                # Download the image from the URL
+                logger.info("Downloading cover image from %s", cover_image_url)
+                image_response = requests_lib.get(cover_image_url, timeout=30)
+                image_response.raise_for_status()
+
+                # Convert to base64
+                image_base64 = base64.b64encode(image_response.content).decode("utf-8")
+
+                # Upload to Spotify
+                logger.info("Uploading cover image to playlist %s", playlist_id)
+                sp.playlist_upload_cover_image(playlist_id, image_base64)
+                logger.info("Successfully uploaded cover image to playlist %s", playlist_id)
+                messages.success(request, "Custom cover image applied to playlist.")
+
+            except requests_lib.RequestException as img_exc:
+                logger.warning(
+                    "Failed to download cover image from %s: %s",
+                    cover_image_url,
+                    img_exc,
+                )
+                messages.warning(request, "Could not download cover image.")
+            except SpotifyException as spotify_exc:
+                logger.warning(
+                    "Failed to upload cover image to Spotify playlist %s: %s",
+                    playlist_id,
+                    spotify_exc,
+                )
+                messages.warning(request, "Could not apply cover image to playlist.")
+            except Exception as cover_exc:  # pragma: no cover - defensive guard  # pylint: disable=broad-exception-caught
+                logger.exception(
+                    "Unexpected error uploading cover image for playlist %s: %s",
+                    playlist_id,
+                    cover_exc,
+                )
+                messages.warning(request, "Cover image could not be applied.")
+
         if playlist_id and resolved_user_id and resolved_display_name:
             try:
                 sp = spotipy.Spotify(auth=access_token)
@@ -1547,3 +1591,109 @@ def add_song_to_playlist(request):
             {"error": "Unexpected error while adding track."},
             status=500,
         )
+
+
+@require_POST
+def generate_cover_image(request):
+    """Generate a playlist cover image using OpenAI's DALL-E API."""
+    content_type = (request.content_type or request.META.get("CONTENT_TYPE") or "").lower()
+    if not content_type.startswith("application/json"):
+        return JsonResponse({"error": "Expected JSON payload."}, status=400)
+
+    try:
+        request_payload = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    cache_key = _resolve_cache_key_from_request(request, request_payload.get("cache_key"))
+    custom_prompt = (request_payload.get("prompt") or "").strip()
+
+    if not cache_key:
+        return JsonResponse({"error": "Playlist session expired."}, status=400)
+
+    payload = cache.get(cache_key)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Playlist session expired."}, status=404)
+    if not _payload_owned_by_request(request, payload):
+        return JsonResponse({"error": "Playlist session unauthorized."}, status=403)
+
+    # Import the image generator
+    try:
+        from scripts.image_generator import generate_cover_image_with_fallback
+    except ImportError:
+        logger.error("Failed to import image_generator module")
+        return JsonResponse(
+            {"error": "Image generation service not available."},
+            status=500,
+        )
+
+    # Get playlist attributes from cached payload
+    attributes = payload.get("attributes")
+    if not isinstance(attributes, dict):
+        attributes = {}
+
+    # Generate the cover image
+    try:
+        result = generate_cover_image_with_fallback(
+            prompt=custom_prompt if custom_prompt else None,
+            attributes=attributes if not custom_prompt else None,
+        )
+
+        if result.get("success"):
+            return JsonResponse({
+                "status": "ok",
+                "image_url": result.get("image_url"),
+                "prompt_used": result.get("prompt_used"),
+            })
+
+        error_message = result.get("error") or "Unknown error occurred"
+        return JsonResponse(
+            {"error": error_message},
+            status=500,
+        )
+
+    except Exception as exc:  # pragma: no cover - defensive guard  # pylint: disable=broad-exception-caught
+        logger.exception("Unexpected error during cover image generation: %s", exc)
+        return JsonResponse(
+            {"error": "Unexpected error while generating cover image."},
+            status=500,
+        )
+
+
+@require_POST
+def cache_cover_image(request):
+    """Cache the selected cover image URL for later use when saving to Spotify."""
+    content_type = (request.content_type or request.META.get("CONTENT_TYPE") or "").lower()
+    if not content_type.startswith("application/json"):
+        return JsonResponse({"error": "Expected JSON payload."}, status=400)
+
+    try:
+        request_payload = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    cache_key = _resolve_cache_key_from_request(request, request_payload.get("cache_key"))
+    image_url = (request_payload.get("image_url") or "").strip()
+
+    if not cache_key:
+        return JsonResponse({"error": "Playlist session expired."}, status=400)
+
+    payload = cache.get(cache_key)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Playlist session expired."}, status=404)
+    if not _payload_owned_by_request(request, payload):
+        return JsonResponse({"error": "Playlist session unauthorized."}, status=403)
+
+    # Store or clear the cover image URL in the payload
+    if image_url:
+        payload["cover_image_url"] = image_url
+    else:
+        # Empty string means remove the cover image
+        payload.pop("cover_image_url", None)
+
+    # Update cache with the modified payload
+    _attach_cache_metadata(payload, request, cache_key)
+    cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
+    cache.set(cache_key, payload, timeout=cache_timeout)
+
+    return JsonResponse({"status": "ok"})
