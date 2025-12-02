@@ -97,7 +97,6 @@
                 credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': getCsrfToken(),
                 },
                 body: JSON.stringify({
                     following_user_id: userId,
@@ -106,11 +105,12 @@
             });
             
             if (!response.ok) {
-                throw new Error('Failed to toggle follow');
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Failed to toggle follow');
             }
-            
+
             const data = await response.json();
-            
+
             if (data.following) {
                 followBtn.classList.add('following');
                 followBtn.textContent = 'Following ✓';
@@ -120,7 +120,7 @@
             }
         } catch (error) {
             console.error('Error toggling follow:', error);
-            alert('Failed to update follow status');
+            alert(error.message || 'Failed to update follow status');
         }
     });
     

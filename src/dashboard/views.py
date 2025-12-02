@@ -150,6 +150,7 @@ class DashboardView(View):
             followers = user_profile.get('followers', {}).get('total', 0)
             if user_id:
                 request.session['spotify_user_id'] = user_id
+                request.session['spotify_display_name'] = username
 
             if user_id:
                 cache_key = f"recommender:user-profile:{user_id}"
@@ -276,50 +277,58 @@ class ListeningSuggestionsAPIView(View):
 def toggle_follow(request):
     """Toggle follow status for a user"""
     import json
-    
+
     try:
         data = json.loads(request.body)
         following_user_id = data.get('following_user_id')
         following_display_name = data.get('following_display_name')
     except (json.JSONDecodeError, KeyError):
         return JsonResponse({'error': 'Invalid request'}, status=400)
-    
+
+    # Validate required fields
+    if not following_user_id or not following_display_name:
+        return JsonResponse({'error': 'Missing required fields'}, status=400)
+
     follower_user_id = request.session.get('spotify_user_id')
     follower_display_name = request.session.get('spotify_display_name', follower_user_id)
-    
+
     if not follower_user_id:
         return JsonResponse({'error': 'Authentication required'}, status=401)
-    
+
     if follower_user_id == following_user_id:
         return JsonResponse({'error': 'Cannot follow yourself'}, status=400)
     
     # Check if already following
-    existing_follow = UserFollow.objects.filter(
-        follower_user_id=follower_user_id,
-        following_user_id=following_user_id
-    ).first()
-    
-    if existing_follow:
-        # Unfollow
-        existing_follow.delete()
-        return JsonResponse({
-            'success': True,
-            'following': False,
-            'message': f'Unfollowed {following_display_name}'
-        })
-    else:
-        # Follow
-        UserFollow.objects.create(
+    try:
+        existing_follow = UserFollow.objects.filter(
             follower_user_id=follower_user_id,
-            follower_display_name=follower_display_name,
-            following_user_id=following_user_id,
-            following_display_name=following_display_name
-        )
-        return JsonResponse({
-            'success': True,
-            'following': True,
-            'message': f'Now following {following_display_name}'
-        })
+            following_user_id=following_user_id
+        ).first()
+
+        if existing_follow:
+            # Unfollow
+            existing_follow.delete()
+            return JsonResponse({
+                'success': True,
+                'following': False,
+                'message': f'Unfollowed {following_display_name}'
+            })
+        else:
+            # Follow
+            UserFollow.objects.create(
+                follower_user_id=follower_user_id,
+                follower_display_name=follower_display_name,
+                following_user_id=following_user_id,
+                following_display_name=following_display_name
+            )
+            return JsonResponse({
+                'success': True,
+                'following': True,
+                'message': f'Now following {following_display_name}'
+            })
+    except Exception as e:
+        # Handle potential database errors
+        return JsonResponse({'error': 'Database error occurred'}, status=500)
 
 
 def get_following_list(request):
