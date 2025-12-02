@@ -1197,10 +1197,37 @@
         modalUserStats.textContent = 'Loading...';
         modalFollowBtn.dataset.userId = userId;
         modalFollowBtn.dataset.userName = userName;
+    // Move modal to document.body to avoid being clipped by parent stacking contexts
+    // (e.g. transformed or overflowed ancestors). Store original location so we
+    // can restore it on close.
+    try {
+        if (!userProfileModal.__originalParent) {
+            userProfileModal.__originalParent = userProfileModal.parentNode;
+            userProfileModal.__originalNextSibling = userProfileModal.nextSibling;
+        }
+        if (userProfileModal.parentNode !== document.body) {
+            document.body.appendChild(userProfileModal);
+        }
+    } catch (e) {
+        console.warn('[dashboard] openUserProfile: failed to move modal to body', e);
+    }
+
+    // Compute header height and set CSS variable so modal clears the banner
+    try {
+        const headerEl = document.querySelector('.header') || document.querySelector('header');
+        const headerH = headerEl ? Math.ceil(headerEl.getBoundingClientRect().height) : 72;
+        // Add small gap (12px) so modal content doesn't butt up against the header
+        const offset = headerH + 12;
+        userProfileModal.style.setProperty('--modal-top-offset', offset + 'px');
+    } catch (e) {
+        console.warn('[dashboard] openUserProfile: could not compute header height', e);
+    }
+
     userProfileModal.style.display = 'block';
     // Use a class to indicate modal state so we can reliably remove it later.
     // This is more robust than directly mutating inline styles and avoids
     // leaving the page with overflow:hidden if an error occurs.
+    console.debug('[dashboard] openUserProfile: adding modal-open');
     document.body.classList.add('modal-open');
         
         userPlaylistsGrid.innerHTML = '';
@@ -1312,10 +1339,26 @@
     
     // Close modal
     function closeModal() {
+        console.debug('[dashboard] closeModal: removing modal-open');
         userProfileModal.style.display = 'none';
+        // If we moved the modal into body, restore it to its original location
+        // to keep the DOM structure consistent for subsequent renders.
+        try {
+            if (userProfileModal.__originalParent && userProfileModal.parentNode === document.body) {
+                userProfileModal.__originalParent.insertBefore(
+                    userProfileModal,
+                    userProfileModal.__originalNextSibling
+                );
+            }
+        } catch (e) {
+            console.warn('[dashboard] closeModal: failed to restore modal position', e);
+        }
         // Remove the modal-open class to restore scrolling. We avoid touching
         // inline styles directly so other code doesn't accidentally override us.
         document.body.classList.remove('modal-open');
+        // Defensive: also clear any inline overflow style in case another script
+        // set document.body.style.overflow = 'hidden' and failed to remove it.
+        try { document.body.style.overflow = ''; } catch (e) { /* ignore */ }
     }
 
     // Close modal on Escape key for extra robustness
@@ -1325,6 +1368,11 @@
                 closeModal();
             }
         }
+    });
+
+    // Ensure modal-open class is always removed when tab changes
+    window.addEventListener('beforeunload', () => {
+        document.body.classList.remove('modal-open');
     });
     
     // Event listeners
