@@ -10,11 +10,18 @@
         <div class="playlist-title">{{ playlist.playlist_name }}</div>
         <div class="playlist-meta">
             <span class="creator-name">👤 {{ playlist.creator_display_name }}</span>
-            <form method="POST" action="{% url 'like_playlist' playlist.playlist_id %}" class="like-form" style="display: inline;">
-                <button type="submit" class="like-button" data-playlist-id="{{ playlist.playlist_id }}">
+            {% if user_id %}
+            <form method="POST" action="/explorer/playlist/{{ user_id }}/{{ playlist.playlist_id }}/like/" class="like-form" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="like-button" data-user-id="{{ user_id }}" data-playlist-id="{{ playlist.playlist_id }}">
                     <span class="likes-count">{{ playlist.like_count }}</span> 👍
                 </button>
             </form>
+            {% else %}
+            <span class="like-disabled" title="Login to like playlists" style="opacity: 0.6; cursor: not-allowed;">
+                <span class="likes-count">{{ playlist.like_count }}</span> 👍
+            </span>
+            {% endif %}
         </div>
         {% if playlist.spotify_uri %}
         <a href="https://open.spotify.com/playlist/{{ playlist.playlist_id }}" target="_blank" class="spotify-link">View on Spotify →</a>

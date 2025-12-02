@@ -20,9 +20,10 @@
 
                 const button = this.querySelector('.like-button');
                 const playlistId = button.dataset.playlistId;
+                const userId = button.dataset.userId;
                 const likesCount = button.querySelector('.likes-count');
 
-                fetch(`/explorer/playlist/${playlistId}/like/`, {
+                fetch(`/explorer/playlist/${userId}/${playlistId}/like/`, {
                     method: 'POST',
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest',

@@ -348,15 +348,13 @@ class DashboardViewTests(TestCase):
             playlist_name='Playlist 1',
             playlist_id='p1',
             creator_user_id='user1',
-            creator_display_name='testuser',
-            like_count=10
+            creator_display_name='testuser'
         )
         SavedPlaylist.objects.create(
             playlist_name='Playlist 2',
             playlist_id='p2',
             creator_user_id='user1',
-            creator_display_name='testuser',
-            like_count=5
+            creator_display_name='testuser'
         )
 
         session = self.client.session
@@ -377,8 +375,8 @@ class DashboardViewTests(TestCase):
 
         # Check that playlists are in context
         self.assertIn('playlists', response.context)
-        playlists = response.context['playlists']
-        self.assertEqual(playlists.count(), 2)
+        playlists = list(response.context['playlists'])
+        self.assertEqual(len(playlists), 2)
 
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_handles_empty_playlists_gracefully(self, mock_spotify):
@@ -525,7 +523,6 @@ class DashboardViewTests(TestCase):
             playlist_id='test123',
             creator_user_id='user1',
             creator_display_name='testuser',
-            like_count=10,
             spotify_uri='spotify:playlist:test123'
         )
 
@@ -564,7 +561,6 @@ class DashboardViewTests(TestCase):
             playlist_id='toggle-sample',
             creator_user_id='user1',
             creator_display_name='testuser',
-            like_count=0,
             description=''
         )
 
@@ -599,7 +595,6 @@ class DashboardViewTests(TestCase):
             playlist_id='toggle-visible',
             creator_user_id='user1',
             creator_display_name='testuser',
-            like_count=0,
             description=''
         )
 
@@ -806,25 +801,31 @@ class DashboardIntegrationTests(TestCase):
     @patch('dashboard.views.spotipy.Spotify')
     def test_full_dashboard_flow_with_playlists(self, mock_spotify):
         """Test complete dashboard flow with user data and playlists"""
+        from recommender.models import UniqueLike
+
         # Create playlists
         p1 = SavedPlaylist.objects.create(
             playlist_name='Top Hits',
             playlist_id='hits',
             creator_user_id='user1',
             creator_display_name='integration_test',
-            like_count=50,
             description='Popular songs',
             cover_image='http://image1.url'
         )
+        # Create 50 likes for p1
+        for i in range(50):
+            UniqueLike.objects.create(user_id=f'user{i}', playlist_id='hits')
 
         p2 = SavedPlaylist.objects.create(
             playlist_name='Chill Vibes',
             playlist_id='chill',
             creator_user_id='user1',
             creator_display_name='integration_test',
-            like_count=30,
             description='Relaxing music'
         )
+        # Create 30 likes for p2
+        for i in range(30):
+            UniqueLike.objects.create(user_id=f'user{i+50}', playlist_id='chill')
 
         # Set up session
         session = self.client.session
@@ -874,8 +875,8 @@ class DashboardIntegrationTests(TestCase):
         self.assertEqual(response.context['last_song']['name'], 'Last Played')
 
         # Verify playlists
-        playlists = response.context['playlists']
-        self.assertEqual(playlists.count(), 2)
+        playlists = list(response.context['playlists'])
+        self.assertEqual(len(playlists), 2)
         # Should be ordered by like_count descending
         self.assertEqual(playlists[0].playlist_name, 'Top Hits')
         self.assertEqual(playlists[1].playlist_name, 'Chill Vibes')
