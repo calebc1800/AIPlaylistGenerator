@@ -21,7 +21,23 @@ class SpotifyLoginView(View):
 
     def get(self, request):
         """Redirect the user to Spotify's authorization page or reuse tokens."""
-        if ensure_valid_spotify_session(request):
+        # Check if user wants to force re-authorization (e.g., for new scopes)
+        force_reauth = request.GET.get('force') == 'true'
+
+        if force_reauth:
+            # Clear all Spotify-related session data to force fresh authorization
+            keys_to_clear = [
+                'spotify_access_token',
+                'spotify_refresh_token',
+                'spotify_token_expires_at',
+                'spotify_user_id',
+                'spotify_display_name',
+            ]
+            for key in keys_to_clear:
+                request.session.pop(key, None)
+            logger.info("Cleared Spotify session data for forced re-authorization")
+
+        if not force_reauth and ensure_valid_spotify_session(request):
             return redirect('dashboard:dashboard')
 
         # Generate a random state for CSRF protection
@@ -38,6 +54,10 @@ class SpotifyLoginView(View):
             'state': state,
             'scope': scope,
         }
+
+        # Force Spotify to show the authorization dialog to re-consent to new scopes
+        if force_reauth:
+            params['show_dialog'] = 'true'
 
         auth_url = f"https://accounts.spotify.com/authorize?{urlencode(params)}"
         return redirect(auth_url)

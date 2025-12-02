@@ -217,6 +217,7 @@ _DEFAULT_SPOTIFY_SCOPES = [
     'playlist-read-private',
     'playlist-modify-private',
     'playlist-modify-public',
+    'ugc-image-upload',
 ]
 
 _raw_spotify_scopes = os.getenv("SPOTIFY_SCOPES")

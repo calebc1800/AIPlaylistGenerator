@@ -13,8 +13,10 @@ import re
 import time
 import base64
 from dataclasses import asdict
+from io import BytesIO
 from typing import Callable, Dict, List, Optional, Set
 
+from PIL import Image
 import spotipy
 from django.conf import settings
 from django.contrib import messages
@@ -1194,6 +1196,91 @@ def update_cached_playlist(request):
     )
 
 
+def _compress_image_for_spotify(image_data: bytes, max_size_kb: int = 256) -> bytes:
+    """
+    Compress an image to meet Spotify's cover image requirements.
+
+    Spotify requires JPEG images that are under 256 KB when base64 encoded.
+    This function takes raw image data and compresses it to meet those requirements.
+
+    Args:
+        image_data: Raw image bytes
+        max_size_kb: Maximum size in KB for the base64-encoded image (default: 256)
+
+    Returns:
+        Compressed image bytes in JPEG format
+    """
+    # Open the image
+    img = Image.open(BytesIO(image_data))
+
+    # Convert to RGB if necessary (PNG with transparency, etc.)
+    if img.mode in ('RGBA', 'LA', 'P'):
+        # Create a white background
+        background = Image.new('RGB', img.size, (255, 255, 255))
+        if img.mode == 'P':
+            img = img.convert('RGBA')
+        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+        img = background
+    elif img.mode != 'RGB':
+        img = img.convert('RGB')
+
+    # Start with high quality and reduce if necessary
+    quality = 95
+    max_dimension = 640  # Spotify recommends at least 640x640, max doesn't matter much
+
+    # Resize if image is too large
+    if img.width > max_dimension or img.height > max_dimension:
+        img.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+
+    # Try compressing with progressively lower quality until it fits
+    while quality > 20:
+        output = BytesIO()
+        img.save(output, format='JPEG', quality=quality, optimize=True)
+        compressed_data = output.getvalue()
+
+        # Check if base64 encoded size is under limit
+        encoded_size = len(base64.b64encode(compressed_data))
+        max_size_bytes = max_size_kb * 1024
+
+        if encoded_size <= max_size_bytes:
+            logger.info(
+                "Compressed image to %d bytes (base64: %d bytes) at quality %d",
+                len(compressed_data),
+                encoded_size,
+                quality
+            )
+            return compressed_data
+
+        # Reduce quality for next iteration
+        quality -= 5
+
+    # If still too large, reduce dimensions further
+    while max_dimension > 300:
+        max_dimension = int(max_dimension * 0.8)
+        img.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+
+        output = BytesIO()
+        img.save(output, format='JPEG', quality=85, optimize=True)
+        compressed_data = output.getvalue()
+
+        encoded_size = len(base64.b64encode(compressed_data))
+        max_size_bytes = max_size_kb * 1024
+
+        if encoded_size <= max_size_bytes:
+            logger.info(
+                "Compressed image to %d bytes (base64: %d bytes) at %dx%d",
+                len(compressed_data),
+                encoded_size,
+                max_dimension,
+                max_dimension
+            )
+            return compressed_data
+
+    # Return best effort
+    logger.warning("Could not compress image below %d KB, returning best effort", max_size_kb)
+    return compressed_data
+
+
 @require_POST
 def save_playlist(request):
     """Create a Spotify playlist for the cached tracks and display feedback."""
@@ -1275,11 +1362,16 @@ def save_playlist(request):
                 image_response = requests_lib.get(cover_image_url, timeout=30)
                 image_response.raise_for_status()
 
+                # Compress image to meet Spotify's 256 KB limit
+                logger.info("Compressing image for Spotify (original size: %d bytes)", len(image_response.content))
+                compressed_image = _compress_image_for_spotify(image_response.content)
+
                 # Convert to base64
-                image_base64 = base64.b64encode(image_response.content).decode("utf-8")
+                image_base64 = base64.b64encode(compressed_image).decode("utf-8")
 
                 # Upload to Spotify
-                logger.info("Uploading cover image to playlist %s", playlist_id)
+                logger.info("Uploading cover image to playlist %s (compressed size: %d bytes, base64: %d bytes)",
+                           playlist_id, len(compressed_image), len(image_base64))
                 sp.playlist_upload_cover_image(playlist_id, image_base64)
                 logger.info("Successfully uploaded cover image to playlist %s", playlist_id)
                 messages.success(request, "Custom cover image applied to playlist.")
