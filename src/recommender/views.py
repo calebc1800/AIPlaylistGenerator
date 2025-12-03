@@ -853,11 +853,11 @@ def remix_playlist(request):
 
     POST Parameters:
     - cache_key: The session cache key for the playlist
-    - attributes: (Optional) JSON-encoded dict of additional attributes to merge
+    - prompt: (Optional) string prompt for remixing the playlist
     - target_count: (Optional) Override the playlist size (positive integer)
 
-    If POST attributes are provided:
-    - Empty/missing cached attributes will be filled with POST values
+    If POST prompt are provided:
+    - Empty/missing cached attributes will be filled with attributes extracted from POST
     - List-type attributes (e.g., 'artists') will be extended (deduplicated)
     - Scalar attributes won't override non-empty cached values
 

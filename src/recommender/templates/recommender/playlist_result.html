@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 {% load static %}
 <html lang="en">
@@ -6,6 +7,147 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Playlist Preview</title>
     <link rel="stylesheet" href="{% static 'recommender.css' %}"/>
+    <style>
+        /* Remix Modal Styles */
+        .remix-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(10, 10, 10, 0.92);
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .remix-modal-overlay.hidden {
+            display: none;
+        }
+
+        .remix-modal {
+            background: linear-gradient(135deg, rgba(2, 136, 209, 0.18), rgba(66, 165, 245, 0.1));
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .remix-modal__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .remix-modal__header h2 {
+            margin: 0;
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .remix-modal__close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.6);
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s ease;
+        }
+
+        .remix-modal__close:hover {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .remix-modal__body {
+            padding: 24px;
+        }
+
+        .remix-form-group {
+            margin-bottom: 20px;
+        }
+
+        .remix-form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .remix-form-label {
+            display: block;
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 8px;
+            color: #ffffff;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .remix-form-input {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            background-color: rgba(255, 255, 255, 0.04);
+            color: #ffffff;
+            font-family: inherit;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            box-sizing: border-box;
+        }
+
+        .remix-form-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .remix-form-textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .remix-form-input:focus {
+            outline: none;
+            border-color: rgba(66, 165, 245, 0.6);
+            box-shadow: 0 0 0 3px rgba(66, 165, 245, 0.25);
+        }
+
+        .remix-modal__footer {
+            display: flex;
+            gap: 12px;
+            padding: 24px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            justify-content: flex-end;
+        }
+
+        .remix-modal__footer .btn {
+            min-width: 120px;
+        }
+
+    </style>
+
 </head>
 <body>
     <div class="page-container">
@@ -71,10 +213,8 @@
                         <div class="playlist-hero__actions">
                             <div class="action-buttons">
                                 <button
-                                    type="submit"
+                                    type="button"
                                     class="btn btn-ghost"
-                                    formaction="{% url 'recommender:remix_playlist' %}"
-                                    formmethod="post"
                                     id="remix-button"
                                     {% if not cache_key or not playlist_tracks %}disabled{% endif %}>
                                     Remix Playlist
@@ -687,41 +827,41 @@
     {% endif %}
 
     <script>
+        const trackList = document.getElementById('track-list');
+        const saveButton = document.getElementById('save-playlist-button');
+        const messageStack = document.getElementById('message-stack');
+        const cacheKey = trackList ? trackList.dataset.cacheKey : null;
+        const updateUrl = trackList ? trackList.dataset.updateUrl : null;
+        const remixOverlay = document.getElementById('remix-overlay');
+        const remixProgressBar = document.getElementById('remix-progress-bar');
+        const remixProgressLabel = document.getElementById('remix-progress-label');
+        const remixButton = document.getElementById('remix-button');
+        const playlistForm = document.getElementById('playlist-save-form');
+
+        let remixFrame = null;
+
+        const resetRemixProgress = () => {
+            if (remixFrame !== null) {
+                cancelAnimationFrame(remixFrame);
+                remixFrame = null;
+            }
+            remixProgressBar.style.width = '0%';
+            remixProgressLabel.textContent = 'Preparing remix...';
+        };
+
+        const holdNearCompletion = (label) => {
+            if (!remixOverlay.classList.contains('visible')) {
+                resetRemixProgress();
+                return;
+            }
+            const flicker = 94 + Math.random() * 2;
+            remixProgressBar.style.width = `${flicker}%`;
+            remixProgressLabel.textContent = `${label} (waiting on Spotify...)`;
+            remixFrame = requestAnimationFrame(() => holdNearCompletion(label));
+        };
+
         (function () {
-            const trackList = document.getElementById('track-list');
-            const saveButton = document.getElementById('save-playlist-button');
-            const messageStack = document.getElementById('message-stack');
-            const cacheKey = trackList ? trackList.dataset.cacheKey : null;
-            const updateUrl = trackList ? trackList.dataset.updateUrl : null;
-            const remixOverlay = document.getElementById('remix-overlay');
-            const remixProgressBar = document.getElementById('remix-progress-bar');
-            const remixProgressLabel = document.getElementById('remix-progress-label');
-            const remixButton = document.getElementById('remix-button');
-            const playlistForm = document.getElementById('playlist-save-form');
-
             if (playlistForm && remixButton && remixOverlay && remixProgressBar && remixProgressLabel) {
-                let remixFrame = null;
-
-                const resetRemixProgress = () => {
-                    if (remixFrame !== null) {
-                        cancelAnimationFrame(remixFrame);
-                        remixFrame = null;
-                    }
-                    remixProgressBar.style.width = '0%';
-                    remixProgressLabel.textContent = 'Preparing remix...';
-                };
-
-                const holdNearCompletion = (label) => {
-                    if (!remixOverlay.classList.contains('visible')) {
-                        resetRemixProgress();
-                        return;
-                    }
-                    const flicker = 94 + Math.random() * 2;
-                    remixProgressBar.style.width = `${flicker}%`;
-                    remixProgressLabel.textContent = `${label} (waiting on Spotify...)`;
-                    remixFrame = requestAnimationFrame(() => holdNearCompletion(label));
-                };
-
                 const startRemixProgress = () => {
                     const totalSteps = Number(remixOverlay.dataset.totalSteps || 24);
                     const phaseTimeline = [
@@ -790,9 +930,7 @@
                     if (remixButton.disabled) {
                         return;
                     }
-                    remixOverlay.classList.add('visible');
-                    resetRemixProgress();
-                    startRemixProgress();
+                    // Progress bar will be shown when modal is submitted
                 });
 
                 playlistForm.addEventListener('submit', (event) => {
@@ -1215,6 +1353,153 @@
                 });
             }
         })();
+
+        // Remix Modal Handler
+        document.addEventListener('DOMContentLoaded', function() {
+            const remixButton = document.getElementById('remix-button');
+            const remixOverlay = document.getElementById('remix-overlay');
+            const modalOverlay = document.getElementById('remix-modal-overlay');
+            const modalClose = document.getElementById('remix-modal-close');
+            const modalCancel = document.getElementById('remix-modal-cancel');
+            const modalSubmit = document.getElementById('remix-modal-submit');
+            const promptInput = document.getElementById('remix-prompt-input');
+            const targetCountInput = document.getElementById('remix-target-count-input');
+            const trackCount = document.getElementById('track-count');
+
+            // Initialize target count with current playlist size
+            if (trackCount) {
+                targetCountInput.value = trackCount.textContent;
+            }
+
+            // Open modal when remix button is clicked
+            remixButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                modalOverlay.classList.remove('hidden');
+                promptInput.focus();
+            });
+
+            // Close modal functions
+            function closeModal() {
+                modalOverlay.classList.add('hidden');
+            }
+
+            // Close button
+            modalClose.addEventListener('click', closeModal);
+
+            // Cancel button
+            modalCancel.addEventListener('click', closeModal);
+
+            // Close when clicking outside the modal
+            modalOverlay.addEventListener('click', function(e) {
+                if (e.target === modalOverlay) {
+                    closeModal();
+                }
+            });
+
+            // Submit remix form
+            modalSubmit.addEventListener('click', function(e) {
+                e.preventDefault();
+
+                const prompt = promptInput.value.trim();
+                const targetCount = targetCountInput.value.trim();
+
+                // Validation
+                if (!prompt) {
+                    alert('Please enter a remix prompt');
+                    return;
+                }
+
+                if (!targetCount || parseInt(targetCount) < 1) {
+                    alert('Please enter a valid number of songs');
+                    return;
+                }
+
+                // Show progress bar overlay and start animation
+                remixOverlay.classList.add('visible');
+                resetRemixProgress();
+                startRemixProgress();
+
+                // Create and submit form with POST data
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = window.location.href; // Post to same URL
+
+                // Add CSRF token if it exists
+                const csrfToken = document.querySelector('[name="csrfmiddlewaretoken"]');
+                if (csrfToken) {
+                    const csrfInput = document.createElement('input');
+                    csrfInput.type = 'hidden';
+                    csrfInput.name = 'csrfmiddlewaretoken';
+                    csrfInput.value = csrfToken.value;
+                    form.appendChild(csrfInput);
+                }
+
+                // Add prompt field
+                const promptField = document.createElement('input');
+                promptField.type = 'hidden';
+                promptField.name = 'prompt';
+                promptField.value = prompt;
+                form.appendChild(promptField);
+
+                // Add target_count field
+                const targetCountField = document.createElement('input');
+                targetCountField.type = 'hidden';
+                targetCountField.name = 'target_count';
+                targetCountField.value = targetCount;
+                form.appendChild(targetCountField);
+
+                // Submit the form
+                document.body.appendChild(form);
+                form.submit();
+            });
+
+            // Allow Enter key to submit from inputs
+            promptInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                    modalSubmit.click();
+                }
+            });
+
+            targetCountInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    modalSubmit.click();
+                }
+            });
+        });
     </script>
+    <!-- Remix Modal Overlay -->
+    <div id="remix-modal-overlay" class="remix-modal-overlay hidden">
+        <div class="remix-modal">
+            <div class="remix-modal__header">
+                <h2>Remix Your Playlist</h2>
+                <button type="button" class="remix-modal__close" id="remix-modal-close" aria-label="Close modal">×</button>
+            </div>
+            <div class="remix-modal__body">
+                <div class="remix-form-group">
+                    <label for="remix-prompt-input" class="remix-form-label">Remix Prompt</label>
+                    <textarea
+                        id="remix-prompt-input"
+                        class="remix-form-input remix-form-textarea"
+                        placeholder="Describe the vibe, genre, or direction you want for your remix..."
+                        rows="3"></textarea>
+                </div>
+                <div class="remix-form-group">
+                    <label for="remix-target-count-input" class="remix-form-label">Number of Songs</label>
+                    <input
+                        type="number"
+                        id="remix-target-count-input"
+                        class="remix-form-input"
+                        min="1"
+                        max="500"
+                        placeholder="Number of songs">
+                </div>
+            </div>
+            <div class="remix-modal__footer">
+                <button type="button" class="btn btn-outline" id="remix-modal-cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" id="remix-modal-submit">Start Remix</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
