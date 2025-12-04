@@ -1,6 +1,7 @@
 """Data models for the recommender app."""
 
 from django.db import models
+from django.utils import timezone
 
 class UniqueLike(models.Model):
     """Restricts likes to a unique combination of user_id and playlist_id."""
@@ -34,7 +35,7 @@ class SavedPlaylist(models.Model):
     creator_display_name = models.CharField(max_length=64)
     track_count = models.PositiveIntegerField(default=0)
     total_duration_ms = models.BigIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(default=timezone.now)
     spotify_uri = models.CharField(max_length=255, blank=True)
 
     class Meta:
