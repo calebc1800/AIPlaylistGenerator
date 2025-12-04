@@ -92,6 +92,8 @@ else:
     CSRF_TRUSTED_ORIGINS = _normalize_csrf_origins(ALLOWED_HOSTS)
 
 
+
+
 # Application definition
 
 INSTALLED_APPS = [
