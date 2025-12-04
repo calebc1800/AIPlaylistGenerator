@@ -1,10 +1,16 @@
+"""Tests for dashboard views and Spotify integrations."""
+
+# pylint: disable=duplicate-code
+
 import json
 
-from django.test import TestCase, Client, override_settings
-from django.urls import reverse
 from django.contrib.auth.models import User
-from unittest.mock import patch, Mock
+from django.test import Client, TestCase, override_settings
+from django.urls import reverse
+from unittest.mock import Mock, patch
+
 from recommender.models import SavedPlaylist
+from recommender.services.session_utils import ensure_session_key
 
 
 class DashboardViewTests(TestCase):
@@ -82,6 +88,38 @@ class DashboardViewTests(TestCase):
         self.assertEqual(response.context['user_id'], 'test_user_id')
         self.assertEqual(response.context['email'], 'test@example.com')
         self.assertEqual(response.context['followers'], 100)
+
+    @patch('dashboard.views._cached_user_top_artists')
+    @patch('dashboard.views.generate_ai_artist_cards')
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_dashboard_includes_ai_artist_context(self, mock_spotify, mock_ai_cards, mock_cached_artists):
+        """Dashboard should expose favorite + AI artists for the tab."""
+        session = self.client.session
+        session['spotify_access_token'] = 'test_access_token'
+        session.save()
+
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        mock_sp_instance.current_user.return_value = {
+            'id': 'test_user_id',
+            'display_name': 'Test User',
+            'followers': {'total': 10},
+            'external_urls': {},
+        }
+        mock_sp_instance.current_user_recently_played.return_value = {'items': []}
+        mock_cached_artists.return_value = [
+            {'id': 'fav-1', 'name': 'Fav Artist'},
+        ]
+        mock_ai_cards.return_value = [
+            {'id': 'artist-1', 'name': 'Artist 1', 'genres': ['indie'], 'seed_artist_ids': ['seed-1']},
+        ]
+
+        response = self.client.get(self.dashboard_url)
+
+        mock_ai_cards.assert_called_once()
+        mock_cached_artists.assert_called_once()
+        self.assertEqual(response.context.get('favorite_artists'), mock_cached_artists.return_value)
+        self.assertEqual(response.context.get('ai_artist_suggestions'), mock_ai_cards.return_value)
 
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_uses_user_id_when_no_display_name(self, mock_spotify):
@@ -310,15 +348,13 @@ class DashboardViewTests(TestCase):
             playlist_name='Playlist 1',
             playlist_id='p1',
             creator_user_id='user1',
-            creator_display_name='testuser',
-            like_count=10
+            creator_display_name='testuser'
         )
         SavedPlaylist.objects.create(
             playlist_name='Playlist 2',
             playlist_id='p2',
             creator_user_id='user1',
-            creator_display_name='testuser',
-            like_count=5
+            creator_display_name='testuser'
         )
 
         session = self.client.session
@@ -339,8 +375,8 @@ class DashboardViewTests(TestCase):
 
         # Check that playlists are in context
         self.assertIn('playlists', response.context)
-        playlists = response.context['playlists']
-        self.assertEqual(playlists.count(), 2)
+        playlists = list(response.context['playlists'])
+        self.assertEqual(len(playlists), 2)
 
     @patch('dashboard.views.spotipy.Spotify')
     def test_dashboard_handles_empty_playlists_gracefully(self, mock_spotify):
@@ -487,7 +523,6 @@ class DashboardViewTests(TestCase):
             playlist_id='test123',
             creator_user_id='user1',
             creator_display_name='testuser',
-            like_count=10,
             spotify_uri='spotify:playlist:test123'
         )
 
@@ -526,7 +561,6 @@ class DashboardViewTests(TestCase):
             playlist_id='toggle-sample',
             creator_user_id='user1',
             creator_display_name='testuser',
-            like_count=0,
             description=''
         )
 
@@ -561,7 +595,6 @@ class DashboardViewTests(TestCase):
             playlist_id='toggle-visible',
             creator_user_id='user1',
             creator_display_name='testuser',
-            like_count=0,
             description=''
         )
 
@@ -718,6 +751,45 @@ class ListeningSuggestionsAPITests(TestCase):
         mock_generate.assert_called_once()
 
 
+class RecommendedArtistsAPITests(TestCase):
+    """Integration expectations for the artist recommendation endpoints."""
+
+    def setUp(self):
+        self.client = Client()
+
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=False)
+    def test_endpoint_requires_spotify_session(self, mock_session_check):
+        """A user must have a valid Spotify session before requesting recommendations."""
+        url = reverse('dashboard:recommended-artists')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 401)
+
+    @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
+    @patch('dashboard.views._get_ai_artist_suggestions')
+    @patch('dashboard.views.spotipy.Spotify')
+    def test_endpoint_returns_recommendations_payload(self, mock_spotify, mock_get_ai, mock_session_check):
+        """The endpoint should proxy recommendations from the service as JSON."""
+        session = self.client.session
+        session['spotify_access_token'] = 'token'
+        session['spotify_user_id'] = 'user-99'
+        session.save()
+
+        mock_get_ai.return_value = [
+            {'id': 'artist-1', 'name': 'Artist 1', 'seed_artist_ids': ['seed-a']},
+            {'id': 'artist-2', 'name': 'Artist 2', 'seed_artist_ids': ['seed-b', 'seed-c']},
+        ]
+
+        url = reverse('dashboard:recommended-artists')
+        response = self.client.get(url, {'limit': 4})
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content)
+        self.assertEqual(payload['recommended_artists'], mock_get_ai.return_value)
+        self.assertEqual(payload['meta']['seed_count'], 3)
+        mock_get_ai.assert_called_once()
+        mock_spotify.assert_called_once_with(auth='token')
+
+
 class DashboardIntegrationTests(TestCase):
     """Integration tests for dashboard functionality"""
 
@@ -729,25 +801,31 @@ class DashboardIntegrationTests(TestCase):
     @patch('dashboard.views.spotipy.Spotify')
     def test_full_dashboard_flow_with_playlists(self, mock_spotify):
         """Test complete dashboard flow with user data and playlists"""
+        from recommender.models import UniqueLike
+
         # Create playlists
         p1 = SavedPlaylist.objects.create(
             playlist_name='Top Hits',
             playlist_id='hits',
             creator_user_id='user1',
             creator_display_name='integration_test',
-            like_count=50,
             description='Popular songs',
             cover_image='http://image1.url'
         )
+        # Create 50 likes for p1
+        for i in range(50):
+            UniqueLike.objects.create(user_id=f'user{i}', playlist_id='hits')
 
         p2 = SavedPlaylist.objects.create(
             playlist_name='Chill Vibes',
             playlist_id='chill',
             creator_user_id='user1',
             creator_display_name='integration_test',
-            like_count=30,
             description='Relaxing music'
         )
+        # Create 30 likes for p2
+        for i in range(30):
+            UniqueLike.objects.create(user_id=f'user{i+50}', playlist_id='chill')
 
         # Set up session
         session = self.client.session
@@ -797,8 +875,8 @@ class DashboardIntegrationTests(TestCase):
         self.assertEqual(response.context['last_song']['name'], 'Last Played')
 
         # Verify playlists
-        playlists = response.context['playlists']
-        self.assertEqual(playlists.count(), 2)
+        playlists = list(response.context['playlists'])
+        self.assertEqual(len(playlists), 2)
         # Should be ordered by like_count descending
         self.assertEqual(playlists[0].playlist_name, 'Top Hits')
         self.assertEqual(playlists[1].playlist_name, 'Chill Vibes')
@@ -1020,24 +1098,21 @@ class HelperFunctionTests(TestCase):
         self.assertEqual(identifier, 'anonymous')
 
     def test_ensure_session_key_with_existing_key(self):
-        """Test _ensure_session_key with existing session key"""
-        from dashboard.views import _ensure_session_key
-
+        """Test ensure_session_key with existing session key"""
         session = self.client.session
         session['test'] = 'data'
         session.save()
 
         request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
 
-        session_key = _ensure_session_key(request)
+        session_key = ensure_session_key(request)
 
         # Should return the existing session key
         self.assertIsNotNone(session_key)
         self.assertEqual(session_key, request.session.session_key)
 
     def test_ensure_session_key_creates_new_key(self):
-        """Test _ensure_session_key creates new session key if missing"""
-        from dashboard.views import _ensure_session_key
+        """Test ensure_session_key creates new session key if missing"""
         from django.test import RequestFactory
         from django.contrib.sessions.middleware import SessionMiddleware
 
@@ -1052,7 +1127,7 @@ class HelperFunctionTests(TestCase):
         # Ensure session key is None initially
         self.assertIsNone(request.session.session_key)
 
-        session_key = _ensure_session_key(request)
+        session_key = ensure_session_key(request)
 
         # Should create and return a session key
         self.assertIsNotNone(session_key)

@@ -7,7 +7,9 @@
     <title>Dashboard</title>
     <link rel="stylesheet" href="{% static 'dashboard.css' %}">
 </head>
-<body data-default-tab="{{ default_tab|default:'explore' }}">
+<body 
+    data-default-tab="{{ default_tab|default:'explore' }}"
+>
     <div class="dashboard-container">
         <header class="header">
             <div class="top-bar">
@@ -27,6 +29,7 @@
             <nav class="nav-tabs">
                 <button type="button" class="tab active" data-tab="explore">Explore</button>
                 <button type="button" class="tab" data-tab="create">Create</button>
+                <button type="button" class="tab" data-tab="artists">Artists</button>
                 <button type="button" class="tab" data-tab="stats">Stats</button>
                 <button type="button" class="tab" data-tab="account">Account</button>
                 <button type="button" class="tab" data-tab="following">Following</button>
@@ -37,7 +40,7 @@
             <!-- Explore Tab -->
             <div class="tab-content active" id="explore">
                 <h2 class="section-title">Explore Playlists</h2>
-                {%  include "explorer/partials/playlist_grid.html" %}
+                {%  include "explorer/partials/playlist_grid.html" with user_id=user_id %}
             </div>
 
             <!-- Create Tab -->
@@ -122,6 +125,95 @@
                         </div>
                     </aside>
                 </div>
+            </div>
+
+            <!-- Artists Tab -->
+            <div class="tab-content" id="artists">
+                <section class="artist-panel">
+                    <div class="artist-panel-card">
+                        <div class="section-header">
+                            <div>
+                                <p class="eyebrow">Your Listening DNA</p>
+                                <h2 class="section-title">Artists</h2>
+                                <p class="section-subtitle">A quick look at the names you keep coming back to.</p>
+                            </div>
+                        </div>
+                        <div class="artist-showcase-grid">
+                            {% if favorite_artists %}
+                                {% for artist in favorite_artists|slice:":10" %}
+                                <article class="artist-showcase-card">
+                                    <div class="artist-card-media">
+                                        {% if artist.image %}
+                                        <img src="{{ artist.image }}" alt="{{ artist.name }}">
+                                        {% else %}
+                                        <div class="artist-avatar-fallback">
+                                            {{ artist.name|slice:":1"|default:"?"|upper }}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="artist-card-body">
+                                        <h3>{{ artist.name }}</h3>
+                                        <p>{{ artist.genres|first|default:"Genre updating soon" }}</p>
+                                        {% if artist.url %}
+                                        <a href="{{ artist.url }}" target="_blank" rel="noopener noreferrer" class="artist-open-btn">
+                                            <svg viewBox="0 0 168 168" aria-hidden="true">
+                                                <path d="M83.996.277C37.816.277.277 37.816.277 83.996c0 46.18 37.539 83.719 83.719 83.719s83.719-37.539 83.719-83.719C167.715 37.816 130.176.277 83.996.277zm38.525 120.084c-1.567 2.403-4.777 3.117-7.185 1.548-19.662-12.303-44.423-15.102-73.416-8.286-2.812.654-5.633-1.085-6.29-3.89-.657-2.812 1.085-5.633 3.891-6.29 31.884-7.455 59.591-4.23 81.306 9.582 2.407 1.576 3.118 4.777 1.694 7.286zm10.266-22.769c-1.983 2.769-5.805 3.542-8.573 1.705-22.48-14.238-56.836-18.4-83.456-9.84-3.162 1.005-6.512-.785-7.52-3.947-1.012-3.162.785-6.511 3.947-7.523 30.551-9.708 69.28-5.117 95.078 11.392 2.77,1.837 3.544,5.805 1.524,8.677zm1.203-23.344c-26.95-16.025-71.563-17.507-97.208-9.365-3.76 1.186-7.781-.862-8.97-4.623-1.186-3.76.864-7.78 4.624-8.968 29.732-9.36 79.645-7.63 110.983 11.054 3.414,2.03 4.5,6.432 2.47 9.846-2.03 3.418-6.434 4.502-9.899 2.056z" fill="#0f111a"/>
+                                            </svg>
+                                            <span>Open on Spotify</span>
+                                        </a>
+                                        {% endif %}
+                                    </div>
+                                </article>
+                                {% endfor %}
+                            {% else %}
+                                <div class="empty-state small">
+                                    We’ll highlight your top artists here after a bit more listening.
+                                </div>
+                            {% endif %}
+                        </div>
+
+                    </div>
+
+                    <div class="artist-panel-card ai-panel-card">
+                        <div class="section-header">
+                            <div>
+                                <p class="eyebrow">Session Picks</p>
+                                <h3 class="section-title">AI Suggestions</h3>
+                                <p class="section-subtitle">Generated once per session to keep things fresh.</p>
+                            </div>
+                        </div>
+                        <div class="recommended-grid" id="recommended-artists-grid" data-ai-limit="8">
+                            <div class="empty-state" id="recommended-artists-empty">
+                                AI suggestions will appear here once your listening data loads.
+                            </div>
+                        </div>
+                        <div class="recommended-footer">
+                            <p class="selection-label">
+                                Tap an artist to build instantly, or blend the top picks.
+                            </p>
+                            <button type="button" class="ghost-btn" id="artists-generate-top-btn">
+                                Generate playlist from AI Top 5
+                            </button>
+                        </div>
+                    </div>
+                </section>
+                <form
+                    id="artist-generate-form"
+                    action="{% url 'recommender:generate_playlist' %}"
+                    method="POST"
+                    style="display: none;"
+                >
+                    {% csrf_token %}
+                    <input type="hidden" name="prompt" id="artist-prompt-input">
+                    <input type="hidden" name="playlist_name" id="artist-playlist-name">
+                    <input type="hidden" name="selected_artist_ids" id="artist-ids-input">
+                    <input type="hidden" name="selected_artist_names" id="artist-names-input">
+                    <input
+                        type="hidden"
+                        name="llm_provider"
+                        value="{{ llm_provider_default|default:'openai' }}"
+                    >
+                </form>
             </div>
 
             <!-- Stats Tab -->
@@ -358,6 +450,7 @@
     {{ generated_stats|json_script:"initial_generated_stats" }}
     {{ genre_breakdown|json_script:"initial_genre_breakdown" }}
     {{ spotify_highlights|json_script:"initial_spotify_highlights" }}
+    {{ ai_artist_suggestions|json_script:"initial_ai_artists" }}
 
     <script>
         // Tab switching functionality
@@ -586,6 +679,155 @@
                 return fallback;
             }
         };
+
+        const recommendedGrid = document.getElementById('recommended-artists-grid');
+        const recommendedEmptyState = document.getElementById('recommended-artists-empty');
+        const artistForm = document.getElementById('artist-generate-form');
+        const artistPromptInput = document.getElementById('artist-prompt-input');
+        const artistIdsInput = document.getElementById('artist-ids-input');
+        const artistNamesInput = document.getElementById('artist-names-input');
+        const artistTopMixBtn = document.getElementById('artists-generate-top-btn');
+        const recommendedState = {
+            lookup: new Map(),
+            orderedIds: [],
+        };
+
+        const renderRecommendedArtists = (artists) => {
+            if (!recommendedGrid) {
+                return;
+            }
+            recommendedState.lookup.clear();
+            recommendedState.orderedIds = [];
+            recommendedGrid.innerHTML = '';
+
+            if (!artists || !artists.length) {
+                if (recommendedEmptyState) {
+                    recommendedEmptyState.style.display = '';
+                    recommendedGrid.appendChild(recommendedEmptyState);
+                }
+                return;
+            }
+
+            if (recommendedEmptyState) {
+                recommendedEmptyState.style.display = 'none';
+            }
+
+            artists.forEach((artist) => {
+                if (!artist || !artist.id) {
+                    return;
+                }
+                recommendedState.lookup.set(artist.id, artist);
+                recommendedState.orderedIds.push(artist.id);
+                const card = document.createElement('article');
+                card.className = 'artist-showcase-card ai-card';
+                card.dataset.artistCard = 'true';
+                card.dataset.artistId = artist.id;
+
+                const media = document.createElement('div');
+                media.className = 'artist-card-media';
+                if (artist.image) {
+                    const img = document.createElement('img');
+                    img.src = artist.image;
+                    img.alt = artist.name || 'Artist';
+                    media.appendChild(img);
+                } else {
+                    const fallback = document.createElement('div');
+                    fallback.className = 'artist-avatar-fallback';
+                    fallback.textContent = (artist.name || '?').charAt(0).toUpperCase();
+                    media.appendChild(fallback);
+                }
+
+                const info = document.createElement('div');
+                info.className = 'artist-card-body';
+                const name = document.createElement('h3');
+                name.textContent = artist.name || 'Unknown Artist';
+                info.appendChild(name);
+
+                const genres = document.createElement('p');
+                genres.textContent = (artist.genres && artist.genres.length)
+                    ? artist.genres[0]
+                    : 'Genre updating soon';
+                info.appendChild(genres);
+
+                const reason = document.createElement('p');
+                reason.className = 'artist-meta';
+                const seeds = artist.seed_artist_names || [];
+                reason.textContent = artist.reason
+                    || (seeds.length ? `Because you listen to ${seeds.slice(0, 2).join(', ')}` : 'Based on your listening profile');
+                info.appendChild(reason);
+
+                const actions = document.createElement('div');
+                actions.className = 'artist-card-actions';
+
+                if (artist.url) {
+                    const link = document.createElement('a');
+                    link.href = artist.url;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.className = 'artist-open-btn';
+                    link.innerHTML = `
+                        <svg viewBox="0 0 168 168" aria-hidden="true">
+                            <path d="M83.996.277C37.816.277.277 37.816.277 83.996c0 46.18 37.539 83.719 83.719 83.719s83.719-37.539 83.719-83.719C167.715 37.816 130.176.277 83.996.277zm38.525 120.084c-1.567 2.403-4.777 3.117-7.185 1.548-19.662-12.303-44.423-15.102-73.416-8.286-2.812.654-5.633-1.085-6.29-3.89-.657-2.812 1.085-5.633 3.891-6.29 31.884-7.455 59.591-4.23 81.306 9.582 2.407 1.576 3.118 4.777 1.694 7.286zm10.266-22.769c-1.983 2.769-5.805 3.542-8.573 1.705-22.48-14.238-56.836-18.4-83.456-9.84-3.162 1.005-6.512-.785-7.52-3.947-1.012-3.162.785-6.511 3.947-7.523 30.551-9.708 69.28-5.117 95.078 11.392 2.77,1.837 3.544,5.805 1.524,8.677zm1.203-23.344c-26.95-16.025-71.563-17.507-97.208-9.365-3.76 1.186-7.781-.862-8.97-4.623-1.186-3.76.864-7.78 4.624-8.968 29.732-9.36 79.645-7.63 110.983 11.054 3.414,2.03 4.5,6.432 2.47 9.846-2.03 3.418-6.434 4.502-9.899 2.056z" fill="#0f111a"/>
+                        </svg>
+                        <span>Open on Spotify</span>
+                    `;
+                    actions.appendChild(link);
+                }
+
+                const generateBtn = document.createElement('button');
+                generateBtn.type = 'button';
+                generateBtn.className = 'artist-generate-btn';
+                generateBtn.dataset.artistGenerate = artist.id;
+                generateBtn.textContent = 'Generate playlist';
+                actions.appendChild(generateBtn);
+
+                card.appendChild(media);
+                card.appendChild(info);
+                card.appendChild(actions);
+
+                recommendedGrid.appendChild(card);
+            });
+        };
+
+        const recommendedArtistsInitial = parseJsonScript('initial_ai_artists', []);
+        renderRecommendedArtists(recommendedArtistsInitial);
+
+        const submitArtistPlaylist = (artists) => {
+            if (!artistForm || !artistPromptInput || !artistIdsInput || !artistNamesInput) {
+                return;
+            }
+            if (!artists || !artists.length) {
+                return;
+            }
+            const artistNames = artists.map((artist) => artist.name).filter(Boolean);
+            const prompt = artistNames.length === 1
+                ? `Create a playlist inspired by ${artistNames[0]}. Use my top genres and listening history for cohesion.`
+                : `Create a playlist blending these artists: ${artistNames.join(', ')}. Use my listening history to connect their styles.`;
+            artistPromptInput.value = prompt.slice(0, promptLimit);
+            artistIdsInput.value = JSON.stringify(artists.map((artist) => artist.id));
+            artistNamesInput.value = JSON.stringify(artistNames);
+            artistForm.submit();
+        };
+
+        if (recommendedGrid) {
+            recommendedGrid.addEventListener('click', (event) => {
+                const generateBtn = event.target.closest('[data-artist-generate]');
+                if (generateBtn) {
+                    const artist = recommendedState.lookup.get(generateBtn.dataset.artistGenerate);
+                    if (artist) {
+                        submitArtistPlaylist([artist]);
+                    }
+                }
+            });
+        }
+
+        if (artistTopMixBtn) {
+            artistTopMixBtn.addEventListener('click', () => {
+                const topIds = recommendedState.orderedIds.slice(0, 5);
+                const artists = topIds.map((id) => recommendedState.lookup.get(id)).filter(Boolean);
+                submitArtistPlaylist(artists);
+            });
+        }
 
         const statsEndpoint = "{% url 'dashboard:user-stats' %}";
         const statElements = {

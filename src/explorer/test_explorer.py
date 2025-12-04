@@ -15,15 +15,20 @@ class SavedPlaylistModelTests(TestCase):
 
     def test_create_saved_playlist(self):
         """Test creating a saved playlist with all fields"""
+        from recommender.models import UniqueLike
+
         playlist = SavedPlaylist.objects.create(
             playlist_name='Test Playlist',
             playlist_id='sp123',
             description='Sample playlist',
             creator_user_id='user123',
             creator_display_name='tester',
-            like_count=5,
             spotify_uri='spotify:playlist:sp123'
         )
+        # Create 5 likes for the playlist
+        for i in range(5):
+            UniqueLike.objects.create(user_id=f'user{i}', playlist_id='sp123')
+
         self.assertEqual(str(playlist), 'Test Playlist (tester)')
         self.assertEqual(playlist.like_count, 5)
         self.assertEqual(playlist.creator_display_name, 'tester')
@@ -35,15 +40,13 @@ class SavedPlaylistModelTests(TestCase):
             playlist_name='First',
             playlist_id='first',
             creator_user_id='user1',
-            creator_display_name='tester',
-            like_count=1
+            creator_display_name='tester'
         )
         p2 = SavedPlaylist.objects.create(
             playlist_name='Second',
             playlist_id='second',
             creator_user_id='user1',
-            creator_display_name='tester',
-            like_count=10
+            creator_display_name='tester'
         )
         # Default ordering is by -created_at, so p2 should be first
         playlists = SavedPlaylist.objects.all()
@@ -62,8 +65,7 @@ class SearchViewTests(TestCase):
             playlist_id='rockmix',
             description='Best rock songs',
             creator_user_id='bob_id',
-            creator_display_name='bob',
-            like_count=4
+            creator_display_name='bob'
         )
 
     def test_search_view_renders(self):
@@ -365,6 +367,8 @@ class PlaylistCardTemplateTests(TestCase):
     """Tests for the new playlist card template structure"""
 
     def setUp(self):
+        from recommender.models import UniqueLike
+
         self.client = Client()
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.playlist = SavedPlaylist.objects.create(
@@ -373,10 +377,12 @@ class PlaylistCardTemplateTests(TestCase):
             description='Test Description',
             creator_user_id='user_test123',
             creator_display_name='testuser',
-            like_count=10,
             spotify_uri='spotify:playlist:test123',
             cover_image='http://example.com/image.jpg'
         )
+        # Create 10 likes for the playlist
+        for i in range(10):
+            UniqueLike.objects.create(user_id=f'user{i}', playlist_id='test123')
 
     def test_playlist_card_has_correct_structure(self):
         """Test that playlist card has the new structure with all elements"""

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Dict, List, Optional
+
 import spotipy
 from django.conf import settings
 from django.core.cache import cache
@@ -7,7 +9,10 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
 from recommender.models import SavedPlaylist
-from spotify_auth.session import clear_spotify_session, ensure_valid_spotify_session
+from recommender.services import artist_recommendation_service
+from recommender.services.artist_ai_service import generate_ai_artist_cards
+from recommender.services.listening_suggestions import generate_listening_suggestions
+from recommender.services.session_utils import ensure_session_key
 from recommender.services.spotify_handler import build_user_profile_seed_snapshot
 from recommender.services.stats_service import (
     get_genre_breakdown,
@@ -20,6 +25,7 @@ from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from dashboard.models import UserFollow
 from recommender.models import SavedPlaylist
+from spotify_auth.session import clear_spotify_session, ensure_valid_spotify_session
 
 
 def _resolve_generation_identifier(request, spotify_user_id: str | None = None) -> str:
@@ -39,22 +45,6 @@ def _resolve_generation_identifier(request, spotify_user_id: str | None = None) 
     return str(request.session.get("spotify_user_id") or "anonymous")
 
 
-def _ensure_session_key(request) -> str:
-    """Checks for session key
-
-    Args:
-        request (django request): http session information request
-
-    Returns:
-        str: Session Key
-    """
-    session_key = request.session.session_key
-    if not session_key:
-        request.session.save()
-        session_key = request.session.session_key or ""
-    return session_key
-
-
 def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     """Uses Spotify API to get the current user's top artists and songs
 
@@ -65,7 +55,7 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     Returns:
         dict: Top genres, artists and tracks
     """
-    cache_key = f"dashboard:spotify-highlights:{_ensure_session_key(request)}"
+    cache_key = f"dashboard:spotify-highlights:{ensure_session_key(request)}"
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -127,6 +117,77 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     return highlights
 
 
+def _cached_user_top_artists(
+    sp: spotipy.Spotify,
+    user_id: Optional[str],
+    *,
+    limit: int = 12,
+    ttl: int = 600,
+) -> List[Dict[str, object]]:
+    """Cache and return Spotify's top artists endpoint for the current user."""
+    if not user_id:
+        return []
+    cache_key = f"dashboard:top-artists:{user_id}:{limit}"
+    cached = cache.get(cache_key)
+    if isinstance(cached, list):
+        return cached
+    try:
+        response = sp.current_user_top_artists(limit=limit, time_range="medium_term")
+    except spotipy.exceptions.SpotifyException:
+        return []
+    items = response.get("items", []) if isinstance(response, dict) else []
+    artists: List[Dict[str, object]] = []
+    for artist in items:
+        if not isinstance(artist, dict):
+            continue
+        artist_id = artist.get("id")
+        if not artist_id:
+            continue
+        artists.append(
+            {
+                "id": artist_id,
+                "name": artist.get("name", ""),
+                "image": (
+                    artist.get("images", [{}])[0].get("url")
+                    if artist.get("images")
+                    else ""
+                ),
+                "genres": artist.get("genres", []),
+                "popularity": int(artist.get("popularity") or 0),
+                "followers": int((artist.get("followers") or {}).get("total") or 0),
+                "url": (artist.get("external_urls") or {}).get("spotify", ""),
+                "play_count": int(artist.get("popularity") or 0),
+            }
+        )
+    cache.set(cache_key, artists, ttl)
+    return artists
+
+
+def _get_ai_artist_suggestions(
+    request,
+    user_id: Optional[str],
+    sp: Optional[spotipy.Spotify],
+    profile_cache: Optional[Dict[str, object]],
+    *,
+    limit: int = 6,
+) -> List[Dict[str, object]]:
+    if not user_id:
+        return []
+    session_key = f"artist_ai_suggestions:{user_id}"
+    cached = request.session.get(session_key)
+    if isinstance(cached, dict) and isinstance(cached.get("artists"), list):
+        return cached["artists"]
+    cards = generate_ai_artist_cards(
+        user_id,
+        sp=sp,
+        profile_cache=profile_cache,
+        limit=limit,
+    )
+    request.session[session_key] = {"artists": cards}
+    request.session.modified = True
+    return cards
+
+
 class DashboardView(View):
     """Display user's Spotify dashboard"""
 
@@ -152,13 +213,16 @@ class DashboardView(View):
                 request.session['spotify_user_id'] = user_id
                 request.session['spotify_display_name'] = username
 
+            profile_cache: Optional[Dict[str, object]] = None
             if user_id:
                 cache_key = f"recommender:user-profile:{user_id}"
-                if not cache.get(cache_key):
+                profile_cache = cache.get(cache_key)
+                if not profile_cache:
                     snapshot = build_user_profile_seed_snapshot(sp)
                     if snapshot:
                         ttl = getattr(settings, "RECOMMENDER_USER_PROFILE_CACHE_TTL", 3600)
                         cache.set(cache_key, snapshot, ttl)
+                        profile_cache = snapshot
 
             last_song = None
             if recently_played and recently_played.get('items'):
@@ -176,7 +240,7 @@ class DashboardView(View):
                 }
 
             # Fetch saved playlists from database
-            playlists = SavedPlaylist.objects.all().order_by('-like_count')
+            playlists = sorted(SavedPlaylist.objects.all(), key=lambda p: p.like_count, reverse=True)
 
             debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
             session_provider = "openai"
@@ -186,8 +250,18 @@ class DashboardView(View):
             generation_identifier = _resolve_generation_identifier(request, user_id)
             generated_stats = summarize_generation_stats(generation_identifier)
             genre_breakdown = get_genre_breakdown(generation_identifier)
+            favorite_artists = _cached_user_top_artists(sp, user_id, limit=10)
+            if not favorite_artists and user_id:
+                favorite_artists = artist_recommendation_service.fetch_seed_artists(user_id, limit=10)
+            ai_artist_suggestions = _get_ai_artist_suggestions(
+                request,
+                user_id,
+                sp,
+                profile_cache,
+                limit=8,
+            )
 
-            allowed_tabs = {"explore", "create", "stats", "account"}
+            allowed_tabs = {"explore", "create", "artists", "stats", "account"}
             requested_tab = (request.GET.get('tab') or "").strip().lower()
             default_tab = requested_tab if requested_tab in allowed_tabs else (self.default_tab or "explore")
             default_tab = (default_tab or "explore").lower()
@@ -211,6 +285,8 @@ class DashboardView(View):
                 'generated_stats': generated_stats,
                 'genre_breakdown': genre_breakdown,
                 'spotify_highlights': {},
+                'favorite_artists': favorite_artists,
+                'ai_artist_suggestions': ai_artist_suggestions,
                 'default_tab': default_tab,
             }
             return render(request, 'dashboard/dashboard.html', context)
@@ -407,3 +483,39 @@ def get_user_playlists(request, user_id):
         'playlists': playlist_data,
         'count': len(playlist_data)
     })
+
+class RecommendedArtistsAPIView(View):
+    """Serve recommended artists for the dashboard tab."""
+
+    def get(self, request):
+        if not ensure_valid_spotify_session(request):
+            return JsonResponse({'error': 'Authentication required'}, status=401)
+        access_token = request.session.get('spotify_access_token')
+        user_id = request.session.get('spotify_user_id')
+        if not access_token or not user_id:
+            return JsonResponse({'error': 'Authentication required'}, status=401)
+
+        try:
+            requested_limit = int(request.GET.get('limit', 8))
+        except (TypeError, ValueError):
+            requested_limit = 8
+        limit = max(1, min(requested_limit, 12))
+
+        sp = spotipy.Spotify(auth=access_token)
+        profile_cache = cache.get(f"recommender:user-profile:{user_id}") if user_id else None
+        recommended_artists = _get_ai_artist_suggestions(
+            request,
+            user_id,
+            sp,
+            profile_cache,
+            limit=limit,
+        )
+        meta_seed_count = sum(len(entry.get('seed_artist_ids') or []) for entry in recommended_artists)
+        payload = {
+            'recommended_artists': recommended_artists,
+            'meta': {
+                'seed_count': meta_seed_count,
+                'limit': limit,
+            },
+        }
+        return JsonResponse(payload)

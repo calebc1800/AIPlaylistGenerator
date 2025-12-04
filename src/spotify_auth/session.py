@@ -1,3 +1,5 @@
+"""Utilities for storing and refreshing Spotify OAuth tokens in the session."""
+
 import logging
 import time
 from typing import Any, MutableMapping, Optional, Tuple
@@ -76,7 +78,7 @@ def has_valid_token(session: MutableMapping[str, Any], *, now: Optional[float] =
 
 
 def refresh_access_token(
-    session: MutableMapping[str, Any], *, now: Optional[float] = None
+    session: MutableMapping[str, Any],
 ) -> Tuple[bool, Optional[str]]:
     """Attempt to refresh the Spotify access token stored in the session.
 

@@ -1,14 +1,21 @@
 """Unit tests for the recommender app services and views."""
 
+# Pylint is relaxed for this module since the tests intentionally trade
+# readability for exhaustive coverage.
+# pylint: disable=line-too-long,too-many-lines,missing-function-docstring
+# pylint: disable=missing-class-docstring,too-few-public-methods
+# pylint: disable=too-many-arguments,too-many-positional-arguments
+# pylint: disable=import-outside-toplevel,unused-argument
+
 import json
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.messages import get_messages
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
-from unittest.mock import patch
 
 from recommender.models import PlaylistGenerationStat, SavedPlaylist
 from recommender.services.spotify_handler import (
@@ -70,7 +77,6 @@ class ModelTests(TestCase):
         playlist = SavedPlaylist.objects.create(
             playlist_id="spotify123",
             playlist_name="My Awesome Playlist",
-            like_count=10,
             creator_user_id="user456",
             creator_display_name="Test User"
         )
@@ -79,7 +85,6 @@ class ModelTests(TestCase):
 
     def test_playlist_generation_stat_str(self):
         """Test __str__ method of PlaylistGenerationStat"""
-        import datetime
         stat = PlaylistGenerationStat.objects.create(
             user_identifier="testuser",
             prompt="test prompt",
@@ -344,6 +349,57 @@ class GeneratePlaylistViewTests(TestCase):
         self.assertIn('Show All Genres', page)
         self.assertIn('Source Blend', page)
 
+    @patch("recommender.views.extract_playlist_attributes")
+    @patch("recommender.views.compute_playlist_statistics")
+    @patch("recommender.views.suggest_seed_tracks")
+    @patch("recommender.views.resolve_seed_tracks")
+    @patch("recommender.views.get_similar_tracks")
+    @patch("recommender.views.discover_top_tracks_for_genre")
+    @patch("recommender.views.ensure_artist_seed")
+    def test_selected_artists_focus_similarity_engine(
+        self,
+        mock_ensure_artist,
+        mock_discover,
+        mock_similar,
+        mock_resolve,
+        mock_suggest,
+        mock_stats,
+        mock_extract,
+    ):
+        session = self.client.session
+        session["spotify_access_token"] = "token"
+        session["spotify_user_id"] = "user123"
+        session.save()
+
+        mock_extract.return_value = {"genre": "pop"}
+        mock_stats.return_value = {"genre_top": []}
+        mock_suggest.return_value = []
+        mock_resolve.return_value = []
+        mock_discover.return_value = []
+        mock_similar.return_value = []
+        mock_ensure_artist.return_value = {
+            "artist_id": "artist-123",
+            "artist_name": "Special Artist",
+            "tracks": [
+                {"id": "seed-track", "name": "Seed Track", "artists": "Special Artist"},
+            ],
+            "source": "artist_seed",
+        }
+
+        response = self.client.post(
+            self.url,
+            {
+                "prompt": "Create a playlist from my selected artists",
+                "selected_artist_ids": json.dumps(["artist-123"]),
+                "selected_artist_names": json.dumps(["Special Artist"]),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(mock_similar.called)
+        kwargs = mock_similar.call_args.kwargs
+        focus_ids = kwargs.get("focus_artist_ids")
+        self.assertIn("artist-123", focus_ids)
 
     @patch("recommender.views.extract_playlist_attributes")
     @patch("recommender.views.compute_playlist_statistics")
@@ -1388,12 +1444,17 @@ class SavePlaylistViewTests(TestCase):
 
     @patch("recommender.views.create_playlist_with_tracks")
     def test_save_playlist_preserves_existing_like_count(self, mock_create_playlist):
+        from recommender.models import UniqueLike
+
         SavedPlaylist.objects.create(
             playlist_id="playlist123",
             creator_user_id="initial-user",
-            creator_display_name='initial name',
-            like_count=5,
+            creator_display_name='initial name'
         )
+        # Create 5 likes for the playlist
+        for i in range(5):
+            UniqueLike.objects.create(user_id=f'user{i}', playlist_id='playlist123')
+
         mock_create_playlist.return_value = {
             "playlist_id": "playlist123",
             "playlist_name": "TEST Summer Vibes",

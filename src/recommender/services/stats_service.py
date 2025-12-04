@@ -13,6 +13,8 @@ from ..models import PlaylistGenerationStat
 
 @dataclass
 class GenerationSummary:
+    """Summary metrics for a user's recent playlist generations."""
+
     total_playlists: int = 0
     total_tracks: int = 0
     total_duration_ms: int = 0
@@ -23,9 +25,11 @@ class GenerationSummary:
 
     @property
     def total_hours(self) -> float:
+        """Return total duration converted to hours."""
         return round(self.total_duration_ms / 1000 / 3600, 2) if self.total_duration_ms else 0.0
 
     def as_dict(self) -> Dict[str, object]:
+        """Serialize the summary for easy JSON rendering."""
         return {
             "total_playlists": self.total_playlists,
             "total_tracks": self.total_tracks,
@@ -77,14 +81,18 @@ def summarize_generation_stats(user_identifier: str | None) -> Dict[str, object]
     return summary.as_dict()
 
 
-def get_genre_breakdown(user_identifier: str | None, sample_size: int = 25) -> List[Dict[str, object]]:
+def get_genre_breakdown(
+    user_identifier: str | None,
+    sample_size: int = 25,
+) -> List[Dict[str, object]]:
     """Return the most common genres across the user's recent generations."""
     if not user_identifier:
         return []
 
-    queryset = PlaylistGenerationStat.objects.filter(user_identifier=user_identifier).order_by("-created_at")[
-        :sample_size
-    ]
+    queryset = (
+        PlaylistGenerationStat.objects.filter(user_identifier=user_identifier)
+        .order_by("-created_at")[:sample_size]
+    )
     genre_counts: Counter[str] = Counter()
 
     for stat in queryset:

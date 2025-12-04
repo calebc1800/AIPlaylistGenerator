@@ -1,13 +1,23 @@
 """Django views for generating and saving Spotify playlists."""
 
+# The view layer orchestrates every user interaction for playlist generation,
+# so we tolerate higher complexity/length than usual in this module.
+# pylint: disable=too-many-lines,too-many-arguments,too-many-locals
+# pylint: disable=too-many-branches,too-many-statements,too-many-return-statements
+# pylint: disable=too-many-nested-blocks,too-many-positional-arguments
+
 import json
 import hashlib
 import logging
 import re
 import time
+import base64
 from dataclasses import asdict
+from io import BytesIO
 from typing import Callable, Dict, List, Optional, Set
 
+from PIL import Image
+import spotipy
 from django.conf import settings
 from django.contrib import messages
 from django.core.cache import cache
@@ -26,6 +36,7 @@ from .services.llm_handler import (
     get_llm_usage_snapshot,
     reset_llm_usage_tracker,
 )
+from .services.session_utils import ensure_session_key, resolve_request_user_id
 from .services.spotify_handler import (
     cached_tracks_for_genre,
     ensure_artist_seed,
@@ -35,6 +46,7 @@ from .services.spotify_handler import (
     resolve_seed_tracks,
     create_playlist_with_tracks,
     compute_playlist_statistics,
+    _serialize_track_payload,
 )
 from .services.user_preferences import (
     describe_pending_options,
@@ -43,22 +55,6 @@ from .services.user_preferences import (
 
 logger = logging.getLogger(__name__)
 PLAYLIST_NAME_MAX_LENGTH = 100
-
-
-def _ensure_session_key(request) -> str:
-    """Ensure the request has a session key and return it."""
-    session_key = request.session.session_key
-    if not session_key:
-        request.session.save()
-        session_key = request.session.session_key or ""
-    return session_key
-
-
-def _resolve_request_user_id(request) -> str:
-    """Return a stable identifier for the current user/session."""
-    if request.user.is_authenticated:
-        return str(request.user.pk)
-    return str(request.session.get("spotify_user_id") or "anonymous")
 
 
 def _persist_generation_stat(
@@ -73,18 +69,21 @@ def _persist_generation_stat(
     """Persist a generation snapshot for later dashboard analytics."""
     if not user_identifier:
         return
-    stats_payload: Dict[str, object] = playlist_stats if isinstance(playlist_stats, dict) else {}
+    stats_payload: Dict[str, object] = (
+        playlist_stats if isinstance(playlist_stats, dict) else {}
+    )
     total_duration_ms = int(stats_payload.get("total_duration_ms") or 0)
     if not total_duration_ms:
         total_duration_ms = sum(int(track.get("duration_ms") or 0) for track in ordered_tracks)
     top_genre = ""
-    genre_rows = stats_payload.get("genre_top") if isinstance(stats_payload.get("genre_top"), list) else []
+    raw_genre_rows = stats_payload.get("genre_top")
+    genre_rows = raw_genre_rows if isinstance(raw_genre_rows, list) else []
     if genre_rows:
         first = genre_rows[0]
         if isinstance(first, dict):
             top_genre = (first.get("genre") or "").strip()
-    if not top_genre and isinstance(stats_payload.get("genre_distribution"), dict):
-        distribution = stats_payload["genre_distribution"]
+    distribution = stats_payload.get("genre_distribution")
+    if not top_genre and isinstance(distribution, dict):
         if distribution:
             top_genre = next(iter(distribution.keys()))
     avg_novelty = stats_payload.get("novelty")
@@ -109,11 +108,15 @@ def _persist_generation_stat(
         logger.warning("Failed to record playlist generation stat: %s", exc)
 
 
-def _attach_cache_metadata(payload: Dict[str, object], request, cache_key: str) -> Dict[str, object]:
+def _attach_cache_metadata(
+    payload: Dict[str, object],
+    request,
+    cache_key: str,
+) -> Dict[str, object]:
     """Attach ownership metadata to playlist payloads."""
     payload["cache_key"] = cache_key
-    payload["owner_user_id"] = _resolve_request_user_id(request)
-    payload["owner_session_key"] = _ensure_session_key(request)
+    payload["owner_user_id"] = resolve_request_user_id(request)
+    payload["owner_session_key"] = ensure_session_key(request)
     return payload
 
 
@@ -123,18 +126,23 @@ def _payload_owned_by_request(request, payload: Dict[str, object]) -> bool:
     expected_session = payload.get("owner_session_key")
     if not expected_user or not expected_session:
         return False
-    return expected_user == _resolve_request_user_id(request) and expected_session == _ensure_session_key(request)
+    return (
+        expected_user == resolve_request_user_id(request)
+        and expected_session == ensure_session_key(request)
+    )
 
 
 def _resolve_cache_key_from_request(request, provided_key: str) -> str:
     """Return the session-authorized cache key or empty string."""
     provided = (provided_key or "").strip()
-    session_cache_key = str(request.session.get("recommender_last_cache_key", "") or "").strip()
+    session_cache_key = str(
+        request.session.get("recommender_last_cache_key", "") or ""
+    ).strip()
     if session_cache_key:
         if provided and provided != session_cache_key:
             logger.warning(
                 "Cache key mismatch for session %s (provided=%s, session=%s).",
-                _ensure_session_key(request),
+                ensure_session_key(request),
                 provided,
                 session_cache_key,
             )
@@ -151,13 +159,39 @@ def _format_cache_timeout(seconds: int) -> str:
     return f"{seconds} seconds"
 
 
-def _determine_llm_provider(request, *, requested_provider: str = "", debug_enabled: bool = False) -> str:
+def _determine_llm_provider(
+    request,
+    *,
+    requested_provider: str = "",
+    debug_enabled: bool = False,
+) -> str:
     """Resolve the (now fixed) LLM provider. Only OpenAI is supported."""
     _ = requested_provider  # Provider overrides are deprecated.
     _ = debug_enabled
     provider = "openai"
     request.session["llm_provider"] = provider
     return provider
+
+
+def _parse_json_list(value: str | None) -> List[str]:
+    """Parse a JSON list payload from a form field."""
+    if not value:
+        return []
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    items: List[str] = []
+    if isinstance(payload, list):
+        for entry in payload:
+            label = str(entry).strip()
+            if label:
+                items.append(label)
+    elif isinstance(payload, str):
+        label = payload.strip()
+        if label:
+            items.append(label)
+    return items
 
 
 def _cache_key(user_identifier: str, prompt: str) -> str:
@@ -184,7 +218,9 @@ def _make_logger(
         lower_msg = message.lower()
         if any(keyword in lower_msg for keyword in ("error", "failed", "missing", "unavailable")):
             errors.append(message)
-        display_message = message if (capture_debug or not sensitive) else "<sensitive output hidden>"
+        display_message = (
+            message if (capture_debug or not sensitive) else "<sensitive output hidden>"
+        )
         logger.debug("%s: [%0.2fs] %s", label, elapsed, display_message)
 
     return _log
@@ -229,7 +265,11 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
                 }
             )
 
-    seed_track_details_raw = payload.get("seed_track_details") or payload.get("resolved_seed_tracks") or []
+    seed_track_details_raw = (
+        payload.get("seed_track_details")
+        or payload.get("resolved_seed_tracks")
+        or []
+    )
     seed_track_details: List[Dict[str, object]] = []
     for item in seed_track_details_raw:
         if not isinstance(item, dict):
@@ -245,7 +285,11 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
         normalized.setdefault("source", seed_label)
         seed_track_details.append(normalized)
 
-    similar_track_details_raw = payload.get("similar_tracks_debug") or payload.get("similar_tracks") or []
+    similar_track_details_raw = (
+        payload.get("similar_tracks_debug")
+        or payload.get("similar_tracks")
+        or []
+    )
     similar_track_details = [item for item in similar_track_details_raw if isinstance(item, dict)]
     profile_snapshot = payload.get("profile_snapshot")
     if profile_snapshot and not isinstance(profile_snapshot, dict):
@@ -254,6 +298,16 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
     playlist_stats = payload.get("playlist_stats")
     if playlist_stats and not isinstance(playlist_stats, dict):
         playlist_stats = None
+    seed_track_display = payload.get("seed_track_display")
+    resolved_seed_tracks_display = (
+        seed_track_display if seed_track_display else payload.get("seed_tracks", [])
+    )
+    similar_tracks_display = payload.get("similar_tracks_display")
+    resolved_similar_tracks = (
+        similar_tracks_display if similar_tracks_display else payload.get("similar_tracks", [])
+    )
+    seed_sources_raw = payload.get("seed_sources")
+    seed_source_counts = seed_sources_raw if isinstance(seed_sources_raw, dict) else {}
 
     return {
         "playlist": payload.get("playlist", []),
@@ -266,11 +320,11 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
         "errors": list(payload.get("errors", [])),
         "attributes": payload.get("attributes"),
         "llm_suggestions": payload.get("llm_suggestions", []),
-        "seed_tracks": payload.get("seed_track_display") or payload.get("seed_tracks", []),
-        "similar_tracks": payload.get("similar_tracks_display") or payload.get("similar_tracks", []),
+        "seed_tracks": resolved_seed_tracks_display,
+        "similar_tracks": resolved_similar_tracks,
         "seed_track_details": seed_track_details,
         "similar_track_details": similar_track_details,
-        "seed_source_counts": payload.get("seed_sources", {}) if isinstance(payload.get("seed_sources"), dict) else {},
+        "seed_source_counts": seed_source_counts,
         "prompt_artist_ids": payload.get("prompt_artist_ids", []),
         "prompt_artist_candidates": payload.get("prompt_artist_candidates", []),
         "profile_snapshot": profile_snapshot,
@@ -288,6 +342,13 @@ def _build_context_from_payload(payload: Dict[str, object]) -> Dict[str, object]
 def generate_playlist(request):
     """Generate a playlist based on the submitted prompt and render results."""
     prompt = request.POST.get("prompt", "").strip()
+    selected_artist_ids_raw = request.POST.get("selected_artist_ids")
+    selected_artist_names = _parse_json_list(request.POST.get("selected_artist_names"))
+    selected_artist_ids = [
+        artist_id
+        for artist_id in _parse_json_list(selected_artist_ids_raw)
+        if artist_id
+    ]
     reset_llm_usage_tracker()
     debug_steps: List[str] = []
     errors: List[str] = []
@@ -311,7 +372,7 @@ def generate_playlist(request):
         log("Missing Spotify access token; redirecting to login.")
         return redirect("spotify_auth:login")
 
-    user_id = _resolve_request_user_id(request)
+    user_id = resolve_request_user_id(request)
 
     profile_cache: Optional[Dict[str, object]] = None
     if user_id:
@@ -363,11 +424,13 @@ def generate_playlist(request):
                     if isinstance(avg_year, (int, float)):
                         avg_year = round(float(avg_year), 1)
 
+                    bucket_track_count = bucket.get("track_count") or len(
+                        bucket.get("track_ids") or []
+                    )
                     genre_debug.append(
                         {
                             "genre": genre,
-                            "track_count": bucket.get("track_count")
-                            or len(bucket.get("track_ids") or []),
+                            "track_count": bucket_track_count,
                             "avg_popularity": avg_popularity,
                             "avg_year": avg_year,
                             "tracks": bucket_tracks,
@@ -376,15 +439,20 @@ def generate_playlist(request):
 
             artist_debug: List[Dict[str, object]] = []
             artist_counts = profile_cache.get("artist_counts")
-            artist_map = profile_cache.get("artists") if isinstance(profile_cache.get("artists"), dict) else {}
+            artist_entries = profile_cache.get("artists")
+            artist_map = artist_entries if isinstance(artist_entries, dict) else {}
             if isinstance(artist_counts, dict):
+                artist_items = (
+                    (artist_id, int(count))
+                    for artist_id, count in artist_counts.items()
+                )
                 top_artists = sorted(
-                    ((artist_id, int(count)) for artist_id, count in artist_counts.items()),
+                    artist_items,
                     key=lambda item: item[1],
                     reverse=True,
                 )[:10]
                 for artist_id, play_count in top_artists:
-                    artist_entry = artist_map.get(artist_id, {}) if isinstance(artist_map, dict) else {}
+                    artist_entry = artist_map.get(artist_id, {})
                     artist_debug.append(
                         {
                             "id": artist_id,
@@ -400,7 +468,10 @@ def generate_playlist(request):
             created_at_label: Optional[str] = None
             if isinstance(created_at_value, (int, float)):
                 try:
-                    created_at_label = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(created_at_value))
+                    created_at_label = time.strftime(
+                        "%Y-%m-%d %H:%M:%S",
+                        time.localtime(created_at_value),
+                    )
                 except (ValueError, OSError):
                     created_at_label = None
 
@@ -429,8 +500,14 @@ def generate_playlist(request):
     if isinstance(cached_payload, dict):
         updated_payload = {
             **cached_payload,
-            "user_preferences": cached_payload.get("user_preferences", preference_snapshot),
-            "preference_descriptions": cached_payload.get("preference_descriptions", preference_descriptions),
+            "user_preferences": cached_payload.get(
+                "user_preferences",
+                preference_snapshot,
+            ),
+            "preference_descriptions": cached_payload.get(
+                "preference_descriptions",
+                preference_descriptions,
+            ),
             "llm_provider": cached_payload.get("llm_provider") or llm_provider,
         }
         context = _build_context_from_payload(updated_payload)
@@ -489,10 +566,33 @@ def generate_playlist(request):
             for candidate in additional_artists:
                 if isinstance(candidate, str) and candidate.strip():
                     normalized = candidate.strip()
-                    if normalized.lower() not in {name.lower() for name in prompt_artist_candidates}:
+                    existing_names = {name.lower() for name in prompt_artist_candidates}
+                    if normalized.lower() not in existing_names:
                         prompt_artist_candidates.append(normalized)
 
+        if selected_artist_names:
+            merged_candidates: List[str] = []
+            seen_candidates: Set[str] = set()
+
+            def _append_candidate(name: str) -> None:
+                normalized = (name or "").strip()
+                if not normalized:
+                    return
+                lowered = normalized.lower()
+                if lowered in seen_candidates:
+                    return
+                seen_candidates.add(lowered)
+                merged_candidates.append(normalized)
+
+            for candidate in selected_artist_names:
+                _append_candidate(candidate)
+            for candidate in prompt_artist_candidates:
+                _append_candidate(candidate)
+            prompt_artist_candidates = merged_candidates
+
         prompt_artist_ids: Set[str] = set()
+        if selected_artist_ids:
+            prompt_artist_ids.update(selected_artist_ids)
         resolved_seed_tracks: List[Dict[str, object]] = []
         seed_seen: Set[str] = set()
         seed_sources: Dict[str, int] = {}
@@ -531,8 +631,10 @@ def generate_playlist(request):
                 artist_tracks = artist_seed_info.get("tracks", [])
                 for track in artist_tracks:
                     _append_seed_entry(track, artist_seed_info.get("source", "artist_seed"))
+                ensured_artist = artist_seed_info.get("artist_name", primary_artist_hint)
                 log(
-                    f"Artist seed ensured {len(artist_tracks)} tracks for '{artist_seed_info.get('artist_name', primary_artist_hint)}'."
+                    "Artist seed ensured "
+                    f"{len(artist_tracks)} tracks for '{ensured_artist}'."
                 )
 
         if profile_cache and normalized_genre:
@@ -541,7 +643,8 @@ def generate_playlist(request):
                 for track in cached_genre_tracks:
                     _append_seed_entry(track, "user_genre_cache")
                 log(
-                    f"User cache contributed {len(cached_genre_tracks)} seed tracks for genre '{normalized_genre}'."
+                    "User cache contributed "
+                    f"{len(cached_genre_tracks)} seed tracks for genre '{normalized_genre}'."
                 )
 
         llm_suggestions = suggest_seed_tracks(
@@ -567,7 +670,8 @@ def generate_playlist(request):
         if seed_count < seed_limit:
             if seed_count:
                 log(
-                    "Seed count below threshold but primary sources provided seeds; skipping genre discovery."
+                    "Seed count below threshold but primary sources provided "
+                    "seeds; skipping genre discovery."
                 )
             else:
                 log("Seed count below threshold; discovering top tracks from Spotify.")
@@ -613,7 +717,9 @@ def generate_playlist(request):
 
         def _append_track(track_dict: Dict[str, str]) -> None:
             track_id = track_dict.get("id")
-            dedupe_key = track_id or f"{track_dict.get('name')}::{track_dict.get('artists')}"
+            track_name = track_dict.get("name")
+            track_artists = track_dict.get("artists")
+            dedupe_key = track_id or f"{track_name}::{track_artists}"
             if dedupe_key in seen_keys:
                 return
             seen_keys.add(dedupe_key)
@@ -628,7 +734,11 @@ def generate_playlist(request):
                     "popularity": track_dict.get("popularity"),
                     "artist_ids": track_dict.get("artist_ids", []),
                     "year": track_dict.get("year"),
-                    "seed_source": track_dict.get("seed_source") or track_dict.get("source") or "playlist",
+                    "seed_source": (
+                        track_dict.get("seed_source")
+                        or track_dict.get("source")
+                        or "playlist"
+                    ),
                 }
             )
 
@@ -688,17 +798,14 @@ def generate_playlist(request):
             log_step=log,
         )
         llm_usage = get_llm_usage_snapshot()
-        try:
-            _persist_generation_stat(
-                user_identifier=user_id,
-                prompt=prompt,
-                playlist_stats=playlist_stats,
-                track_count=len(ordered_tracks),
-                ordered_tracks=ordered_tracks,
-                llm_usage=llm_usage,
-            )
-        except Exception as exc:  # pragma: no cover - defensive guard
-            logger.warning("Playlist stat persistence failed: %s", exc)
+        _persist_generation_stat(
+            user_identifier=user_id,
+            prompt=prompt,
+            playlist_stats=playlist_stats,
+            track_count=len(ordered_tracks),
+            ordered_tracks=ordered_tracks,
+            llm_usage=llm_usage,
+        )
 
         prompt_label = prompt.strip()
         suggested_playlist_name = prompt_label.title()[:100] if prompt_label else "AI Playlist"
@@ -729,7 +836,11 @@ def generate_playlist(request):
             "playlist_stats": playlist_stats,
         }
         _attach_cache_metadata(payload, request, cache_key)
-        cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
+        cache_timeout = getattr(
+            settings,
+            "RECOMMENDER_CACHE_TIMEOUT_SECONDS",
+            60 * 15,
+        )
         cache.set(cache_key, payload, timeout=cache_timeout)
         request.session["recommender_last_cache_key"] = cache_key
         log(f"Playlist cached for {_format_cache_timeout(cache_timeout)}.")
@@ -991,13 +1102,22 @@ def update_cached_playlist(request):
 
     payload = cache.get(cache_key)
     if not isinstance(payload, dict):
-        return JsonResponse({"error": "Playlist session expired."}, status=404)
+        return JsonResponse(
+            {"error": "Playlist session expired."},
+            status=404,
+        )
     if not _payload_owned_by_request(request, payload):
-        return JsonResponse({"error": "Playlist session unauthorized."}, status=403)
+        return JsonResponse(
+            {"error": "Playlist session unauthorized."},
+            status=403,
+        )
 
     track_details = payload.get("track_details")
     if not isinstance(track_details, list):
-        return JsonResponse({"error": "Playlist does not support editing yet."}, status=409)
+        return JsonResponse(
+            {"error": "Playlist does not support editing yet."},
+            status=409,
+        )
 
     removed = False
     updated_tracks: List[Dict[str, object]] = []
@@ -1076,6 +1196,91 @@ def update_cached_playlist(request):
     )
 
 
+def _compress_image_for_spotify(image_data: bytes, max_size_kb: int = 256) -> bytes:
+    """
+    Compress an image to meet Spotify's cover image requirements.
+
+    Spotify requires JPEG images that are under 256 KB when base64 encoded.
+    This function takes raw image data and compresses it to meet those requirements.
+
+    Args:
+        image_data: Raw image bytes
+        max_size_kb: Maximum size in KB for the base64-encoded image (default: 256)
+
+    Returns:
+        Compressed image bytes in JPEG format
+    """
+    # Open the image
+    img = Image.open(BytesIO(image_data))
+
+    # Convert to RGB if necessary (PNG with transparency, etc.)
+    if img.mode in ('RGBA', 'LA', 'P'):
+        # Create a white background
+        background = Image.new('RGB', img.size, (255, 255, 255))
+        if img.mode == 'P':
+            img = img.convert('RGBA')
+        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+        img = background
+    elif img.mode != 'RGB':
+        img = img.convert('RGB')
+
+    # Start with high quality and reduce if necessary
+    quality = 95
+    max_dimension = 640  # Spotify recommends at least 640x640, max doesn't matter much
+
+    # Resize if image is too large
+    if img.width > max_dimension or img.height > max_dimension:
+        img.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+
+    # Try compressing with progressively lower quality until it fits
+    while quality > 20:
+        output = BytesIO()
+        img.save(output, format='JPEG', quality=quality, optimize=True)
+        compressed_data = output.getvalue()
+
+        # Check if base64 encoded size is under limit
+        encoded_size = len(base64.b64encode(compressed_data))
+        max_size_bytes = max_size_kb * 1024
+
+        if encoded_size <= max_size_bytes:
+            logger.info(
+                "Compressed image to %d bytes (base64: %d bytes) at quality %d",
+                len(compressed_data),
+                encoded_size,
+                quality
+            )
+            return compressed_data
+
+        # Reduce quality for next iteration
+        quality -= 5
+
+    # If still too large, reduce dimensions further
+    while max_dimension > 300:
+        max_dimension = int(max_dimension * 0.8)
+        img.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+
+        output = BytesIO()
+        img.save(output, format='JPEG', quality=85, optimize=True)
+        compressed_data = output.getvalue()
+
+        encoded_size = len(base64.b64encode(compressed_data))
+        max_size_bytes = max_size_kb * 1024
+
+        if encoded_size <= max_size_bytes:
+            logger.info(
+                "Compressed image to %d bytes (base64: %d bytes) at %dx%d",
+                len(compressed_data),
+                encoded_size,
+                max_dimension,
+                max_dimension
+            )
+            return compressed_data
+
+    # Return best effort
+    logger.warning("Could not compress image below %d KB, returning best effort", max_size_kb)
+    return compressed_data
+
+
 @require_POST
 def save_playlist(request):
     """Create a Spotify playlist for the cached tracks and display feedback."""
@@ -1132,7 +1337,7 @@ def save_playlist(request):
         messages.error(request, str(exc))
     except RequestException as exc:
         messages.error(request, f"Network error while communicating with Spotify: {exc}")
-    except Exception as exc:  # pragma: no cover - defensive guard
+    except Exception as exc:  # pragma: no cover - defensive guard  # pylint: disable=broad-exception-caught
         logger.exception("Unexpected error while saving playlist for cache %s: %s", cache_key, exc)
         messages.error(request, "Unexpected error while saving your playlist. Please try again.")
     else:
@@ -1144,24 +1349,71 @@ def save_playlist(request):
         resolved_display_name = result.get("user_display_name")
         if resolved_display_name:
             request.session["spotify_display_name"] = resolved_display_name
-        
+
+        # Upload cover image if one was generated and cached
+        cover_image_url = payload.get("cover_image_url")
+        if playlist_id and cover_image_url:
+            try:
+                import requests as requests_lib
+                sp = spotipy.Spotify(auth=access_token)
+
+                # Download the image from the URL
+                logger.info("Downloading cover image from %s", cover_image_url)
+                image_response = requests_lib.get(cover_image_url, timeout=30)
+                image_response.raise_for_status()
+
+                # Compress image to meet Spotify's 256 KB limit
+                logger.info("Compressing image for Spotify (original size: %d bytes)", len(image_response.content))
+                compressed_image = _compress_image_for_spotify(image_response.content)
+
+                # Convert to base64
+                image_base64 = base64.b64encode(compressed_image).decode("utf-8")
+
+                # Upload to Spotify
+                logger.info("Uploading cover image to playlist %s (compressed size: %d bytes, base64: %d bytes)",
+                           playlist_id, len(compressed_image), len(image_base64))
+                sp.playlist_upload_cover_image(playlist_id, image_base64)
+                logger.info("Successfully uploaded cover image to playlist %s", playlist_id)
+                messages.success(request, "Custom cover image applied to playlist.")
+
+            except requests_lib.RequestException as img_exc:
+                logger.warning(
+                    "Failed to download cover image from %s: %s",
+                    cover_image_url,
+                    img_exc,
+                )
+                messages.warning(request, "Could not download cover image.")
+            except SpotifyException as spotify_exc:
+                logger.warning(
+                    "Failed to upload cover image to Spotify playlist %s: %s",
+                    playlist_id,
+                    spotify_exc,
+                )
+                messages.warning(request, "Could not apply cover image to playlist.")
+            except Exception as cover_exc:  # pragma: no cover - defensive guard  # pylint: disable=broad-exception-caught
+                logger.exception(
+                    "Unexpected error uploading cover image for playlist %s: %s",
+                    playlist_id,
+                    cover_exc,
+                )
+                messages.warning(request, "Cover image could not be applied.")
+
         if playlist_id and resolved_user_id and resolved_display_name:
             try:
-                # Fetch playlist details from Spotify
-                import spotipy
                 sp = spotipy.Spotify(auth=access_token)
                 spotify_playlist = sp.playlist(playlist_id)
-                
-                # Extract playlist metadata
+
                 cover_image = ""
                 if spotify_playlist.get("images"):
                     cover_image = spotify_playlist["images"][0].get("url", "")
-                
-                # Calculate total duration from tracks
+
                 track_details = payload.get("track_details", [])
-                total_duration_ms = sum(int(track.get("duration_ms", 0)) for track in track_details if isinstance(track, dict))
-                
-                # Get description from payload attributes or prompt
+                total_duration_ms = sum(
+                    int(track.get("duration_ms", 0))
+                    for track in track_details
+                    if isinstance(track, dict)
+                )
+
                 description = ""
                 prompt = payload.get("prompt", "")
                 attributes = payload.get("attributes")
@@ -1169,10 +1421,15 @@ def save_playlist(request):
                     mood = attributes.get("mood", "")
                     genre = attributes.get("genre", "")
                     energy = attributes.get("energy", "")
-                    description = f"AI-generated playlist: {prompt}. Mood: {mood}, Genre: {genre}, Energy: {energy}"
+                    description = (
+                        f"AI-generated playlist: {prompt}. "
+                        f"Mood: {mood}, Genre: {genre}, Energy: {energy}"
+                    )
                 elif prompt:
-                    description = f"AI-generated playlist: {prompt}"
-                
+                    description = (
+                        f"AI-generated playlist: {prompt}"
+                    )
+
                 SavedPlaylist.objects.update_or_create(
                     playlist_id=playlist_id,
                     defaults={
@@ -1187,7 +1444,11 @@ def save_playlist(request):
                     },
                 )
             except SpotifyException as exc:
-                logger.warning("Failed to fetch playlist details from Spotify %s: %s", playlist_id, exc)
+                logger.warning(
+                    "Failed to fetch playlist details from Spotify %s: %s",
+                    playlist_id,
+                    exc,
+                )
                 # Still save basic info even if we can't fetch details
                 try:
                     SavedPlaylist.objects.update_or_create(
@@ -1203,10 +1464,10 @@ def save_playlist(request):
                     logger.exception("Failed to persist saved playlist %s: %s", playlist_id, db_exc)
             except DatabaseError as exc:  # pragma: no cover - defensive logging
                 logger.exception("Failed to persist saved playlist %s: %s", playlist_id, exc)
-        
+
         context["playlist_name"] = resolved_name
         messages.success(request, f"Playlist '{resolved_name}' saved to Spotify.")
-        
+
     return render(request, "recommender/playlist_result.html", context)
 
 
@@ -1214,17 +1475,25 @@ def search_songs(request):
     """Search for songs via Spotify API and return JSON results."""
     query = request.GET.get("q", "").strip()
     if not query:
-        return JsonResponse({"error": "Search query is required."}, status=400)
+        return JsonResponse(
+            {"error": "Search query is required."},
+            status=400,
+        )
 
     if len(query) < 2:
-        return JsonResponse({"error": "Search query must be at least 2 characters."}, status=400)
+        return JsonResponse(
+            {"error": "Search query must be at least 2 characters."},
+            status=400,
+        )
 
     access_token = request.session.get("spotify_access_token")
     if not access_token:
-        return JsonResponse({"error": "Spotify authentication required."}, status=401)
+        return JsonResponse(
+            {"error": "Spotify authentication required."},
+            status=401,
+        )
 
     try:
-        import spotipy
         sp = spotipy.Spotify(auth=access_token)
 
         # Search for tracks
@@ -1239,7 +1508,11 @@ def search_songs(request):
 
             album = track.get("album") or {}
             artists = track.get("artists") or []
-            artist_names = ", ".join(artist.get("name", "") for artist in artists if artist.get("name"))
+            artist_names = ", ".join(
+                artist.get("name", "")
+                for artist in artists
+                if artist.get("name")
+            )
 
             # Get album image
             images = album.get("images", [])
@@ -1247,28 +1520,41 @@ def search_songs(request):
             if images:
                 album_image_url = images[0].get("url", "")
 
-            results.append({
-                "id": track.get("id"),
-                "name": track.get("name", "Unknown"),
-                "artists": artist_names or "Unknown",
-                "album_name": album.get("name", ""),
-                "album_image_url": album_image_url,
-                "duration_ms": int(track.get("duration_ms") or 0),
-                "popularity": int(track.get("popularity") or 0),
-                "artist_ids": [artist.get("id") for artist in artists if artist.get("id")],
-            })
+            results.append(
+                {
+                    "id": track.get("id"),
+                    "name": track.get("name", "Unknown"),
+                    "artists": artist_names or "Unknown",
+                    "album_name": album.get("name", ""),
+                    "album_image_url": album_image_url,
+                    "duration_ms": int(track.get("duration_ms") or 0),
+                    "popularity": int(track.get("popularity") or 0),
+                    "artist_ids": [
+                        artist.get("id") for artist in artists if artist.get("id")
+                    ],
+                }
+            )
 
         return JsonResponse({"results": results})
 
     except SpotifyException as exc:
         logger.error("Spotify search error for query '%s': %s", query, exc)
-        return JsonResponse({"error": "A Spotify error occurred during search."}, status=500)
+        return JsonResponse(
+            {"error": "A Spotify error occurred during search."},
+            status=500,
+        )
     except RequestException as exc:
         logger.error("Network error during Spotify search for query '%s': %s", query, exc)
-        return JsonResponse({"error": "Network error while communicating with Spotify."}, status=500)
-    except Exception as exc:  # pragma: no cover - defensive guard
+        return JsonResponse(
+            {"error": "Network error while communicating with Spotify."},
+            status=500,
+        )
+    except Exception as exc:  # pragma: no cover - defensive guard  # pylint: disable=broad-exception-caught
         logger.exception("Unexpected error during song search for query '%s': %s", query, exc)
-        return JsonResponse({"error": "Unexpected error during search."}, status=500)
+        return JsonResponse(
+            {"error": "Unexpected error during search."},
+            status=500,
+        )
 
 
 @require_POST
@@ -1302,23 +1588,28 @@ def add_song_to_playlist(request):
     # Check if track already exists in playlist
     for existing_track in track_details:
         if isinstance(existing_track, dict) and existing_track.get("id") == track_id:
-            return JsonResponse({"error": "Track already in playlist."}, status=409)
+            return JsonResponse(
+                {"error": "Track already in playlist."},
+                status=409,
+            )
 
     # Fetch track details from Spotify
     access_token = request.session.get("spotify_access_token")
     if not access_token:
-        return JsonResponse({"error": "Spotify authentication required."}, status=401)
+        return JsonResponse(
+            {"error": "Spotify authentication required."},
+            status=401,
+        )
 
     try:
-        import spotipy
         sp = spotipy.Spotify(auth=access_token)
         track = sp.track(track_id)
 
         if not track or not track.get("id"):
-            return JsonResponse({"error": "Track not found."}, status=404)
-
-        # Serialize track data
-        from .services.spotify_handler import _serialize_track_payload
+            return JsonResponse(
+                {"error": "Track not found."},
+                status=404,
+            )
 
         new_track = _serialize_track_payload(track)
         new_track["seed_source"] = "manual_search"
@@ -1376,10 +1667,125 @@ def add_song_to_playlist(request):
 
     except SpotifyException as exc:
         logger.error("Spotify error while fetching track '%s': %s", track_id, exc)
-        return JsonResponse({"error": "Spotify error while fetching track."}, status=500)
+        return JsonResponse(
+            {"error": "Spotify error while fetching track."},
+            status=500,
+        )
     except RequestException as exc:
         logger.error("Network error while fetching track '%s': %s", track_id, exc)
-        return JsonResponse({"error": "Network error while communicating with Spotify."}, status=500)
-    except Exception as exc:  # pragma: no cover - defensive guard
+        return JsonResponse(
+            {"error": "Network error while communicating with Spotify."},
+            status=500,
+        )
+    except Exception as exc:  # pragma: no cover - defensive guard  # pylint: disable=broad-exception-caught
         logger.exception("Unexpected error while adding track '%s': %s", track_id, exc)
-        return JsonResponse({"error": "Unexpected error while adding track."}, status=500)
+        return JsonResponse(
+            {"error": "Unexpected error while adding track."},
+            status=500,
+        )
+
+
+@require_POST
+def generate_cover_image(request):
+    """Generate a playlist cover image using OpenAI's DALL-E API."""
+    content_type = (request.content_type or request.META.get("CONTENT_TYPE") or "").lower()
+    if not content_type.startswith("application/json"):
+        return JsonResponse({"error": "Expected JSON payload."}, status=400)
+
+    try:
+        request_payload = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    cache_key = _resolve_cache_key_from_request(request, request_payload.get("cache_key"))
+    custom_prompt = (request_payload.get("prompt") or "").strip()
+
+    if not cache_key:
+        return JsonResponse({"error": "Playlist session expired."}, status=400)
+
+    payload = cache.get(cache_key)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Playlist session expired."}, status=404)
+    if not _payload_owned_by_request(request, payload):
+        return JsonResponse({"error": "Playlist session unauthorized."}, status=403)
+
+    # Import the image generator
+    try:
+        from scripts.image_generator import generate_cover_image_with_fallback
+    except ImportError:
+        logger.error("Failed to import image_generator module")
+        return JsonResponse(
+            {"error": "Image generation service not available."},
+            status=500,
+        )
+
+    # Get playlist attributes from cached payload
+    attributes = payload.get("attributes")
+    if not isinstance(attributes, dict):
+        attributes = {}
+
+    # Generate the cover image
+    try:
+        result = generate_cover_image_with_fallback(
+            prompt=custom_prompt if custom_prompt else None,
+            attributes=attributes if not custom_prompt else None,
+        )
+
+        if result.get("success"):
+            return JsonResponse({
+                "status": "ok",
+                "image_url": result.get("image_url"),
+                "prompt_used": result.get("prompt_used"),
+            })
+
+        error_message = result.get("error") or "Unknown error occurred"
+        return JsonResponse(
+            {"error": error_message},
+            status=500,
+        )
+
+    except Exception as exc:  # pragma: no cover - defensive guard  # pylint: disable=broad-exception-caught
+        logger.exception("Unexpected error during cover image generation: %s", exc)
+        return JsonResponse(
+            {"error": "Unexpected error while generating cover image."},
+            status=500,
+        )
+
+
+@require_POST
+def cache_cover_image(request):
+    """Cache the selected cover image URL for later use when saving to Spotify."""
+    content_type = (request.content_type or request.META.get("CONTENT_TYPE") or "").lower()
+    if not content_type.startswith("application/json"):
+        return JsonResponse({"error": "Expected JSON payload."}, status=400)
+
+    try:
+        request_payload = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    cache_key = _resolve_cache_key_from_request(request, request_payload.get("cache_key"))
+    image_url = (request_payload.get("image_url") or "").strip()
+
+    if not cache_key:
+        return JsonResponse({"error": "Playlist session expired."}, status=400)
+
+    payload = cache.get(cache_key)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Playlist session expired."}, status=404)
+    if not _payload_owned_by_request(request, payload):
+        return JsonResponse({"error": "Playlist session unauthorized."}, status=403)
+
+    # Store or clear the cover image URL in the payload
+    if image_url:
+        payload["cover_image_url"] = image_url
+    else:
+        # Empty string means remove the cover image
+        payload.pop("cover_image_url", None)
+
+    # Update cache with the modified payload
+    _attach_cache_metadata(payload, request, cache_key)
+    cache_timeout = getattr(settings, "RECOMMENDER_CACHE_TIMEOUT_SECONDS", 60 * 15)
+    cache.set(cache_key, payload, timeout=cache_timeout)
+
+    return JsonResponse({"status": "ok"})
