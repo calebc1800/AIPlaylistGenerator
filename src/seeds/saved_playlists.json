@@ -4,15 +4,8 @@
     "pk": 1,
     "fields": {
       "playlist_id": "6n3ByyRvg7TAy9yAfwe2a8",
-      "playlist_name": "Chill Study Vibes",
-      "description": "Perfect background music for focused work sessions",
-      "cover_image": "https://i.scdn.co/image/ab67616d0000b2738b32b139981e79f2ebe005ba",
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
-      "creator_display_name": "Music Creator",
-      "track_count": 25,
-      "total_duration_ms": 5400000,
-      "spotify_uri": "spotify:playlist:6n3ByyRvg7TAy9yAfwe2a8",
-      "created_at": "2025-01-15T12:00:00Z"
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
     }
   },
   {
@@ -20,15 +13,8 @@
     "pk": 2,
     "fields": {
       "playlist_id": "154Y0yOmSr61Aj8Enfdzwl",
-      "playlist_name": "Upbeat Mix",
-      "description": "High-energy tracks to get you moving",
-      "cover_image": "https://i.scdn.co/image/ab67616d0000b273f0f3f3f3f3f3f3f3f3f3f3f3",
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
-      "creator_display_name": "Music Creator",
-      "track_count": 30,
-      "total_duration_ms": 7200000,
-      "spotify_uri": "spotify:playlist:154Y0yOmSr61Aj8Enfdzwl",
-      "created_at": "2025-01-15T12:00:00Z"
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
     }
   },
   {
@@ -36,15 +22,8 @@
     "pk": 3,
     "fields": {
       "playlist_id": "5LBeUcLfsjM4Uv0GhiDuBv",
-      "playlist_name": "Relaxing Evening",
-      "description": "Calm your mind and unwind",
-      "cover_image": "https://i.scdn.co/image/ab67616d0000b273c2c2c2c2c2c2c2c2c2c2c2",
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
-      "creator_display_name": "Music Creator",
-      "track_count": 20,
-      "total_duration_ms": 4800000,
-      "spotify_uri": "spotify:playlist:5LBeUcLfsjM4Uv0GhiDuBv",
-      "created_at": "2025-01-15T12:00:00Z"
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
     }
   },
   {
@@ -52,15 +31,8 @@
     "pk": 4,
     "fields": {
       "playlist_id": "1NSb4lrvkXLDjBxHTzZlHt",
-      "playlist_name": "Workout Pump",
-      "description": "Beat the gym boredom",
-      "cover_image": "https://i.scdn.co/image/ab67616d0000b273d2d2d2d2d2d2d2d2d2d2d2",
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
-      "creator_display_name": "Music Creator",
-      "track_count": 35,
-      "total_duration_ms": 8400000,
-      "spotify_uri": "spotify:playlist:1NSb4lrvkXLDjBxHTzZlHt",
-      "created_at": "2025-01-15T12:00:00Z"
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
     }
   },
   {
@@ -68,15 +40,8 @@
     "pk": 5,
     "fields": {
       "playlist_id": "60sZVp4Ji98FehG76NKLBp",
-      "playlist_name": "Jazz Lounge",
-      "description": "Smooth jazz for sophisticated evenings",
-      "cover_image": "https://i.scdn.co/image/ab67616d0000b273e3e3e3e3e3e3e3e3e3e3e3",
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
-      "creator_display_name": "Music Creator",
-      "track_count": 28,
-      "total_duration_ms": 6000000,
-      "spotify_uri": "spotify:playlist:60sZVp4Ji98FehG76NKLBp",
-      "created_at": "2025-01-15T12:00:00Z"
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
     }
   },
   {
@@ -84,15 +49,8 @@
     "pk": 6,
     "fields": {
       "playlist_id": "1FTmfv50mRAAgbkMS0H8UD",
-      "playlist_name": "Rock Classics",
-      "description": "Timeless rock anthems",
-      "cover_image": "https://i.scdn.co/image/ab67616d0000b273f4f4f4f4f4f4f4f4f4f4f4",
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
-      "creator_display_name": "Music Creator",
-      "track_count": 32,
-      "total_duration_ms": 7800000,
-      "spotify_uri": "spotify:playlist:1FTmfv50mRAAgbkMS0H8UD",
-      "created_at": "2025-01-15T12:00:00Z"
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
     }
   },
   {
@@ -100,15 +58,8 @@
     "pk": 7,
     "fields": {
       "playlist_id": "6l7VzSBucNaJjmzZmkhSDe",
-      "playlist_name": "Indie Vibes",
-      "description": "Discover the best indie tracks",
-      "cover_image": "https://i.scdn.co/image/ab67616d0000b273g5g5g5g5g5g5g5g5g5g5g5",
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
-      "creator_display_name": "Music Creator",
-      "track_count": 26,
-      "total_duration_ms": 5700000,
-      "spotify_uri": "spotify:playlist:6l7VzSBucNaJjmzZmkhSDe",
-      "created_at": "2025-01-15T12:00:00Z"
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
     }
   },
   {
@@ -116,15 +67,8 @@
     "pk": 8,
     "fields": {
       "playlist_id": "2V73cN8GRlHd6bupTLwwsV",
-      "playlist_name": "Electronic Journey",
-      "description": "Deep electronic music exploration",
-      "cover_image": "https://i.scdn.co/image/ab67616d0000b273h6h6h6h6h6h6h6h6h6h6h6h6",
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
-      "creator_display_name": "Music Creator",
-      "track_count": 24,
-      "total_duration_ms": 5400000,
-      "spotify_uri": "spotify:playlist:2V73cN8GRlHd6bupTLwwsV",
-      "created_at": "2025-01-15T12:00:00Z"
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
     }
   },
   {
@@ -132,15 +76,8 @@
     "pk": 9,
     "fields": {
       "playlist_id": "65q9zVzx99RlXtYvuPjFik",
-      "playlist_name": "Acoustic Guitar",
-      "description": "Beautiful acoustic guitar melodies",
-      "cover_image": "https://i.scdn.co/image/ab67616d0000b273i7i7i7i7i7i7i7i7i7i7i7",
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
-      "creator_display_name": "Music Creator",
-      "track_count": 22,
-      "total_duration_ms": 5100000,
-      "spotify_uri": "spotify:playlist:65q9zVzx99RlXtYvuPjFik",
-      "created_at": "2025-01-15T12:00:00Z"
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
     }
   },
   {
@@ -148,15 +85,8 @@
     "pk": 10,
     "fields": {
       "playlist_id": "5D14y7ws4mTPFUziP9FUeF",
-      "playlist_name": "Pop Hits Mix",
-      "description": "Latest pop hits in one place",
-      "cover_image": "https://i.scdn.co/image/ab67616d0000b273j8j8j8j8j8j8j8j8j8j8j8",
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
-      "creator_display_name": "Music Creator",
-      "track_count": 40,
-      "total_duration_ms": 9600000,
-      "spotify_uri": "spotify:playlist:5D14y7ws4mTPFUziP9FUeF",
-      "created_at": "2025-01-15T12:00:00Z"
+      "like_count": 0,
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
     }
   }
 ]
