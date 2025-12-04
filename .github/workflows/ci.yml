@@ -60,6 +60,7 @@ jobs:
           REPOSITORY_NAME: ${{ github.repository }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
         run: |
           echo "🧠 Running AI Code Review..."
           python .github/scripts/ai_review.py
@@ -101,6 +102,7 @@ jobs:
       - name: Run Tests with Coverage
         env:
           DJANGO_SETTINGS_MODULE: aiplaylist.settings
+          DJANGO_ALLOWED_HOSTS: ${{secrets.DJANGO_ALLOWED_HOSTS}}
         run: |
           echo "🚀 Setting up Python path and running tests with coverage..."
           export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}/src"
@@ -141,6 +143,7 @@ jobs:
       - name: Run Pylint Tests with Coverage
         env:
           DJANGO_SETTINGS_MODULE: aiplaylist.settings
+          DJANGO_ALLOWED_HOSTS: ${{secrets.DJANGO_ALLOWED_HOSTS}}
         run: |
           echo "🚀 Setting up Python path and running tests..."
           export PYTHONPATH="${PYTHONPATH}:${{ github.workspace }}/src"

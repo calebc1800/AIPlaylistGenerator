@@ -83,16 +83,15 @@ if not SECRET_KEY:
     else:
         raise ImproperlyConfigured("DJANGO_SECRET_KEY environment variable must be set.")
 
-_raw_allowed_hosts = os.getenv(
-    "DJANGO_ALLOWED_HOSTS",
-    "0.0.0.0,localhost,127.0.0.1,aiplaylistgenerator.app,aiplaylistgenerator-not-docker.onrender.com",
-)
+_raw_allowed_hosts = os.getenv("DJANGO_ALLOWED_HOSTS")
 ALLOWED_HOSTS = [host.strip() for host in _raw_allowed_hosts.split(",") if host.strip()]
 _raw_csrf_trusted_origins = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS")
 if _raw_csrf_trusted_origins:
     CSRF_TRUSTED_ORIGINS = _normalize_csrf_origins(_split_env_tokens(_raw_csrf_trusted_origins))
 else:
     CSRF_TRUSTED_ORIGINS = _normalize_csrf_origins(ALLOWED_HOSTS)
+
+
 
 
 # Application definition
@@ -119,6 +118,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
 
 ROOT_URLCONF = 'aiplaylist.urls'
