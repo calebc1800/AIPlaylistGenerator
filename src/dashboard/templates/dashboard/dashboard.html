@@ -1423,6 +1423,50 @@
     // Use event delegation with once: false to prevent multiple handlers
     // This listener is attached only once to the document
     let isHandlerAttached = false;
+    let followingUserIds = new Set();
+
+    // Initialize following status for all buttons
+    async function initializeFollowingStatus() {
+        try {
+            const response = await fetch("{% url 'dashboard:get-following' %}", {
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            });
+
+            if (!response.ok) {
+                console.warn('Failed to load following status');
+                return;
+            }
+
+            const data = await response.json();
+            const following = data.following || [];
+
+            // Store following user IDs in a Set for fast lookup
+            followingUserIds = new Set(following.map(user => user.user_id));
+
+            // Update all follow buttons
+            updateAllFollowButtons();
+        } catch (error) {
+            console.error('Error loading following status:', error);
+        }
+    }
+
+    // Update all follow buttons based on current following status
+    function updateAllFollowButtons() {
+        const allFollowButtons = document.querySelectorAll('.follow-creator-btn');
+        allFollowButtons.forEach(btn => {
+            const userId = btn.dataset.userId;
+            if (followingUserIds.has(userId)) {
+                btn.classList.add('following');
+                btn.textContent = 'Following ✓';
+            } else {
+                btn.classList.remove('following');
+                btn.textContent = 'Follow Creator';
+            }
+        });
+    }
 
     function attachFollowHandlers() {
         if (isHandlerAttached) return;
@@ -1463,13 +1507,24 @@
 
                 const data = await response.json();
 
+                // Update the following set
                 if (data.following) {
-                    followBtn.classList.add('following');
-                    followBtn.textContent = 'Following ✓';
+                    followingUserIds.add(userId);
                 } else {
-                    followBtn.classList.remove('following');
-                    followBtn.textContent = 'Follow Creator';
+                    followingUserIds.delete(userId);
                 }
+
+                // Update all follow buttons for this creator
+                const allCreatorButtons = document.querySelectorAll(`.follow-creator-btn[data-user-id="${userId}"]`);
+                allCreatorButtons.forEach(btn => {
+                    if (data.following) {
+                        btn.classList.add('following');
+                        btn.textContent = 'Following ✓';
+                    } else {
+                        btn.classList.remove('following');
+                        btn.textContent = 'Follow Creator';
+                    }
+                });
             } catch (error) {
                 console.error('Error toggling follow:', error);
                 alert(error.message || 'Failed to update follow status');
@@ -1493,8 +1548,9 @@
         });
     }
 
-    // Attach handlers on page load
+    // Attach handlers and initialize following status on page load
     attachFollowHandlers();
+    initializeFollowingStatus();
 })();
     </script>
 </body>
