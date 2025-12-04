@@ -20,7 +20,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            z-index: 90;
         }
 
         .remix-modal-overlay.hidden {
@@ -1359,13 +1359,14 @@
             const modalCancel = document.getElementById('remix-modal-cancel');
             const modalSubmit = document.getElementById('remix-modal-submit');
             const promptInput = document.getElementById('remix-prompt-input');
-            const targetCountInput = document.getElementById('remix-target-count-input');
+            // const targetCountInput = document.getElementById('remix-target-count-input');
             const trackCount = document.getElementById('track-count');
 
             // Initialize target count with current playlist size
-            if (trackCount) {
-                targetCountInput.value = trackCount.textContent;
-            }
+            // if (trackCount) {
+            //     targetCountInput.value = trackCount.textContent;
+            // }
+
 
             // Open modal when remix button is clicked
             remixButton.addEventListener('click', function(e) {
@@ -1397,7 +1398,9 @@
                 e.preventDefault();
 
                 const prompt = promptInput.value.trim();
-                const targetCount = targetCountInput.value.trim();
+                // Derive target count from current playlist size
+                const targetCount = trackCount ? trackCount.textContent : '50';
+
 
                 // Validation
                 if (!prompt) {
@@ -1405,10 +1408,12 @@
                     return;
                 }
 
-                if (!targetCount || parseInt(targetCount) < 1) {
-                    alert('Please enter a valid number of songs');
-                    return;
-                }
+
+                // if (!targetCount || parseInt(targetCount) < 1) {
+                //     alert('Please enter a valid number of songs');
+                //     return;
+                // }
+
 
                 // Show progress bar overlay and start animation
                 remixOverlay.classList.add('visible');
@@ -1456,11 +1461,12 @@
                 }
             });
 
-            targetCountInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    modalSubmit.click();
-                }
-            });
+
+            // targetCountInput.addEventListener('keypress', function(e) {
+            //     if (e.key === 'Enter') {
+            //         modalSubmit.click();
+            //     }
+            // });
         });
     </script>
     <!-- Remix Modal Overlay -->
@@ -1479,7 +1485,8 @@
                         placeholder="Describe the vibe, genre, or direction you want for your remix..."
                         rows="3"></textarea>
                 </div>
-                <div class="remix-form-group">
+                <!-- Target count input commented out while maintaining functionality -->
+                <!-- <div class="remix-form-group">
                     <label for="remix-target-count-input" class="remix-form-label">Number of Songs</label>
                     <input
                         type="number"
@@ -1488,7 +1495,7 @@
                         min="1"
                         max="500"
                         placeholder="Number of songs">
-                </div>
+                </div> -->
             </div>
             <div class="remix-modal__footer">
                 <button type="button" class="btn btn-outline" id="remix-modal-cancel">Cancel</button>
