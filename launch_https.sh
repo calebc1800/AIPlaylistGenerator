@@ -2,8 +2,10 @@
 
 pip install -r requirements.txt > /dev/null
 
-cd src || exit
-cd /workspaces/ai_playlist/AIPlaylistGenerator/src
+# Move to the project src directory relative to this script
+SCRIPT_DIR="$(cd -- "$(dirname "$0")" && pwd)"
+cd "${SCRIPT_DIR}/src" || exit 1
+
 PYTHONPATH=. python3 scripts/seed_saved_playlists.py
 yes yes | python manage.py collectstatic > /dev/null
 python manage.py makemigrations
