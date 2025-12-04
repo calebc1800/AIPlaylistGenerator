@@ -22,6 +22,5 @@ urlpatterns = [
     path('api/follow/toggle/', toggle_follow, name='toggle-follow'),
     path('api/following/', get_following_list, name='get-following'),
     path('api/user/<str:user_id>/playlists/', get_user_playlists, name='user-playlists'),
-]
     path('api/recommended-artists/', RecommendedArtistsAPIView.as_view(), name='recommended-artists'),
 ]
