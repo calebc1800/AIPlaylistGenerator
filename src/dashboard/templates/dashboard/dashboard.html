@@ -1223,7 +1223,8 @@
         console.warn('[dashboard] openUserProfile: could not compute header height', e);
     }
 
-    userProfileModal.style.display = 'block';
+    // Use flex so modal centers correctly; matching CSS display setting.
+    userProfileModal.style.display = 'flex';
     // Use a class to indicate modal state so we can reliably remove it later.
     // This is more robust than directly mutating inline styles and avoids
     // leaving the page with overflow:hidden if an error occurs.
@@ -1364,7 +1365,7 @@
     // Close modal on Escape key for extra robustness
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (userProfileModal && userProfileModal.style.display === 'block') {
+            if (userProfileModal && userProfileModal.style.display !== 'none') {
                 closeModal();
             }
         }
