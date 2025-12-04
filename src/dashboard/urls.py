@@ -6,10 +6,7 @@ from .views import (
     ListeningSuggestionsAPIView,
     toggle_follow,
     get_following_list,
-    get_user_playlists
-    DashboardView,
-    UserStatsAPIView,
-    ListeningSuggestionsAPIView,
+    get_user_playlists,
     RecommendedArtistsAPIView,
 )
 
