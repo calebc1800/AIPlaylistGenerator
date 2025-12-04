@@ -3,11 +3,15 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 import spotipy
+import json
 from django.conf import settings
 from django.core.cache import cache
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
+from dashboard.models import UserFollow
 from recommender.models import SavedPlaylist
 from recommender.services import artist_recommendation_service
 from recommender.services.artist_ai_service import generate_ai_artist_cards
@@ -38,6 +42,22 @@ def _resolve_generation_identifier(request, spotify_user_id: str | None = None) 
     return str(request.session.get("spotify_user_id") or "anonymous")
 
 
+def _ensure_session_key(request) -> str:
+    """Checks for session key
+
+    Args:
+        request (django request): http session information request
+
+    Returns:
+        str: Session Key
+    """
+    session_key = request.session.session_key
+    if not session_key:
+        request.session.save()
+        session_key = request.session.session_key or ""
+    return session_key
+
+
 def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     """Uses Spotify API to get the current user's top artists and songs
 
@@ -48,7 +68,7 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     Returns:
         dict: Top genres, artists and tracks
     """
-    cache_key = f"dashboard:spotify-highlights:{ensure_session_key(request)}"
+    cache_key = f"dashboard:spotify-highlights:{_ensure_session_key(request)}"
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -204,6 +224,7 @@ class DashboardView(View):
             followers = user_profile.get('followers', {}).get('total', 0)
             if user_id:
                 request.session['spotify_user_id'] = user_id
+                request.session['spotify_display_name'] = username
 
             profile_cache: Optional[Dict[str, object]] = None
             if user_id:
@@ -376,3 +397,137 @@ class RecommendedArtistsAPIView(View):
             },
         }
         return JsonResponse(payload)
+
+@require_POST
+@csrf_exempt
+def toggle_follow(request):
+    """Toggle follow status for a user"""
+    try:
+        data = json.loads(request.body)
+        following_user_id = data.get('following_user_id')
+        following_display_name = data.get('following_display_name')
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({'error': 'Invalid request'}, status=400)
+
+    # Validate required fields
+    if not following_user_id or not following_display_name:
+        return JsonResponse({'error': 'Missing required fields'}, status=400)
+
+    follower_user_id = request.session.get('spotify_user_id')
+    follower_display_name = request.session.get('spotify_display_name', follower_user_id)
+
+    if not follower_user_id:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+
+    if follower_user_id == following_user_id:
+        return JsonResponse({'error': 'Cannot follow yourself'}, status=400)
+
+    # Check if already following
+    try:
+        existing_follow = UserFollow.objects.filter(
+            follower_user_id=follower_user_id,
+            following_user_id=following_user_id
+        ).first()
+
+        if existing_follow:
+            # Unfollow
+            existing_follow.delete()
+            return JsonResponse({
+                'success': True,
+                'following': False,
+                'message': f'Unfollowed {following_display_name}'
+            })
+        else:
+            # Follow
+            UserFollow.objects.create(
+                follower_user_id=follower_user_id,
+                follower_display_name=follower_display_name,
+                following_user_id=following_user_id,
+                following_display_name=following_display_name
+            )
+            return JsonResponse({
+                'success': True,
+                'following': True,
+                'message': f'Now following {following_display_name}'
+            })
+    except Exception as e:
+        # Handle potential database errors
+        return JsonResponse({'error': 'Database error occurred'}, status=500)
+
+
+def get_following_list(request):
+    """Get list of users the current user is following"""
+    user_id = request.session.get('spotify_user_id')
+
+    if not user_id:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+
+    # Get all users this user is following
+    following = UserFollow.objects.filter(
+        follower_user_id=user_id
+    ).values(
+        'following_user_id',
+        'following_display_name',
+        'created_at'
+    )
+
+    # Get playlist counts for each followed user
+    following_list = []
+    for follow in following:
+        playlist_count = SavedPlaylist.objects.filter(
+            creator_user_id=follow['following_user_id']
+        ).count()
+
+        following_list.append({
+            'user_id': follow['following_user_id'],
+            'display_name': follow['following_display_name'],
+            'playlist_count': playlist_count,
+            'followed_at': follow['created_at'].isoformat()
+        })
+
+    return JsonResponse({
+        'following': following_list,
+        'count': len(following_list)
+    })
+
+
+def get_user_playlists(request, user_id):
+    """Get all playlists for a specific user"""
+    current_user_id = request.session.get('spotify_user_id')
+
+    if not current_user_id:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+
+    # Get user's playlists
+    playlists = SavedPlaylist.objects.filter(
+        creator_user_id=user_id
+    ).order_by('-created_at')
+
+    # Check if current user is following this user
+    is_following = UserFollow.objects.filter(
+        follower_user_id=current_user_id,
+        following_user_id=user_id
+    ).exists()
+
+    playlist_data = []
+    for playlist in playlists:
+        playlist_data.append({
+            'playlist_id': playlist.playlist_id,
+            'playlist_name': playlist.playlist_name,
+            'description': playlist.description,
+            'cover_image': playlist.cover_image,
+            'track_count': playlist.track_count,
+            'like_count': playlist.like_count,
+            'created_at': playlist.created_at.isoformat(),
+            'spotify_uri': playlist.spotify_uri
+        })
+
+    user_display_name = playlists.first().creator_display_name if playlists.exists() else user_id
+
+    return JsonResponse({
+        'user_id': user_id,
+        'display_name': user_display_name,
+        'is_following': is_following,
+        'playlists': playlist_data,
+        'count': len(playlist_data)
+    })

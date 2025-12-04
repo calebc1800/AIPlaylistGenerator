@@ -9,7 +9,15 @@
     <div class="playlist-info-compact">
         <div class="playlist-title">{{ playlist.playlist_name }}</div>
         <div class="playlist-meta">
-            <span class="creator-name">👤 {{ playlist.creator_display_name }}</span>
+            <span class="creator-name">
+                👤
+                <a href="#"
+                   class="creator-link"
+                   data-user-id="{{ playlist.creator_user_id }}"
+                   data-user-name="{{ playlist.creator_display_name }}">
+                    {{ playlist.creator_display_name }}
+                </a>
+            </span>
             {% if user_id %}
             <form method="POST" action="/explorer/playlist/{{ user_id }}/{{ playlist.playlist_id }}/like/" class="like-form" style="display: inline;">
                 {% csrf_token %}
@@ -26,5 +34,11 @@
         {% if playlist.spotify_uri %}
         <a href="https://open.spotify.com/playlist/{{ playlist.playlist_id }}" target="_blank" class="spotify-link">View on Spotify →</a>
         {% endif %}
+        <button class="follow-creator-btn"
+                data-user-id="{{ playlist.creator_user_id }}"
+                data-user-name="{{ playlist.creator_display_name }}"
+                style="margin-top: 8px;">
+            Follow Creator
+        </button>
     </div>
 </div>

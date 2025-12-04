@@ -3,90 +3,270 @@
     "model": "recommender.savedplaylist",
     "pk": 1,
     "fields": {
-      "playlist_id": "6n3ByyRvg7TAy9yAfwe2a8",
-      "like_count": 0,
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+      "playlist_id": "7c8wpEP1DlmzcIURIv1qXl",
+      "creator_user_id": "yru579e0l65443jhy9nlw5ppr",
+      "creator_display_name": "Isaac",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e020f98789111606f77a27d6f67ab67616d00001e0283422ef73e5cd3d99e1e81d9ab67616d00001e02b5e18a80757ba2f787213d21ab67616d00001e02f6465d4b8cdd34ed4d7853e2",
+      "description": "AI-generated playlist: 90s R&B blended with jazz. Mood: chill, Genre: R&B, Jazz, Energy: medium",
+      "playlist_name": "90S R&B Blended With Jazz",
+      "spotify_uri": "spotify:playlist:7c8wpEP1DlmzcIURIv1qXl",
+      "total_duration_ms": 4139438,
+      "track_count": 15
     }
   },
   {
     "model": "recommender.savedplaylist",
     "pk": 2,
     "fields": {
-      "playlist_id": "154Y0yOmSr61Aj8Enfdzwl",
-      "like_count": 0,
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+      "playlist_id": "6n3ByyRvg7TAy9yAfwe2a8",
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
+      "creator_display_name": "grant_wehrli",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e021f9edf15e43f4c2f4938b869ab67616d00001e02533fd0b248052d04e6b732c0ab67616d00001e02cad4832cb7b5844343278daaab67616d00001e02d5fccf9ce08b6a1e7d12a222",
+      "description": "",
+      "playlist_name": "metal",
+      "spotify_uri": "spotify:playlist:6n3ByyRvg7TAy9yAfwe2a8",
+      "total_duration_ms": 4071627,
+      "track_count": 15
     }
   },
   {
     "model": "recommender.savedplaylist",
     "pk": 3,
     "fields": {
-      "playlist_id": "5LBeUcLfsjM4Uv0GhiDuBv",
-      "like_count": 0,
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+      "playlist_id": "154Y0yOmSr61Aj8Enfdzwl",
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
+      "creator_display_name": "grant_wehrli",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e020f6ce5c138493ac768d9afc8ab67616d00001e029860171ddfee17f77a570cf6ab67616d00001e02c6f7af36ecdc3ed6e0a1f169ab67616d00001e02d965d29d7dcf46ade5a8a7e4",
+      "description": "",
+      "playlist_name": "Pop Workout",
+      "spotify_uri": "spotify:playlist:154Y0yOmSr61Aj8Enfdzwl",
+      "total_duration_ms": 2925005,
+      "track_count": 14
     }
   },
   {
     "model": "recommender.savedplaylist",
     "pk": 4,
     "fields": {
-      "playlist_id": "1NSb4lrvkXLDjBxHTzZlHt",
-      "like_count": 0,
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+      "playlist_id": "5LBeUcLfsjM4Uv0GhiDuBv",
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
+      "creator_display_name": "grant_wehrli",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e024dcb6c5df15cf74596ab25a4ab67616d00001e026224d1236b0e0a0e1586efbbab67616d00001e027f5ac389dbcaf7a8c17371e3ab67616d00001e02f8d4d00ffe09373efb13ce29",
+      "description": "",
+      "playlist_name": "Chill Kpop For Studying",
+      "spotify_uri": "spotify:playlist:5LBeUcLfsjM4Uv0GhiDuBv",
+      "total_duration_ms": 2531155,
+      "track_count": 15
     }
   },
   {
     "model": "recommender.savedplaylist",
     "pk": 5,
     "fields": {
-      "playlist_id": "60sZVp4Ji98FehG76NKLBp",
-      "like_count": 0,
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+      "playlist_id": "1NSb4lrvkXLDjBxHTzZlHt",
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
+      "creator_display_name": "grant_wehrli",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e024a052b99c042dc15f933145bab67616d00001e029860171ddfee17f77a570cf6ab67616d00001e02bdcea025a483b9642f17a9f8ab67616d00001e02e52a59a28efa4773dd2bfe1b",
+      "description": "",
+      "playlist_name": "Road Trip Pop Punk",
+      "spotify_uri": "spotify:playlist:1NSb4lrvkXLDjBxHTzZlHt",
+      "total_duration_ms": 3307632,
+      "track_count": 15
     }
   },
   {
     "model": "recommender.savedplaylist",
     "pk": 6,
     "fields": {
-      "playlist_id": "1FTmfv50mRAAgbkMS0H8UD",
-      "like_count": 0,
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+      "playlist_id": "60sZVp4Ji98FehG76NKLBp",
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
+      "creator_display_name": "grant_wehrli",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e025f1f51d14e8bea89484ecd1bab67616d00001e026e996745f2c7b8036abef213ab67616d00001e02e2f039481babe23658fc719aab67616d00001e02f1a378f8bcaa4be358f02ca2",
+      "description": "",
+      "playlist_name": "Linkin Park",
+      "spotify_uri": "spotify:playlist:60sZVp4Ji98FehG76NKLBp",
+      "total_duration_ms": 3155049,
+      "track_count": 15
     }
   },
   {
     "model": "recommender.savedplaylist",
     "pk": 7,
     "fields": {
-      "playlist_id": "6l7VzSBucNaJjmzZmkhSDe",
-      "like_count": 0,
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+      "playlist_id": "1FTmfv50mRAAgbkMS0H8UD",
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
+      "creator_display_name": "grant_wehrli",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e0232ddd18dc88969d84dbff3abab67616d00001e024b6b1547455bbecb9f6bba64ab67616d00001e029ccaa7931619cf504014a987ab67616d00001e02e1bc1af856b42dd7fdba9f84",
+      "description": "",
+      "playlist_name": "Fall Vibes Indie Rock",
+      "spotify_uri": "spotify:playlist:1FTmfv50mRAAgbkMS0H8UD",
+      "total_duration_ms": 2965335,
+      "track_count": 13
     }
   },
   {
     "model": "recommender.savedplaylist",
     "pk": 8,
     "fields": {
-      "playlist_id": "2V73cN8GRlHd6bupTLwwsV",
-      "like_count": 0,
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+      "playlist_id": "6l7VzSBucNaJjmzZmkhSDe",
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
+      "creator_display_name": "grant_wehrli",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e023cef016d13d82873d45af84aab67616d00001e025b2d1de0869bdfadb2454ef3ab67616d00001e02c8ac560f803bba4902f8bbc5ab67616d00001e02fd56f3c7a294f5cfe51c7b17",
+      "description": "",
+      "playlist_name": "Christmas Music High Energy Instrumental",
+      "spotify_uri": "spotify:playlist:6l7VzSBucNaJjmzZmkhSDe",
+      "total_duration_ms": 2616454,
+      "track_count": 14
     }
   },
   {
     "model": "recommender.savedplaylist",
     "pk": 9,
     "fields": {
-      "playlist_id": "65q9zVzx99RlXtYvuPjFik",
-      "like_count": 0,
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+      "playlist_id": "2V73cN8GRlHd6bupTLwwsV",
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
+      "creator_display_name": "grant_wehrli",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e02220f3b1f40e3276662155f16ab67616d00001e0234fb2b0117a542d515dc78d6ab67616d00001e027f570d8b2e794f1493dca2caab67616d00001e02c17beab3e27f18af397a00b2",
+      "description": "",
+      "playlist_name": "Country Classics",
+      "spotify_uri": "spotify:playlist:2V73cN8GRlHd6bupTLwwsV",
+      "total_duration_ms": 2999992,
+      "track_count": 15
     }
   },
   {
     "model": "recommender.savedplaylist",
     "pk": 10,
     "fields": {
+      "playlist_id": "65q9zVzx99RlXtYvuPjFik",
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
+      "creator_display_name": "grant_wehrli",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e020910e39b1092e8ec44626aa3ab67616d00001e02be9fa5a89479b6af481938a0ab67616d00001e02cad4832cb7b5844343278daaab67616d00001e02d5fccf9ce08b6a1e7d12a222",
+      "description": "",
+      "playlist_name": "Metal Classics",
+      "spotify_uri": "spotify:playlist:65q9zVzx99RlXtYvuPjFik",
+      "total_duration_ms": 4335959,
+      "track_count": 15
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 11,
+    "fields": {
       "playlist_id": "5D14y7ws4mTPFUziP9FUeF",
-      "like_count": 0,
-      "creator_user_id": "womtgn9n35fvc3w5lvz506236"
+      "creator_user_id": "womtgn9n35fvc3w5lvz506236",
+      "creator_display_name": "grant_wehrli",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e02413a6c2c7b296d98171e5e21ab67616d00001e028d0a75346badc30c8b845be9ab67616d00001e02cb76604d9c5963544cf5be64ab67616d00001e02d3ce97395ff522b0d70c1094",
+      "description": "",
+      "playlist_name": "Summer Beach Vibes",
+      "spotify_uri": "spotify:playlist:5D14y7ws4mTPFUziP9FUeF",
+      "total_duration_ms": 3110753,
+      "track_count": 15
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 12,
+    "fields": {
+      "playlist_id": "4zg6rYpkgfRnRQvKjFcWoi",
+      "creator_user_id": "yru579e0l65443jhy9nlw5ppr",
+      "creator_display_name": "Isaac",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e02014080d39d56c94c0b285362ab67616d00001e021070095e88dce90a090171b5ab67616d00001e022fff2e9026b9481d45c4842aab67616d00001e02a299ee1568d86d3b368c4aba",
+      "description": "AI-generated playlist: Laid-back house for a beach sunset. Mood: laid-back, Genre: house, Energy: low",
+      "playlist_name": "Laid-Back House For A Beach Sunset",
+      "spotify_uri": "spotify:playlist:4zg6rYpkgfRnRQvKjFcWoi",
+      "total_duration_ms": 3390399,
+      "track_count": 14
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 13,
+    "fields": {
+      "playlist_id": "2jLibAzF5XNlJC1tEBr2df",
+      "creator_user_id": "yru579e0l65443jhy9nlw5ppr",
+      "creator_display_name": "Isaac",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e020ebc17239b6b18ba88cfb8caab67616d00001e022def9ef3f6a82c8d6fd8c143ab67616d00001e02b6bd44cf06bf8f4d5ce1e080ab67616d00001e02db1a2b8396094329afcbbe43",
+      "description": "AI-generated playlist: Instrumental jazz for deep work sessions. Mood: focused, Genre: instrumental jazz, Energy: medium",
+      "playlist_name": "Instrumental Jazz For Deep Work Sessions",
+      "spotify_uri": "spotify:playlist:2jLibAzF5XNlJC1tEBr2df",
+      "total_duration_ms": 3996931,
+      "track_count": 15
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 14,
+    "fields": {
+      "playlist_id": "36S9m2z3QgFIJA45XdC3P6",
+      "creator_user_id": "yru579e0l65443jhy9nlw5ppr",
+      "creator_display_name": "Isaac",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e021017779b8f5fe0ccd77bf886ab67616d00001e02807aad47d0c190e56f263038ab67616d00001e02939de3b785db1a6f0c07a677ab67616d00001e02bf7c317a63c4f128b8823406",
+      "description": "AI-generated playlist: Warm acoustic folk for a rainy afternoon indoors. Mood: warm, Genre: acoustic folk, Energy: low",
+      "playlist_name": "Warm Acoustic Folk For A Rainy Afternoon Indoors",
+      "spotify_uri": "spotify:playlist:36S9m2z3QgFIJA45XdC3P6",
+      "total_duration_ms": 3442220,
+      "track_count": 15
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 15,
+    "fields": {
+      "playlist_id": "6v0TObnSSZgwlM9r2ow9os",
+      "creator_user_id": "yru579e0l65443jhy9nlw5ppr",
+      "creator_display_name": "Isaac",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e02930f686fe89425c7b6bf9a7dab67616d00001e02cbed1897404ad0491c4c2c91ab67616d00001e02fd8d7a8d96871e791cb1f626ab67616d00001e02ff5429125128b43572dbdccd",
+      "description": "AI-generated playlist: High-energy pop with fearless female vocals. Mood: fearless, Genre: pop, Energy: high",
+      "playlist_name": "High-Energy Pop With Fearless Female Vocals",
+      "spotify_uri": "spotify:playlist:6v0TObnSSZgwlM9r2ow9os",
+      "total_duration_ms": 3347208,
+      "track_count": 16
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 16,
+    "fields": {
+      "playlist_id": "20YJKKVatzQVrS1BGriRYF",
+      "creator_user_id": "yru579e0l65443jhy9nlw5ppr",
+      "creator_display_name": "Isaac",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e020672b0f8756ae2af86e8a5ceab67616d00001e02807aad47d0c190e56f263038ab67616d00001e028b32b139981e79f2ebe005ebab67616d00001e029e1cfc756886ac782e363d79",
+      "description": "AI-generated playlist: Feel-good indie for a sunny commute. Mood: feel-good, Genre: indie, Energy: medium",
+      "playlist_name": "Feel-Good Indie For A Sunny Commute",
+      "spotify_uri": "spotify:playlist:20YJKKVatzQVrS1BGriRYF",
+      "total_duration_ms": 3747144,
+      "track_count": 16
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 17,
+    "fields": {
+      "playlist_id": "5rH5v96KuC7siMnXbPEWmG",
+      "creator_user_id": "yru579e0l65443jhy9nlw5ppr",
+      "creator_display_name": "Isaac",
+      "cover_image": "https://mosaic.scdn.co/640/ab67616d00001e0200cc7a17c01fbaa427d6a5c4ab67616d00001e02014080d39d56c94c0b285362ab67616d00001e022500bcdc1790d13e7ac1a0c0ab67616d00001e02ae441d94b99dc2dad3bcf6ab",
+      "description": "AI-generated playlist: Laid-back house for a beach sunset. Mood: laid-back, Genre: house, Energy: low",
+      "playlist_name": "Laid-Back House For A Beach Sunset",
+      "spotify_uri": "spotify:playlist:5rH5v96KuC7siMnXbPEWmG",
+      "total_duration_ms": 3313287,
+      "track_count": 14
+    }
+  },
+  {
+    "model": "recommender.savedplaylist",
+    "pk": 18,
+    "fields": {
+      "playlist_id": "2PociEngxCViC6Lkgprlha",
+      "creator_user_id": "yru579e0l65443jhy9nlw5ppr",
+      "creator_display_name": "Isaac",
+      "cover_image": "https://image-cdn-ak.spotifycdn.com/image/ab67706c0000da84bcf7cd497ea01a0ba112579c",
+      "description": "AI-generated playlist: Something like Chappell Roan with fresh finds. Mood: chill, Genre: pop, Energy: medium",
+      "playlist_name": "Something Like Chappell Roan With Fresh Finds",
+      "spotify_uri": "spotify:playlist:2PociEngxCViC6Lkgprlha",
+      "total_duration_ms": 4146123,
+      "track_count": 20
     }
   }
 ]
