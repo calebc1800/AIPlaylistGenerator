@@ -906,7 +906,7 @@ def remix_playlist(request):
     debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
     log = _make_logger(debug_steps, errors, label="remix_playlist", capture_debug=debug_enabled)
 
-    prompt = (cached_payload.get("prompt") or request.POST.get("prompt") or "").strip()
+    prompt = (cached_payload.get("prompt") or "").strip()
 
     llm_provider = _determine_llm_provider(
         request,
