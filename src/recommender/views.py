@@ -852,7 +852,23 @@ def generate_playlist(request):
 
 @require_POST
 def remix_playlist(request):
-    """Regenerate the cached playlist using the current tracks as seeds."""
+    """Regenerate the cached playlist using the current tracks as seeds.
+
+    POST Parameters:
+    - cache_key: The session cache key for the playlist
+    - prompt: (Optional) string prompt for remixing the playlist
+    - target_count: (Optional) Override the playlist size (positive integer)
+
+    If POST prompt are provided:
+    - Empty/missing cached attributes will be filled with attributes extracted from POST
+    - List-type attributes (e.g., 'artists') will be extended (deduplicated)
+    - Scalar attributes won't override non-empty cached values
+
+    If POST target_count is provided:
+    - Must be a positive integer
+    - Overrides the default (current playlist size)
+    - Falls back to default if invalid
+    """
     cache_key = _resolve_cache_key_from_request(request, request.POST.get("cache_key", ""))
     if not cache_key:
         messages.error(request, "Playlist session expired. Please generate a new playlist.")
@@ -893,7 +909,7 @@ def remix_playlist(request):
     debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
     log = _make_logger(debug_steps, errors, label="remix_playlist", capture_debug=debug_enabled)
 
-    prompt = (cached_payload.get("prompt") or request.POST.get("prompt") or "").strip()
+    prompt = (cached_payload.get("prompt") or "").strip()
 
     llm_provider = _determine_llm_provider(
         request,
@@ -902,9 +918,14 @@ def remix_playlist(request):
     )
 
     raw_attributes = cached_payload.get("attributes")
-    attributes = raw_attributes if isinstance(raw_attributes, dict) else None
-    if not attributes:
-        log("Cached attributes missing; extracting again from prompt.")
+    cached_attributes = raw_attributes if isinstance(raw_attributes, dict) else {}
+
+    # Extract or use cached attributes as starting point
+    if cached_attributes:
+        log("Using cached attributes as base.")
+        attributes = dict(cached_attributes)
+    else:
+        log("Cached attributes missing; extracting from prompt.")
         attributes = extract_playlist_attributes(
             prompt,
             debug_steps=debug_steps,
@@ -912,7 +933,65 @@ def remix_playlist(request):
             provider=llm_provider,
         )
 
+    # Check for additional prompts in POST request
+    post_prompt = request.POST.get("prompt")
+
+    if post_prompt:
+        post_attributes = extract_playlist_attributes(
+            post_prompt,
+            debug_steps=debug_steps,
+            log_step=log,
+            provider=llm_provider,
+        )
+    else:
+        post_attributes = None
+
+    # Merge remix attributes into existing attributes
+    if post_attributes:
+        log(f"Merging POST attributes into cached attributes: {post_attributes}")
+        for key, value in post_attributes.items():
+            if key not in attributes or not attributes[key]:
+                # Override empty or missing cached attributes
+                attributes[key] = value
+                log(f"Set empty attribute '{key}' to {value}")
+            else:
+                # For list-type attributes (like "artists"), append new values
+                if isinstance(attributes.get(key), list) and isinstance(value, list):
+                    existing_set = {str(v).lower() for v in attributes[key]}
+                    new_count = 0
+                    for item in value:
+                        if str(item).lower() not in existing_set:
+                            attributes[key].append(item)
+                            new_count += 1
+                    if new_count > 0:
+                        log(f"Appended {new_count} new items to attribute '{key}'")
+                elif isinstance(attributes.get(key), list) and not isinstance(value, list):
+                    # Single item to list - convert and append if not duplicate
+                    existing_set = {str(v).lower() for v in attributes[key]}
+                    if str(value).lower() not in existing_set:
+                        attributes[key].append(value)
+                        log(f"Appended single item to attribute '{key}'")
+                else:
+                    # Scalar attribute with existing value - skip override
+                    log(f"Skipping scalar override for attribute '{key}' (cached value present)")
+
+    log(f"Attributes after normalization: {attributes}")
+
+    # Determine target_count: use POST override if provided, else use existing song count
     target_count = sum(1 for entry in track_details if isinstance(entry, dict))
+    post_target_count = request.POST.get("target_count")
+
+    if post_target_count:
+        try:
+            parsed_count = int(post_target_count)
+            if parsed_count > 0:
+                target_count = parsed_count
+                log(f"Target count overridden via POST: {target_count}")
+            else:
+                log(f"Invalid target count {parsed_count}; using default {target_count}")
+        except (ValueError, TypeError):
+            log(f"Failed to parse target_count '{post_target_count}'; using default {target_count}")
+
     seed_snapshot = [
         f"{entry.get('name', 'Unknown')} - {entry.get('artists', 'Unknown')}".strip()
         for entry in track_details

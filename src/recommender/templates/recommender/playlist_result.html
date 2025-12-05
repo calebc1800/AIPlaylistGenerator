@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 {% load static %}
 <html lang="en">
@@ -6,6 +7,147 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Playlist Preview</title>
     <link rel="stylesheet" href="{% static 'recommender.css' %}"/>
+    <style>
+        /* Remix Modal Styles */
+        .remix-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(10, 10, 10, 0.92);
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 90;
+        }
+
+        .remix-modal-overlay.hidden {
+            display: none;
+        }
+
+        .remix-modal {
+            background: linear-gradient(135deg, rgba(2, 136, 209, 0.18), rgba(66, 165, 245, 0.1));
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .remix-modal__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .remix-modal__header h2 {
+            margin: 0;
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .remix-modal__close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.6);
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s ease;
+        }
+
+        .remix-modal__close:hover {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .remix-modal__body {
+            padding: 24px;
+        }
+
+        .remix-form-group {
+            margin-bottom: 20px;
+        }
+
+        .remix-form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .remix-form-label {
+            display: block;
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 8px;
+            color: #ffffff;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .remix-form-input {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            background-color: rgba(255, 255, 255, 0.04);
+            color: #ffffff;
+            font-family: inherit;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            box-sizing: border-box;
+        }
+
+        .remix-form-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .remix-form-textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .remix-form-input:focus {
+            outline: none;
+            border-color: rgba(66, 165, 245, 0.6);
+            box-shadow: 0 0 0 3px rgba(66, 165, 245, 0.25);
+        }
+
+        .remix-modal__footer {
+            display: flex;
+            gap: 12px;
+            padding: 24px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            justify-content: flex-end;
+        }
+
+        .remix-modal__footer .btn {
+            min-width: 120px;
+        }
+
+    </style>
+
 </head>
 <body>
     <div class="page-container">
@@ -83,10 +225,8 @@
                         <div class="playlist-hero__actions">
                             <div class="action-buttons">
                                 <button
-                                    type="submit"
+                                    type="button"
                                     class="btn btn-ghost"
-                                    formaction="{% url 'recommender:remix_playlist' %}"
-                                    formmethod="post"
                                     id="remix-button"
                                     {% if not cache_key or not playlist_tracks %}disabled{% endif %}>
                                     Remix Playlist
@@ -768,522 +908,646 @@
     {% endif %}
 
     <script>
-        (function () {
-            const trackList = document.getElementById('track-list');
-            const saveButton = document.getElementById('save-playlist-button');
-            const messageStack = document.getElementById('message-stack');
-            const cacheKey = trackList ? trackList.dataset.cacheKey : null;
-            const updateUrl = trackList ? trackList.dataset.updateUrl : null;
-            const remixOverlay = document.getElementById('remix-overlay');
-            const remixProgressBar = document.getElementById('remix-progress-bar');
-            const remixProgressLabel = document.getElementById('remix-progress-label');
-            const remixButton = document.getElementById('remix-button');
-            const playlistForm = document.getElementById('playlist-save-form');
+        const trackList = document.getElementById('track-list');
+        const saveButton = document.getElementById('save-playlist-button');
+        const messageStack = document.getElementById('message-stack');
+        const cacheKey = trackList ? trackList.dataset.cacheKey : null;
+        const updateUrl = trackList ? trackList.dataset.updateUrl : null;
+        const remixOverlay = document.getElementById('remix-overlay');
+        const remixProgressBar = document.getElementById('remix-progress-bar');
+        const remixProgressLabel = document.getElementById('remix-progress-label');
+        const remixButton = document.getElementById('remix-button');
+        const playlistForm = document.getElementById('playlist-save-form');
 
-            if (playlistForm && remixButton && remixOverlay && remixProgressBar && remixProgressLabel) {
-                let remixFrame = null;
+        let remixFrame = null;
 
-                const resetRemixProgress = () => {
-                    if (remixFrame !== null) {
-                        cancelAnimationFrame(remixFrame);
-                        remixFrame = null;
-                    }
-                    remixProgressBar.style.width = '0%';
-                    remixProgressLabel.textContent = 'Preparing remix...';
-                };
+        const resetRemixProgress = () => {
+            if (remixFrame !== null) {
+                cancelAnimationFrame(remixFrame);
+                remixFrame = null;
+            }
+            remixProgressBar.style.width = '0%';
+            remixProgressLabel.textContent = 'Preparing remix...';
+        };
 
-                const holdNearCompletion = (label) => {
-                    if (!remixOverlay.classList.contains('visible')) {
-                        resetRemixProgress();
-                        return;
-                    }
-                    const flicker = 94 + Math.random() * 2;
-                    remixProgressBar.style.width = `${flicker}%`;
-                    remixProgressLabel.textContent = `${label} (waiting on Spotify...)`;
-                    remixFrame = requestAnimationFrame(() => holdNearCompletion(label));
-                };
+        const holdNearCompletion = (label) => {
+            if (!remixOverlay.classList.contains('visible')) {
+                resetRemixProgress();
+                return;
+            }
+            const flicker = 94 + Math.random() * 2;
+            remixProgressBar.style.width = `${flicker}%`;
+            remixProgressLabel.textContent = `${label} (waiting on Spotify...)`;
+            remixFrame = requestAnimationFrame(() => holdNearCompletion(label));
+        };
 
-                const startRemixProgress = () => {
-                    const totalSteps = Number(remixOverlay.dataset.totalSteps || 24);
-                    const phaseTimeline = [
-                        { label: 'Studying current mix', duration: 1200, target: 0.08 },
-                        { label: 'Spotlighting standout tracks', duration: 12500, target: 0.2 },
-                        { label: 'Hunting fresh vibes', duration: 58000, target: 0.72 },
-                        { label: 'Resolving Spotify matches', duration: 5500, target: 0.88 },
-                        { label: 'Balancing energy arcs', duration: 4200, target: 0.94 },
-                        { label: 'Sequencing transitions', duration: 2600, target: 0.97 },
-                    ];
-                    const finalLabel = 'Locking in remix order';
-                    const totalDuration = phaseTimeline.reduce((sum, phase) => sum + phase.duration, 0);
-                    const startTime = performance.now();
+        const startRemixProgress = () => {
+            const totalSteps = Number(remixOverlay.dataset.totalSteps || 24);
+            const phaseTimeline = [
+                { label: 'Studying current mix', duration: 1200, target: 0.08 },
+                { label: 'Spotlighting standout tracks', duration: 12500, target: 0.2 },
+                { label: 'Hunting fresh vibes', duration: 58000, target: 0.72 },
+                { label: 'Resolving Spotify matches', duration: 5500, target: 0.88 },
+                { label: 'Balancing energy arcs', duration: 4200, target: 0.94 },
+                { label: 'Sequencing transitions', duration: 2600, target: 0.97 },
+            ];
+            const finalLabel = 'Locking in remix order';
+            const totalDuration = phaseTimeline.reduce((sum, phase) => sum + phase.duration, 0);
+            const startTime = performance.now();
 
-                    const animate = () => {
-                        if (!remixOverlay.classList.contains('visible')) {
-                            resetRemixProgress();
-                            return;
-                        }
+            const animate = () => {
+                if (!remixOverlay.classList.contains('visible')) {
+                    resetRemixProgress();
+                    return;
+                }
 
-                        const elapsed = performance.now() - startTime;
-                        const clampedElapsed = Math.min(elapsed, totalDuration);
+                const elapsed = performance.now() - startTime;
+                const clampedElapsed = Math.min(elapsed, totalDuration);
 
-                        let accumulated = 0;
-                        let previousTarget = 0;
-                        let currentLabel = phaseTimeline[phaseTimeline.length - 1].label;
-                        let progressRatio = phaseTimeline[phaseTimeline.length - 1].target;
+                let accumulated = 0;
+                let previousTarget = 0;
+                let currentLabel = phaseTimeline[phaseTimeline.length - 1].label;
+                let progressRatio = phaseTimeline[phaseTimeline.length - 1].target;
 
-                        for (const phase of phaseTimeline) {
-                            const phaseStart = accumulated;
-                            const phaseEnd = accumulated + phase.duration;
-                            if (clampedElapsed <= phaseEnd) {
-                                const localProgress = Math.min(
-                                    (clampedElapsed - phaseStart) / phase.duration,
-                                    1
-                                );
-                                progressRatio =
-                                    previousTarget + (phase.target - previousTarget) * (1 - Math.pow(1 - localProgress, 2));
-                                currentLabel = phase.label;
-                                break;
-                            }
-                            accumulated = phaseEnd;
-                            previousTarget = phase.target;
-                        }
-
-                        const percentage = Math.max(1, Math.floor(progressRatio * 100));
-                        remixProgressBar.style.width = `${percentage}%`;
-
-                        const stepNumber = Math.max(
-                            1,
-                            Math.min(totalSteps, Math.round(progressRatio * totalSteps))
+                for (const phase of phaseTimeline) {
+                    const phaseStart = accumulated;
+                    const phaseEnd = accumulated + phase.duration;
+                    if (clampedElapsed <= phaseEnd) {
+                        const localProgress = Math.min(
+                            (clampedElapsed - phaseStart) / phase.duration,
+                            1
                         );
-                        remixProgressLabel.textContent = `${currentLabel} (${stepNumber}/${totalSteps})`;
+                        progressRatio =
+                            previousTarget + (phase.target - previousTarget) * (1 - Math.pow(1 - localProgress, 2));
+                        currentLabel = phase.label;
+                        break;
+                    }
+                    accumulated = phaseEnd;
+                    previousTarget = phase.target;
+                }
 
-                        if (clampedElapsed < totalDuration) {
-                            remixFrame = requestAnimationFrame(animate);
-                        } else {
-                            remixFrame = requestAnimationFrame(() => holdNearCompletion(finalLabel));
+                const percentage = Math.max(1, Math.floor(progressRatio * 100));
+                remixProgressBar.style.width = `${percentage}%`;
+
+                const stepNumber = Math.max(
+                    1,
+                    Math.min(totalSteps, Math.round(progressRatio * totalSteps))
+                );
+                remixProgressLabel.textContent = `${currentLabel} (${stepNumber}/${totalSteps})`;
+
+                if (clampedElapsed < totalDuration) {
+                    remixFrame = requestAnimationFrame(animate);
+                } else {
+                    remixFrame = requestAnimationFrame(() => holdNearCompletion(finalLabel));
+                }
+            };
+
+            animate();
+        };
+
+        remixButton.addEventListener('click', () => {
+            if (remixButton.disabled) {
+                return;
+            }
+            // Progress bar will be shown when modal is submitted
+        });
+
+        playlistForm.addEventListener('submit', (event) => {
+            const submitter = event.submitter || document.activeElement;
+            if (submitter !== remixButton) {
+                remixOverlay.classList.remove('visible');
+                resetRemixProgress();
+            }
+        });
+
+        window.addEventListener('pagehide', () => {
+            resetRemixProgress();
+            remixOverlay.classList.remove('visible');
+        });
+
+        function formatDuration(ms) {
+            const totalSeconds = Math.max(0, Math.floor(Number(ms) / 1000));
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function refreshDurations() {
+            if (!trackList) {
+                return;
+            }
+            const durations = trackList.querySelectorAll('[data-duration-ms]');
+            durations.forEach((node) => {
+                const ms = Number(node.dataset.durationMs || 0);
+                node.textContent = ms > 0 ? formatDuration(ms) : '--:--';
+            });
+        }
+
+        function updateTrackPositions() {
+            if (!trackList) {
+                return;
+            }
+            const items = trackList.querySelectorAll('.track-item');
+            items.forEach((item, index) => {
+                item.dataset.position = String(index);
+                const marker = item.querySelector('.track-position');
+                if (marker) {
+                    marker.textContent = `#${index + 1}`;
+                }
+            });
+        }
+
+        function setTrackCount(count) {
+            const counter = document.getElementById('track-count');
+            if (counter) {
+                counter.textContent = String(count);
+            }
+            if (saveButton) {
+                saveButton.disabled = count === 0;
+            }
+            const emptyState = document.getElementById('empty-state');
+            if (count === 0) {
+                if (!emptyState) {
+                    const placeholder = document.createElement('li');
+                    placeholder.id = 'empty-state';
+                    placeholder.className = 'empty-state';
+                    placeholder.textContent = 'No tracks available yet. Use Remix to generate a new set.';
+                    trackList.appendChild(placeholder);
+                }
+            } else if (emptyState) {
+                emptyState.remove();
+            }
+        }
+
+        function pushMessage(kind, text) {
+            if (!messageStack) {
+                return;
+            }
+            const node = document.createElement('div');
+            node.className = `message message-${kind}`;
+            node.textContent = text;
+            messageStack.appendChild(node);
+        }
+
+        function getCsrfToken() {
+            const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+            return tokenInput ? tokenInput.value : '';
+        }
+
+        if (trackList && cacheKey && updateUrl) {
+            trackList.addEventListener('click', (event) => {
+                const button = event.target.closest('.remove-track-button');
+                if (!button) {
+                    return;
+                }
+                const item = button.closest('.track-item');
+                if (!item) {
+                    return;
+                }
+                const trackId = item.dataset.trackId || '';
+                const position = Number(item.dataset.position || 0);
+                button.disabled = true;
+
+                fetch(updateUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        action: 'remove',
+                        cache_key: cacheKey,
+                        track_id: trackId,
+                        position,
+                    }),
+                })
+                    .then((response) => {
+                        if (!response.ok) {
+                            throw new Error('Request failed');
                         }
-                    };
-
-                    animate();
-                };
-
-                remixButton.addEventListener('click', () => {
-                    if (remixButton.disabled) {
-                        return;
-                    }
-                    remixOverlay.classList.add('visible');
-                    resetRemixProgress();
-                    startRemixProgress();
-                });
-
-                playlistForm.addEventListener('submit', (event) => {
-                    const submitter = event.submitter || document.activeElement;
-                    if (submitter !== remixButton) {
-                        remixOverlay.classList.remove('visible');
-                        resetRemixProgress();
-                    }
-                });
-
-                window.addEventListener('pagehide', () => {
-                    resetRemixProgress();
-                    remixOverlay.classList.remove('visible');
-                });
-            }
-
-            function formatDuration(ms) {
-                const totalSeconds = Math.max(0, Math.floor(Number(ms) / 1000));
-                const minutes = Math.floor(totalSeconds / 60);
-                const seconds = totalSeconds % 60;
-                return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-            }
-
-            function refreshDurations() {
-                if (!trackList) {
-                    return;
-                }
-                const durations = trackList.querySelectorAll('[data-duration-ms]');
-                durations.forEach((node) => {
-                    const ms = Number(node.dataset.durationMs || 0);
-                    node.textContent = ms > 0 ? formatDuration(ms) : '--:--';
-                });
-            }
-
-            function updateTrackPositions() {
-                if (!trackList) {
-                    return;
-                }
-                const items = trackList.querySelectorAll('.track-item');
-                items.forEach((item, index) => {
-                    item.dataset.position = String(index);
-                    const marker = item.querySelector('.track-position');
-                    if (marker) {
-                        marker.textContent = `#${index + 1}`;
-                    }
-                });
-            }
-
-            function setTrackCount(count) {
-                const counter = document.getElementById('track-count');
-                if (counter) {
-                    counter.textContent = String(count);
-                }
-                if (saveButton) {
-                    saveButton.disabled = count === 0;
-                }
-                const emptyState = document.getElementById('empty-state');
-                if (count === 0) {
-                    if (!emptyState) {
-                        const placeholder = document.createElement('li');
-                        placeholder.id = 'empty-state';
-                        placeholder.className = 'empty-state';
-                        placeholder.textContent = 'No tracks available yet. Use Remix to generate a new set.';
-                        trackList.appendChild(placeholder);
-                    }
-                } else if (emptyState) {
-                    emptyState.remove();
-                }
-            }
-
-            function pushMessage(kind, text) {
-                if (!messageStack) {
-                    return;
-                }
-                const node = document.createElement('div');
-                node.className = `message message-${kind}`;
-                node.textContent = text;
-                messageStack.appendChild(node);
-            }
-
-            function getCsrfToken() {
-                const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
-                return tokenInput ? tokenInput.value : '';
-            }
-
-            if (trackList && cacheKey && updateUrl) {
-                trackList.addEventListener('click', (event) => {
-                    const button = event.target.closest('.remove-track-button');
-                    if (!button) {
-                        return;
-                    }
-                    const item = button.closest('.track-item');
-                    if (!item) {
-                        return;
-                    }
-                    const trackId = item.dataset.trackId || '';
-                    const position = Number(item.dataset.position || 0);
-                    button.disabled = true;
-
-                    fetch(updateUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': getCsrfToken(),
-                        },
-                        credentials: 'same-origin',
-                        body: JSON.stringify({
-                            action: 'remove',
-                            cache_key: cacheKey,
-                            track_id: trackId,
-                            position,
-                        }),
+                        return response.json();
                     })
-                        .then((response) => {
-                            if (!response.ok) {
-                                throw new Error('Request failed');
-                            }
-                            return response.json();
-                        })
-                        .then((payload) => {
-                            if (payload.status !== 'ok') {
-                                throw new Error(payload.error || 'Unable to update playlist.');
-                            }
-                            item.remove();
-                            updateTrackPositions();
-                            setTrackCount(payload.track_count || 0);
-                            pushMessage('success', 'Track removed from the playlist.');
-                        })
-                        .catch((error) => {
-                            button.disabled = false;
-                            pushMessage('error', error.message || 'Failed to remove track. Try again.');
-                        });
-                });
-            }
-
-            refreshDurations();
-            if (trackList) {
-                setTrackCount(trackList.querySelectorAll('.track-item').length);
-            }
-
-            // Song search functionality
-            const searchInput = document.getElementById('song-search-input');
-            const searchTrigger = document.getElementById('song-search-trigger');
-            const chipButtons = document.querySelectorAll('.chip-button[data-target-input]');
-
-            if (chipButtons.length) {
-                chipButtons.forEach((button) => {
-                    button.addEventListener('click', () => {
-                        const targetId = button.dataset.targetInput;
-                        const searchTerm = (button.dataset.searchTerm || button.textContent || '').trim();
-                        if (!targetId || !searchTerm) {
-                            return;
+                    .then((payload) => {
+                        if (payload.status !== 'ok') {
+                            throw new Error(payload.error || 'Unable to update playlist.');
                         }
-                        const input = document.getElementById(targetId);
-                        if (!input) {
-                            return;
-                        }
-                        input.value = searchTerm;
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                        input.focus();
+                        item.remove();
+                        updateTrackPositions();
+                        setTrackCount(payload.track_count || 0);
+                        pushMessage('success', 'Track removed from the playlist.');
+                    })
+                    .catch((error) => {
+                        button.disabled = false;
+                        pushMessage('error', error.message || 'Failed to remove track. Try again.');
                     });
-                });
-            }
+            });
+        }
 
-            const searchResults = document.getElementById('search-results');
-            if (searchInput && searchResults) {
-                const searchUrl = searchInput.dataset.searchUrl;
-                const addUrl = searchInput.dataset.addUrl;
-                const cacheKey = searchInput.dataset.cacheKey;
-                let searchTimeout = null;
+        refreshDurations();
+        if (trackList) {
+            setTrackCount(trackList.querySelectorAll('.track-item').length);
+        }
 
-                function hideSearchResults() {
-                    searchResults.style.display = 'none';
-                    searchResults.innerHTML = '';
-                }
+        // Song search functionality
+        const searchInput = document.getElementById('song-search-input');
+        const searchTrigger = document.getElementById('song-search-trigger');
+        const chipButtons = document.querySelectorAll('.chip-button[data-target-input]');
 
-                function showSearchResults() {
-                    searchResults.style.display = 'block';
-                }
-
-                function createTrackElement(track) {
-                    const li = document.createElement('li');
-                    li.className = 'search-result-item';
-                    li.dataset.trackId = track.id;
-
-                    const trackDiv = document.createElement('div');
-                    trackDiv.className = 'search-result-track';
-
-                    if (track.album_image_url) {
-                        const img = document.createElement('img');
-                        img.src = track.album_image_url;
-                        img.alt = `Album art for ${track.name}`;
-                        img.className = 'search-result-art';
-                        trackDiv.appendChild(img);
-                    } else {
-                        const placeholder = document.createElement('div');
-                        placeholder.className = 'search-result-art search-result-art--placeholder';
-                        placeholder.textContent = track.name.charAt(0);
-                        trackDiv.appendChild(placeholder);
-                    }
-
-                    const metaDiv = document.createElement('div');
-                    metaDiv.className = 'search-result-meta';
-
-                    const nameSpan = document.createElement('span');
-                    nameSpan.className = 'search-result-name';
-                    nameSpan.textContent = track.name;
-                    metaDiv.appendChild(nameSpan);
-
-                    const artistsSpan = document.createElement('span');
-                    artistsSpan.className = 'search-result-artists';
-                    artistsSpan.textContent = track.artists;
-                    metaDiv.appendChild(artistsSpan);
-
-                    trackDiv.appendChild(metaDiv);
-
-                    const addButton = document.createElement('button');
-                    addButton.className = 'search-result-add';
-                    addButton.textContent = '+ Add';
-                    addButton.type = 'button';
-                    trackDiv.appendChild(addButton);
-
-                    li.appendChild(trackDiv);
-                    return li;
-                }
-
-                function performSearch(query) {
-                    if (query.length < 2) {
-                        hideSearchResults();
+        if (chipButtons.length) {
+            chipButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    const targetId = button.dataset.targetInput;
+                    const searchTerm = (button.dataset.searchTerm || button.textContent || '').trim();
+                    if (!targetId || !searchTerm) {
                         return;
                     }
+                    const input = document.getElementById(targetId);
+                    if (!input) {
+                        return;
+                    }
+                    input.value = searchTerm;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.focus();
+                });
+            });
+        }
 
-                    fetch(`${searchUrl}?q=${encodeURIComponent(query)}`, {
-                        method: 'GET',
-                        credentials: 'same-origin',
+        const searchResults = document.getElementById('search-results');
+        if (searchInput && searchResults) {
+            const searchUrl = searchInput.dataset.searchUrl;
+            const addUrl = searchInput.dataset.addUrl;
+            const cacheKey = searchInput.dataset.cacheKey;
+            let searchTimeout = null;
+
+            function hideSearchResults() {
+                searchResults.style.display = 'none';
+                searchResults.innerHTML = '';
+            }
+
+            function showSearchResults() {
+                searchResults.style.display = 'block';
+            }
+
+            function createTrackElement(track) {
+                const li = document.createElement('li');
+                li.className = 'search-result-item';
+                li.dataset.trackId = track.id;
+
+                const trackDiv = document.createElement('div');
+                trackDiv.className = 'search-result-track';
+
+                if (track.album_image_url) {
+                    const img = document.createElement('img');
+                    img.src = track.album_image_url;
+                    img.alt = `Album art for ${track.name}`;
+                    img.className = 'search-result-art';
+                    trackDiv.appendChild(img);
+                } else {
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'search-result-art search-result-art--placeholder';
+                    placeholder.textContent = track.name.charAt(0);
+                    trackDiv.appendChild(placeholder);
+                }
+
+                const metaDiv = document.createElement('div');
+                metaDiv.className = 'search-result-meta';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'search-result-name';
+                nameSpan.textContent = track.name;
+                metaDiv.appendChild(nameSpan);
+
+                const artistsSpan = document.createElement('span');
+                artistsSpan.className = 'search-result-artists';
+                artistsSpan.textContent = track.artists;
+                metaDiv.appendChild(artistsSpan);
+
+                trackDiv.appendChild(metaDiv);
+
+                const addButton = document.createElement('button');
+                addButton.className = 'search-result-add';
+                addButton.textContent = '+ Add';
+                addButton.type = 'button';
+                trackDiv.appendChild(addButton);
+
+                li.appendChild(trackDiv);
+                return li;
+            }
+
+            function performSearch(query) {
+                if (query.length < 2) {
+                    hideSearchResults();
+                    return;
+                }
+
+                fetch(`${searchUrl}?q=${encodeURIComponent(query)}`, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                })
+                    .then((response) => {
+                        if (!response.ok) {
+                            throw new Error('Search failed');
+                        }
+                        return response.json();
                     })
-                        .then((response) => {
-                            if (!response.ok) {
-                                throw new Error('Search failed');
-                            }
-                            return response.json();
-                        })
-                        .then((data) => {
-                            if (data.error) {
-                                throw new Error(data.error);
-                            }
+                    .then((data) => {
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
 
-                            searchResults.innerHTML = '';
-                            if (data.results && data.results.length > 0) {
-                                const ul = document.createElement('ul');
-                                ul.className = 'search-result-list';
-                                data.results.forEach((track) => {
-                                    const li = createTrackElement(track);
-                                    ul.appendChild(li);
-                                });
-                                searchResults.appendChild(ul);
-                                showSearchResults();
-                            } else {
-                                const noResults = document.createElement('div');
-                                noResults.className = 'search-no-results';
-                                noResults.textContent = 'No songs found';
-                                searchResults.appendChild(noResults);
-                                showSearchResults();
-                            }
-                        })
-                        .catch((error) => {
-                            searchResults.innerHTML = '';
-                            const errorDiv = document.createElement('div');
-                            errorDiv.className = 'search-error';
-                            errorDiv.textContent = error.message || 'Search failed. Try again.';
-                            searchResults.appendChild(errorDiv);
+                        searchResults.innerHTML = '';
+                        if (data.results && data.results.length > 0) {
+                            const ul = document.createElement('ul');
+                            ul.className = 'search-result-list';
+                            data.results.forEach((track) => {
+                                const li = createTrackElement(track);
+                                ul.appendChild(li);
+                            });
+                            searchResults.appendChild(ul);
                             showSearchResults();
-                        });
-                }
-
-                searchInput.addEventListener('input', (event) => {
-                    const query = event.target.value.trim();
-                    if (searchTimeout) {
-                        clearTimeout(searchTimeout);
-                    }
-                    searchTimeout = setTimeout(() => {
-                        performSearch(query);
-                    }, 300);
-                });
-
-                searchInput.addEventListener('blur', () => {
-                    // Delay hiding to allow click on results
-                    setTimeout(() => {
-                        hideSearchResults();
-                    }, 200);
-                });
-
-                searchInput.addEventListener('focus', () => {
-                    const query = searchInput.value.trim();
-                    if (query.length >= 2 && searchResults.innerHTML) {
-                        showSearchResults();
-                    }
-                });
-
-                if (searchTrigger) {
-                    searchTrigger.addEventListener('click', () => {
-                        const query = searchInput.value.trim();
-                        performSearch(query);
-                        searchInput.focus();
-                    });
-                }
-
-                searchResults.addEventListener('click', (event) => {
-                    const button = event.target.closest('.search-result-add');
-                    if (!button) {
-                        return;
-                    }
-
-                    const item = button.closest('.search-result-item');
-                    if (!item) {
-                        return;
-                    }
-
-                    const trackId = item.dataset.trackId;
-                    if (!trackId) {
-                        return;
-                    }
-
-                    button.disabled = true;
-                    button.textContent = 'Adding...';
-
-                    fetch(addUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': getCsrfToken(),
-                        },
-                        credentials: 'same-origin',
-                        body: JSON.stringify({
-                            cache_key: cacheKey,
-                            track_id: trackId,
-                        }),
+                        } else {
+                            const noResults = document.createElement('div');
+                            noResults.className = 'search-no-results';
+                            noResults.textContent = 'No songs found';
+                            searchResults.appendChild(noResults);
+                            showSearchResults();
+                        }
                     })
-                        .then((response) => {
-                            if (!response.ok) {
-                                return response.json().then(data => {
-                                    throw new Error(data.error || 'Failed to add track');
-                                });
-                            }
-                            return response.json();
-                        })
-                        .then((data) => {
-                            if (data.status !== 'ok') {
+                    .catch((error) => {
+                        searchResults.innerHTML = '';
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'search-error';
+                        errorDiv.textContent = error.message || 'Search failed. Try again.';
+                        searchResults.appendChild(errorDiv);
+                        showSearchResults();
+                    });
+            }
+
+            searchInput.addEventListener('input', (event) => {
+                const query = event.target.value.trim();
+                if (searchTimeout) {
+                    clearTimeout(searchTimeout);
+                }
+                searchTimeout = setTimeout(() => {
+                    performSearch(query);
+                }, 300);
+            });
+
+            searchInput.addEventListener('blur', () => {
+                // Delay hiding to allow click on results
+                setTimeout(() => {
+                    hideSearchResults();
+                }, 200);
+            });
+
+            searchInput.addEventListener('focus', () => {
+                const query = searchInput.value.trim();
+                if (query.length >= 2 && searchResults.innerHTML) {
+                    showSearchResults();
+                }
+            });
+
+            if (searchTrigger) {
+                searchTrigger.addEventListener('click', () => {
+                    const query = searchInput.value.trim();
+                    performSearch(query);
+                    searchInput.focus();
+                });
+            }
+
+            searchResults.addEventListener('click', (event) => {
+                const button = event.target.closest('.search-result-add');
+                if (!button) {
+                    return;
+                }
+
+                const item = button.closest('.search-result-item');
+                if (!item) {
+                    return;
+                }
+
+                const trackId = item.dataset.trackId;
+                if (!trackId) {
+                    return;
+                }
+
+                button.disabled = true;
+                button.textContent = 'Adding...';
+
+                fetch(addUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        cache_key: cacheKey,
+                        track_id: trackId,
+                    }),
+                })
+                    .then((response) => {
+                        if (!response.ok) {
+                            return response.json().then(data => {
                                 throw new Error(data.error || 'Failed to add track');
-                            }
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then((data) => {
+                        if (data.status !== 'ok') {
+                            throw new Error(data.error || 'Failed to add track');
+                        }
 
-                            // Add track to the track list
-                            if (trackList && data.track) {
-                                const existingCount = trackList.querySelectorAll('.track-item').length;
-                                const trackItem = document.createElement('li');
-                                trackItem.className = 'track-item';
-                                trackItem.dataset.trackId = data.track.id;
-                                trackItem.dataset.position = String(existingCount);
+                        // Add track to the track list
+                        if (trackList && data.track) {
+                            const existingCount = trackList.querySelectorAll('.track-item').length;
+                            const trackItem = document.createElement('li');
+                            trackItem.className = 'track-item';
+                            trackItem.dataset.trackId = data.track.id;
+                            trackItem.dataset.position = String(existingCount);
 
-                                const track = data.track;
-                                const durationFormatted = formatDuration(track.duration_ms || 0);
-                                const fallbackInitial = (track.name || '?').charAt(0);
+                            const track = data.track;
+                            const durationFormatted = formatDuration(track.duration_ms || 0);
+                            const fallbackInitial = (track.name || '?').charAt(0);
 
-                                trackItem.innerHTML = `
-                                    <div class="track-position">#${existingCount + 1}</div>
-                                    <div class="track-artwork">
-                                        ${track.album_image_url
-                                            ? `<img src="${track.album_image_url}" alt="Album artwork for ${track.name}">`
-                                            : fallbackInitial}
-                                    </div>
-                                    <div class="track-info">
-                                        <span class="track-name">${track.name}</span>
-                                        <span class="track-artist">${track.artists}</span>
-                                        ${track.album_name ? `<span class="track-album">${track.album_name}</span>` : ''}
-                                    </div>
-                                    <div class="track-meta">
-                                        <span class="track-duration" data-duration-ms="${track.duration_ms || 0}">${durationFormatted}</span>
-                                        <button type="button" class="remove-track-button">Remove</button>
-                                    </div>
-                                `;
+                            trackItem.innerHTML = `
+                                <div class="track-position">#${existingCount + 1}</div>
+                                <div class="track-artwork">
+                                    ${track.album_image_url
+                                        ? `<img src="${track.album_image_url}" alt="Album artwork for ${track.name}">`
+                                        : fallbackInitial}
+                                </div>
+                                <div class="track-info">
+                                    <span class="track-name">${track.name}</span>
+                                    <span class="track-artist">${track.artists}</span>
+                                    ${track.album_name ? `<span class="track-album">${track.album_name}</span>` : ''}
+                                </div>
+                                <div class="track-meta">
+                                    <span class="track-duration" data-duration-ms="${track.duration_ms || 0}">${durationFormatted}</span>
+                                    <button type="button" class="remove-track-button">Remove</button>
+                                </div>
+                            `;
 
-                                trackList.appendChild(trackItem);
-                                updateTrackPositions();
-                                setTrackCount(data.track_count || trackList.querySelectorAll('.track-item').length);
-                            }
+                            trackList.appendChild(trackItem);
+                            updateTrackPositions();
+                            setTrackCount(data.track_count || trackList.querySelectorAll('.track-item').length);
+                        }
 
-                            pushMessage('success', `Added "${data.track.name}" to playlist`);
-                            button.textContent = 'Added!';
-                            searchInput.value = '';
-                            hideSearchResults();
+                        pushMessage('success', `Added "${data.track.name}" to playlist`);
+                        button.textContent = 'Added!';
+                        searchInput.value = '';
+                        hideSearchResults();
 
-                            setTimeout(() => {
-                                button.disabled = false;
-                                button.textContent = '+ Add';
-                            }, 2000);
-                        })
-                        .catch((error) => {
+                        setTimeout(() => {
                             button.disabled = false;
                             button.textContent = '+ Add';
-                            pushMessage('error', error.message || 'Failed to add track. Try again.');
-                        });
-                });
+                        }, 2000);
+                    })
+                    .catch((error) => {
+                        button.disabled = false;
+                        button.textContent = '+ Add';
+                        pushMessage('error', error.message || 'Failed to add track. Try again.');
+                    });
+            });
 
-                // Close search results when clicking outside
-                document.addEventListener('click', (event) => {
-                    if (!searchInput.contains(event.target) && !searchResults.contains(event.target)) {
-                        hideSearchResults();
-                    }
-                });
+            // Close search results when clicking outside
+            document.addEventListener('click', (event) => {
+                if (!searchInput.contains(event.target) && !searchResults.contains(event.target)) {
+                    hideSearchResults();
+                }
+            });
+        }
+
+        const genreToggle = document.querySelector('.genre-toggle');
+        const remainingGenreList = document.querySelector('[data-genre-list="remaining"]');
+        if (genreToggle && remainingGenreList) {
+            genreToggle.addEventListener('click', () => {
+                const expanded = genreToggle.getAttribute('aria-expanded') === 'true';
+                genreToggle.setAttribute('aria-expanded', String(!expanded));
+                remainingGenreList.classList.toggle('genre-legend--hidden', expanded);
+                genreToggle.textContent = expanded ? 'Show All Genres' : 'Hide Genres';
+            });
+        }
+
+        // Remix Modal Handler
+        document.addEventListener('DOMContentLoaded', function() {
+            // const remixButton = document.getElementById('remix-button');
+            // const remixOverlay = document.getElementById('remix-overlay');
+            const modalOverlay = document.getElementById('remix-modal-overlay');
+            const modalClose = document.getElementById('remix-modal-close');
+            const modalCancel = document.getElementById('remix-modal-cancel');
+            const modalSubmit = document.getElementById('remix-modal-submit');
+            const promptInput = document.getElementById('remix-prompt-input');
+            // const targetCountInput = document.getElementById('remix-target-count-input');
+            const trackCount = document.getElementById('track-count');
+
+            // Initialize target count with current playlist size
+            // if (trackCount) {
+            //     targetCountInput.value = trackCount.textContent;
+            // }
+
+
+            // Open modal when remix button is clicked
+            remixButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                modalOverlay.classList.remove('hidden');
+                promptInput.focus();
+            });
+
+            // Close modal functions
+            function closeModal() {
+                modalOverlay.classList.add('hidden');
             }
+
+            // Close button
+            modalClose.addEventListener('click', closeModal);
+
+            // Cancel button
+            modalCancel.addEventListener('click', closeModal);
+
+            // Close when clicking outside the modal
+            modalOverlay.addEventListener('click', function(e) {
+                if (e.target === modalOverlay) {
+                    closeModal();
+                }
+            });
+
+            // Submit remix form
+            modalSubmit.addEventListener('click', function(e) {
+                e.preventDefault();
+
+                const prompt = promptInput.value.trim();
+                // Derive target count from current playlist size
+                const targetCount = trackCount ? trackCount.textContent : '50';
+
+
+                // Validation
+                if (!prompt) {
+                    alert('Please enter a remix prompt');
+                    return;
+                }
+
+
+                // if (!targetCount || parseInt(targetCount) < 1) {
+                //     alert('Please enter a valid number of songs');
+                //     return;
+                // }
+
+
+                // Show progress bar overlay and start animation
+                remixOverlay.classList.add('visible');
+                resetRemixProgress();
+                startRemixProgress();
+
+                // Create and submit form with POST data
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = window.location.href; // Post to same URL
+
+                // Add CSRF token if it exists
+                const csrfToken = document.querySelector('[name="csrfmiddlewaretoken"]');
+                if (csrfToken) {
+                    const csrfInput = document.createElement('input');
+                    csrfInput.type = 'hidden';
+                    csrfInput.name = 'csrfmiddlewaretoken';
+                    csrfInput.value = csrfToken.value;
+                    form.appendChild(csrfInput);
+                }
+
+                // Add prompt field
+                const promptField = document.createElement('input');
+                promptField.type = 'hidden';
+                promptField.name = 'prompt';
+                promptField.value = prompt;
+                form.appendChild(promptField);
+
+                // Add target_count field
+                const targetCountField = document.createElement('input');
+                targetCountField.type = 'hidden';
+                targetCountField.name = 'target_count';
+                targetCountField.value = targetCount;
+                form.appendChild(targetCountField);
+
+                // Submit the form
+                document.body.appendChild(form);
+                form.submit();
+            });
+
+            // Allow Enter key to submit from inputs
+            promptInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                    modalSubmit.click();
+                }
+            });
+
+
+            // targetCountInput.addEventListener('keypress', function(e) {
+            //     if (e.key === 'Enter') {
+            //         modalSubmit.click();
+            //     }
+            // });
 
             const genreToggle = document.querySelector('.genre-toggle');
             const remainingGenreList = document.querySelector('[data-genre-list="remaining"]');
@@ -1611,7 +1875,42 @@
                     }
                 });
             }
-        })();
+        });
     </script>
+    <!-- Remix Modal Overlay -->
+    <div id="remix-modal-overlay" class="remix-modal-overlay hidden">
+        <div class="remix-modal">
+            <div class="remix-modal__header">
+                <h2>Remix Your Playlist</h2>
+                <button type="button" class="remix-modal__close" id="remix-modal-close" aria-label="Close modal">×</button>
+            </div>
+            <div class="remix-modal__body">
+                <div class="remix-form-group">
+                    <label for="remix-prompt-input" class="remix-form-label">Remix Prompt</label>
+                    <textarea
+                        id="remix-prompt-input"
+                        class="remix-form-input remix-form-textarea"
+                        placeholder="Describe the vibe, genre, or direction you want for your remix..."
+                        rows="3"></textarea>
+                </div>
+                <!-- Target count input commented out while maintaining functionality -->
+                <!-- <div class="remix-form-group">
+                    <label for="remix-target-count-input" class="remix-form-label">Number of Songs</label>
+                    <input
+                        type="number"
+                        id="remix-target-count-input"
+                        class="remix-form-input"
+                        min="1"
+                        max="500"
+                        placeholder="Number of songs">
+                </div> -->
+            </div>
+            <div class="remix-modal__footer">
+                <button type="button" class="btn btn-outline" id="remix-modal-cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" id="remix-modal-submit">Start Remix</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
