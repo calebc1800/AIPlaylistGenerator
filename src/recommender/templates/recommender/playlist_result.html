@@ -191,6 +191,18 @@
                                 <span class="prompt-pill__label">Prompt</span>
                                 <span class="prompt-pill__value">{{ prompt|default:"Custom AI blend" }}</span>
                             </div>
+                            <div id="hero-cover-image-container" style="display: none; margin: 16px 0;">
+                                <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                                    <img id="hero-cover-image" src="" alt="Playlist cover" style="width: 80px; height: 80px; border-radius: 6px; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+                                    <div style="flex: 1;">
+                                        <p style="margin: 0; font-size: 0.875rem; font-weight: 500; color: rgba(255,255,255,0.9);">Custom Cover Selected</p>
+                                        <p style="margin: 4px 0 0; font-size: 0.75rem; color: rgba(255,255,255,0.6);">Will be applied when saved to Spotify</p>
+                                    </div>
+                                    <button type="button" id="hero-cover-remove" style="padding: 6px 12px; background: rgba(255,59,48,0.1); border: 1px solid rgba(255,59,48,0.3); border-radius: 6px; color: #ff3b30; font-size: 0.75rem; cursor: pointer; transition: all 0.2s;">
+                                        Remove
+                                    </button>
+                                </div>
+                            </div>
                             <div class="hero-meta">
                                 <div class="hero-chip">
                                     <span class="hero-chip__label">Tracks</span>
@@ -218,6 +230,13 @@
                                     id="remix-button"
                                     {% if not cache_key or not playlist_tracks %}disabled{% endif %}>
                                     Remix Playlist
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost"
+                                    id="generate-cover-button"
+                                    {% if not cache_key %}disabled{% endif %}>
+                                    Generate Cover
                                 </button>
                                 <button type="submit" class="btn btn-primary" id="save-playlist-button">
                                     Save to Spotify
@@ -818,6 +837,68 @@
                 <div class="remix-progress-bar" id="remix-progress-bar"></div>
             </div>
             <div class="remix-progress-label" id="remix-progress-label">Preparing remix...</div>
+        </div>
+    </div>
+
+    <div class="remix-overlay" id="cover-modal-overlay">
+        <div class="remix-modal" style="max-width: 600px;">
+            <button type="button" class="modal-close" id="cover-modal-close" style="position: absolute; top: 16px; right: 16px; background: transparent; border: none; color: rgba(255,255,255,0.7); font-size: 24px; cursor: pointer; padding: 4px 8px;">&times;</button>
+            <h3>Generate Playlist Cover</h3>
+            <div class="modal-content" style="margin-top: 24px;">
+                <div id="cover-input-section">
+                    <div class="input-card" style="margin-bottom: 16px;">
+                        <label for="cover-prompt-input" style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.9);">
+                            Custom Prompt (Optional)
+                        </label>
+                        <textarea
+                            id="cover-prompt-input"
+                            placeholder="Describe the cover art you want, or leave empty to use playlist attributes..."
+                            rows="4"
+                            style="width: 100%; padding: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; font-family: inherit; resize: vertical;"
+                        ></textarea>
+                        <p style="margin-top: 8px; font-size: 0.875rem; color: rgba(255,255,255,0.6);">
+                            Leave empty to auto-generate based on your playlist's mood, genre, and energy.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <button type="button" class="btn btn-ghost" id="cover-cancel-button" style="flex: 1;">
+                            Cancel
+                        </button>
+                        <button type="button" class="btn btn-primary" id="cover-generate-button" style="flex: 1;">
+                            Generate
+                        </button>
+                    </div>
+                </div>
+                <div id="cover-loading-section" style="display: none; text-align: center; padding: 32px 0;">
+                    <div class="remix-loader-ring" style="margin: 0 auto 16px;"></div>
+                    <p style="color: rgba(255,255,255,0.8);">Generating your cover art...</p>
+                    <p style="margin-top: 8px; font-size: 0.875rem; color: rgba(255,255,255,0.6);">This may take 10-20 seconds</p>
+                </div>
+                <div id="cover-result-section" style="display: none;">
+                    <div id="cover-image-container" style="margin-bottom: 16px; text-align: center;">
+                        <img id="cover-image-preview" src="" alt="Generated cover" style="max-width: 100%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    </div>
+                    <p id="cover-prompt-used" style="margin-bottom: 16px; font-size: 0.875rem; color: rgba(255,255,255,0.7); font-style: italic;"></p>
+                    <div style="display: flex; gap: 12px;">
+                        <button type="button" class="btn btn-ghost" id="cover-regenerate-button" style="flex: 1;">
+                            Try Again
+                        </button>
+                        <button type="button" class="btn btn-primary" id="cover-use-button" style="flex: 1;">
+                            Use Image
+                        </button>
+                    </div>
+                    <p id="cover-status-message" style="margin-top: 12px; font-size: 0.875rem; color: rgba(76, 217, 100, 0.9); text-align: center; display: none;">
+                        ✓ Cover image will be applied when you save to Spotify
+                    </p>
+                </div>
+                <div id="cover-error-section" style="display: none; padding: 16px; background: rgba(255,59,48,0.1); border: 1px solid rgba(255,59,48,0.3); border-radius: 8px;">
+                    <p style="color: #ff3b30; margin-bottom: 8px; font-weight: 500;">Error</p>
+                    <p id="cover-error-message" style="color: rgba(255,255,255,0.8);"></p>
+                    <button type="button" class="btn btn-ghost" id="cover-error-retry-button" style="margin-top: 12px;">
+                        Try Again
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1467,6 +1548,333 @@
             //         modalSubmit.click();
             //     }
             // });
+
+            const genreToggle = document.querySelector('.genre-toggle');
+            const remainingGenreList = document.querySelector('[data-genre-list="remaining"]');
+            if (genreToggle && remainingGenreList) {
+                genreToggle.addEventListener('click', () => {
+                    const expanded = genreToggle.getAttribute('aria-expanded') === 'true';
+                    genreToggle.setAttribute('aria-expanded', String(!expanded));
+                    remainingGenreList.classList.toggle('genre-legend--hidden', expanded);
+                    genreToggle.textContent = expanded ? 'Show All Genres' : 'Hide Genres';
+                });
+            }
+
+            // Cover image generation functionality
+            const coverButton = document.getElementById('generate-cover-button');
+            const coverModalOverlay = document.getElementById('cover-modal-overlay');
+            const coverModalClose = document.getElementById('cover-modal-close');
+            const coverCancelButton = document.getElementById('cover-cancel-button');
+            const coverGenerateButton = document.getElementById('cover-generate-button');
+            const coverPromptInput = document.getElementById('cover-prompt-input');
+            const coverInputSection = document.getElementById('cover-input-section');
+            const coverLoadingSection = document.getElementById('cover-loading-section');
+            const coverResultSection = document.getElementById('cover-result-section');
+            const coverErrorSection = document.getElementById('cover-error-section');
+            const coverImagePreview = document.getElementById('cover-image-preview');
+            const coverPromptUsed = document.getElementById('cover-prompt-used');
+            const coverUseButton = document.getElementById('cover-use-button');
+            const coverStatusMessage = document.getElementById('cover-status-message');
+            const coverRegenerateButton = document.getElementById('cover-regenerate-button');
+            const coverErrorMessage = document.getElementById('cover-error-message');
+            const coverErrorRetryButton = document.getElementById('cover-error-retry-button');
+            const coverGenerateUrl = "{% url 'recommender:generate_cover_image' %}";
+            const coverCacheUrl = "{% url 'recommender:cache_cover_image' %}";
+            let currentCoverImageUrl = null;
+            const heroCoverContainer = document.getElementById('hero-cover-image-container');
+            const heroCoverImage = document.getElementById('hero-cover-image');
+            const heroCoverRemove = document.getElementById('hero-cover-remove');
+
+            function showHeroCoverImage(imageUrl) {
+                if (heroCoverImage && heroCoverContainer) {
+                    heroCoverImage.src = imageUrl;
+                    heroCoverContainer.style.display = 'block';
+                }
+            }
+
+            function hideHeroCoverImage() {
+                if (heroCoverContainer) {
+                    heroCoverContainer.style.display = 'none';
+                }
+                if (heroCoverImage) {
+                    heroCoverImage.src = '';
+                }
+            }
+
+            function showCoverModal() {
+                console.log('showCoverModal called', coverModalOverlay);
+                if (coverModalOverlay) {
+                    console.log('Adding visible class to modal');
+                    coverModalOverlay.classList.add('visible');
+                    resetCoverModal();
+                } else {
+                    console.error('Cover modal overlay not found');
+                }
+            }
+
+            function hideCoverModal() {
+                if (coverModalOverlay) {
+                    coverModalOverlay.classList.remove('visible');
+                }
+            }
+
+            function resetCoverModal() {
+                if (coverPromptInput) {
+                    coverPromptInput.value = '';
+                }
+                if (coverInputSection) {
+                    coverInputSection.style.display = 'block';
+                }
+                if (coverLoadingSection) {
+                    coverLoadingSection.style.display = 'none';
+                }
+                if (coverResultSection) {
+                    coverResultSection.style.display = 'none';
+                }
+                if (coverErrorSection) {
+                    coverErrorSection.style.display = 'none';
+                }
+            }
+
+            function showCoverLoading() {
+                if (coverInputSection) {
+                    coverInputSection.style.display = 'none';
+                }
+                if (coverLoadingSection) {
+                    coverLoadingSection.style.display = 'block';
+                }
+                if (coverResultSection) {
+                    coverResultSection.style.display = 'none';
+                }
+                if (coverErrorSection) {
+                    coverErrorSection.style.display = 'none';
+                }
+            }
+
+            function showCoverResult(imageUrl, promptUsed) {
+                currentCoverImageUrl = imageUrl;
+                if (coverInputSection) {
+                    coverInputSection.style.display = 'none';
+                }
+                if (coverLoadingSection) {
+                    coverLoadingSection.style.display = 'none';
+                }
+                if (coverResultSection) {
+                    coverResultSection.style.display = 'block';
+                }
+                if (coverErrorSection) {
+                    coverErrorSection.style.display = 'none';
+                }
+                if (coverImagePreview) {
+                    coverImagePreview.src = imageUrl;
+                }
+                if (coverPromptUsed && promptUsed) {
+                    coverPromptUsed.textContent = `Prompt: "${promptUsed}"`;
+                }
+                if (coverStatusMessage) {
+                    coverStatusMessage.style.display = 'none';
+                }
+            }
+
+            function showCoverError(error) {
+                if (coverInputSection) {
+                    coverInputSection.style.display = 'none';
+                }
+                if (coverLoadingSection) {
+                    coverLoadingSection.style.display = 'none';
+                }
+                if (coverResultSection) {
+                    coverResultSection.style.display = 'none';
+                }
+                if (coverErrorSection) {
+                    coverErrorSection.style.display = 'block';
+                }
+                if (coverErrorMessage) {
+                    coverErrorMessage.textContent = error || 'An error occurred while generating the cover.';
+                }
+            }
+
+            function generateCover() {
+                const prompt = coverPromptInput ? coverPromptInput.value.trim() : '';
+                const cacheKey = trackList ? trackList.dataset.cacheKey : null;
+
+                if (!cacheKey) {
+                    showCoverError('Session expired. Please refresh the page.');
+                    return;
+                }
+
+                showCoverLoading();
+
+                fetch(coverGenerateUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        cache_key: cacheKey,
+                        prompt: prompt,
+                    }),
+                })
+                    .then((response) => {
+                        if (!response.ok) {
+                            return response.json().then(data => {
+                                throw new Error(data.error || 'Failed to generate cover');
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then((data) => {
+                        if (data.status === 'ok' && data.image_url) {
+                            showCoverResult(data.image_url, data.prompt_used);
+                        } else {
+                            throw new Error(data.error || 'No image URL returned');
+                        }
+                    })
+                    .catch((error) => {
+                        showCoverError(error.message || 'Failed to generate cover. Please try again.');
+                    });
+            }
+
+            function useCoverImage() {
+                const cacheKey = trackList ? trackList.dataset.cacheKey : null;
+
+                if (!cacheKey) {
+                    showCoverError('Session expired. Please refresh the page.');
+                    return;
+                }
+
+                if (!currentCoverImageUrl) {
+                    showCoverError('No image available. Please generate a cover first.');
+                    return;
+                }
+
+                if (coverUseButton) {
+                    coverUseButton.disabled = true;
+                    coverUseButton.textContent = 'Saving...';
+                }
+
+                fetch(coverCacheUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        cache_key: cacheKey,
+                        image_url: currentCoverImageUrl,
+                    }),
+                })
+                    .then((response) => {
+                        if (!response.ok) {
+                            return response.json().then(data => {
+                                throw new Error(data.error || 'Failed to cache cover image');
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then((data) => {
+                        if (data.status === 'ok') {
+                            if (coverUseButton) {
+                                coverUseButton.textContent = 'Used!';
+                            }
+                            if (coverStatusMessage) {
+                                coverStatusMessage.style.display = 'block';
+                            }
+                            // Show the cover image in the hero section
+                            showHeroCoverImage(currentCoverImageUrl);
+                            setTimeout(() => {
+                                hideCoverModal();
+                            }, 1500);
+                        } else {
+                            throw new Error(data.error || 'Failed to cache image');
+                        }
+                    })
+                    .catch((error) => {
+                        if (coverUseButton) {
+                            coverUseButton.disabled = false;
+                            coverUseButton.textContent = 'Use Image';
+                        }
+                        showCoverError(error.message || 'Failed to save cover image. Please try again.');
+                    });
+            }
+
+            if (coverButton) {
+                coverButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    console.log('Generate Cover button clicked');
+                    showCoverModal();
+                });
+            } else {
+                console.warn('Generate Cover button not found');
+            }
+
+            if (coverModalClose) {
+                coverModalClose.addEventListener('click', hideCoverModal);
+            }
+
+            if (coverCancelButton) {
+                coverCancelButton.addEventListener('click', hideCoverModal);
+            }
+
+            if (coverGenerateButton) {
+                coverGenerateButton.addEventListener('click', generateCover);
+            }
+
+            if (coverRegenerateButton) {
+                coverRegenerateButton.addEventListener('click', resetCoverModal);
+            }
+
+            if (coverErrorRetryButton) {
+                coverErrorRetryButton.addEventListener('click', resetCoverModal);
+            }
+
+            if (coverUseButton) {
+                coverUseButton.addEventListener('click', useCoverImage);
+            }
+
+            if (heroCoverRemove) {
+                heroCoverRemove.addEventListener('click', () => {
+                    const cacheKey = trackList ? trackList.dataset.cacheKey : null;
+                    if (!cacheKey) {
+                        return;
+                    }
+
+                    // Clear the cached cover image
+                    fetch(coverCacheUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken(),
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            cache_key: cacheKey,
+                            image_url: '',  // Empty string clears the image
+                        }),
+                    })
+                        .then((response) => {
+                            if (response.ok) {
+                                hideHeroCoverImage();
+                                currentCoverImageUrl = null;
+                            }
+                        })
+                        .catch((error) => {
+                            console.error('Failed to remove cover image:', error);
+                        });
+                });
+            }
+
+            if (coverModalOverlay) {
+                coverModalOverlay.addEventListener('click', (event) => {
+                    if (event.target === coverModalOverlay) {
+                        hideCoverModal();
+                    }
+                });
+            }
         });
     </script>
     <!-- Remix Modal Overlay -->

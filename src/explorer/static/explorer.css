@@ -131,3 +131,38 @@
     aspect-ratio: 1;
   }
 }
+
+.creator-link {
+    color: #42a5f5;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.creator-link:hover {
+    color: #64B5F6;
+    text-decoration: underline;
+}
+
+.follow-creator-btn {
+    width: 100%;
+    background: rgba(2, 136, 209, 0.1);
+    border: 1px solid rgba(2, 136, 209, 0.3);
+    color: #42a5f5;
+    padding: 8px 16px;
+    border-radius: 50px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.follow-creator-btn:hover {
+    background: rgba(2, 136, 209, 0.2);
+    border-color: rgba(2, 136, 209, 0.5);
+}
+
+.follow-creator-btn.following {
+    background: rgba(46, 204, 113, 0.1);
+    border-color: rgba(46, 204, 113, 0.3);
+    color: #2ecc71;
+}

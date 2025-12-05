@@ -2,7 +2,7 @@
 
 > Create, share, and discover AI-powered music playlists with social features
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Django CI Pipeline](https://github.com/calebc1800/AIPlaylistGenerator/actions/workflows/ci.yml/badge.svg)](https://github.com/calebc1800/AIPlaylistGenerator/actions/workflows/ci.yml)
 

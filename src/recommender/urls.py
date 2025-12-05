@@ -16,4 +16,8 @@ urlpatterns = [
     path("search/", views.search_songs, name="search_songs"),
     # POST endpoint for adding songs to playlist
     path("add-song/", views.add_song_to_playlist, name="add_song_to_playlist"),
+    # POST endpoint for generating cover images
+    path("generate-cover/", views.generate_cover_image, name="generate_cover_image"),
+    # POST endpoint for caching cover image URL
+    path("cache-cover/", views.cache_cover_image, name="cache_cover_image"),
 ]
