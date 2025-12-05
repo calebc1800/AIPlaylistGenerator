@@ -940,6 +940,8 @@ def remix_playlist(request):
             log_step=log,
             provider=llm_provider,
         )
+    else:
+        post_attributes = None
 
     # Merge remix attributes into existing attributes
     if post_attributes:
