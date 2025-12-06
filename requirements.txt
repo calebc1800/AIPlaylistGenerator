@@ -68,7 +68,7 @@ tomlkit==0.13.3
 tqdm==4.67.1
 typing-inspection==0.4.2
 typing_extensions==4.15.0
-urllib3==2.5.0
+urllib3==2.6.0
 Werkzeug==3.1.4
 whitenoise==6.11.0
 yarl==1.22.0
