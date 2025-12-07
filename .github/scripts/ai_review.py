@@ -10,8 +10,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from openai import OpenAI
-from github import Github
+from openai import OpenAI, OpenAIError, APIError, APIConnectionError, RateLimitError
+from github import Github, GithubException, BadCredentialsException, UnknownObjectException
+
+
 
 # Try to load environment variables from a .env file at the repository root.
 # Prefer python-dotenv if installed, otherwise fall back to a simple parser.
@@ -39,10 +41,8 @@ except ImportError:
                     # Don't overwrite existing environment vars
                     if key not in os.environ:
                         os.environ[key] = val
-        except Exception as e:
+        except (OSError, IOError, UnicodeDecodeError, ValueError) as e:
             print(f"Failed to read .env file: {e}")
-except Exception as e:
-    print(f"Failed to load dotenv: {e}")
 
 # Ensure OPENAI_API_KEY is present and fail fast with a helpful message.
 API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -57,7 +57,7 @@ if not API_KEY:
 # Initialize OpenAI client with the new API
 try:
     CLIENT = OpenAI(api_key=API_KEY)
-except Exception as e:
+except (ValueError, TypeError, KeyError) as e:
     print(f"Failed to initialize OpenAI client: {e}")
     sys.exit(1)
 
@@ -124,7 +124,7 @@ for i, cmd in enumerate(GIT_COMMANDS):
         print(f"Git command {i+1} failed: {e}")
         print(f"stderr: {e.stderr}")
         continue
-    except Exception as e:
+    except (OSError, ValueError, UnicodeDecodeError) as e:
         print(f"Unexpected error with git command {i+1}: {e}")
         continue
 
@@ -223,7 +223,8 @@ try:
     print(AI_REVIEW_CONTENT)
     print("="*50)
 
-except Exception as e:
+except (OpenAIError, APIError, APIConnectionError, RateLimitError,
+        ValueError, KeyError) as e:
     print(f"Primary model {MODEL_NAME} failed: {e}")
     # Try with a fallback model if the primary one fails
     if MODEL_NAME != FALLBACK_MODEL:
@@ -244,7 +245,9 @@ except Exception as e:
             print("="*50)
             print(AI_REVIEW_CONTENT)
             print("="*50)
-        except Exception as fallback_error:
+        except (OpenAIError, APIError, APIConnectionError, RateLimitError,
+        ValueError, KeyError) as fallback_error:
+
             print(f"Fallback also failed: {fallback_error}")
             AI_REVIEW_CONTENT = """AI review failed due to API issues.
             Please check the logs for details."""
@@ -287,7 +290,8 @@ if GITHUB_TOKEN and PR_NUMBER and REPOSITORY_NAME and AI_REVIEW_CONTENT:
             new_comment = pr.create_issue_comment(COMMENT_BODY)
             print(f"Posted new AI review comment: {new_comment.html_url}")
 
-    except Exception as e:
+    except (GithubException, BadCredentialsException, UnknownObjectException,
+        ValueError, KeyError) as e:
         print(f"Failed to post GitHub comment: {e}")
         print("AI review completed but could not be posted as PR comment.")
 
