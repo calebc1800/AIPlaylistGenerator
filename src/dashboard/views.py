@@ -11,14 +11,19 @@ from django.db import IntegrityError
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
-from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from dashboard.models import UserFollow
 from recommender.models import SavedPlaylist
 from recommender.services import artist_recommendation_service
 from recommender.services.artist_ai_service import generate_ai_artist_cards
+from recommender.services.artist_card_utils import basic_artist_payload
 from recommender.services.listening_suggestions import generate_listening_suggestions
-from recommender.services.spotify_handler import build_user_profile_seed_snapshot
+from recommender.services.session_utils import ensure_session_key
+from recommender.services.spotify_handler import (
+    _primary_image_url,
+    build_user_profile_seed_snapshot,
+)
 from recommender.services.stats_service import (
     get_genre_breakdown,
     summarize_generation_stats,
@@ -43,23 +48,9 @@ def _resolve_generation_identifier(request, spotify_user_id: str | None = None) 
     return str(request.session.get("spotify_user_id") or "anonymous")
 
 
-def _ensure_session_key(request) -> str:
-    """Checks for session key
-
-    Args:
-        request (django request): http session information request
-
-    Returns:
-        str: Session Key
-    """
-    session_key = request.session.session_key
-    if not session_key:
-        request.session.save()
-        session_key = request.session.session_key or ""
-    return session_key
-
-
-def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
+def _fetch_spotify_highlights(
+    request, sp: spotipy.Spotify
+) -> dict:  # pylint: disable=too-many-locals
     """Uses Spotify API to get the current user's top artists and songs
 
     Args:
@@ -69,7 +60,8 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     Returns:
         dict: Top genres, artists and tracks
     """
-    cache_key = f"dashboard:spotify-highlights:{_ensure_session_key(request)}"
+    # pylint: disable=too-many-locals
+    cache_key = f"dashboard:spotify-highlights:{ensure_session_key(request)}"
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -89,26 +81,35 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     top_artists = []
     genre_counter = {}
     for artist in top_artists_resp.get("items", []) or []:
+        if not isinstance(artist, dict):
+            continue
         genres = [genre.title() for genre in artist.get("genres", [])[:3]]
-        top_artists.append(
+        artist_payload = basic_artist_payload(
             {
+                "id": artist.get("id"),
                 "name": artist.get("name"),
+                "image": _primary_image_url(artist.get("images")),
                 "genres": genres,
-                "image": artist.get("images", [{}])[0].get("url") if artist.get("images") else "",
+                "popularity": artist.get("popularity"),
+                "followers": (artist.get("followers") or {}).get("total"),
+                "url": (artist.get("external_urls") or {}).get("spotify"),
             }
         )
+        artist_payload["play_count"] = int(artist.get("popularity") or 0)
+        top_artists.append(artist_payload)
         for genre in genres:
             genre_counter[genre] = genre_counter.get(genre, 0) + 1
 
     top_tracks = []
     for track in top_tracks_resp.get("items", []) or []:
+        if not isinstance(track, dict):
+            continue
         top_tracks.append(
             {
                 "name": track.get("name"),
                 "artists": ", ".join(artist.get("name") for artist in track.get("artists", [])),
                 "album": track.get("album", {}).get("name"),
-                "image": track.get("album", {}).get("images", [{}])[0].get("url")
-                if track.get("album", {}).get("images") else "",
+                "image": _primary_image_url(track.get("album", {}).get("images")),
             }
         )
 
