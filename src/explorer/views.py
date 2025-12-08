@@ -1,15 +1,18 @@
+"""Views for the explorer app handling playlist browsing and searching."""
 import requests
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.db.models import Q, F
+from django.db.models import Q
 from django.conf import settings
 from django.views import View
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
-from .models import Playlist, Song
 from recommender.models import SavedPlaylist, UniqueLike
+from .models import Playlist, Song
+
+User = get_user_model()
 
 
 class SpotifyAPIHelper:
@@ -26,12 +29,11 @@ class SpotifyAPIHelper:
             'client_secret': settings.SPOTIFY_CLIENT_SECRET,
         }
 
-        response = requests.post(auth_url, data=data)
+        response = requests.post(auth_url, data=data, timeout=10)
 
         if response.status_code == 200:
             return response.json()['access_token']
-        else:
-            raise Exception("Failed to get Spotify access token")
+        raise requests.exceptions.RequestException("Failed to get Spotify access token")
 
     @staticmethod
     def fetch_playlists(query='', limit=10):
@@ -50,13 +52,12 @@ class SpotifyAPIHelper:
                 'limit': limit
             }
 
-            response = requests.get(search_url, headers=headers, params=params)
+            response = requests.get(search_url, headers=headers, params=params, timeout=10)
 
             if response.status_code == 200:
                 return response.json()['playlists']['items']
-            else:
-                return []
-        except Exception as e:
+            return []
+        except requests.exceptions.RequestException as e:
             print(f"Error fetching Spotify playlists: {e}")
             return []
 
@@ -76,14 +77,15 @@ class SpotifyAPIHelper:
                 cover_image = playlist_data['images'][0].get('url', '')
 
             # Create or update the playlist
+            followers = playlist_data.get('followers', {})
+            likes_count = followers.get('total', 0) if followers else 0
             playlist, created = Playlist.objects.get_or_create(
                 spotify_id=playlist_data['id'],
                 defaults={
                     'name': playlist_data.get('name', 'Untitled Playlist'),
                     'description': playlist_data.get('description', ''),
                     'creator': user,
-                    'likes': playlist_data.get('followers', {}).get('total', 0) if playlist_data.get(
-                        'followers') else 0,
+                    'likes': likes_count,
                     'cover_image': cover_image,
                     'spotify_uri': playlist_data.get('uri', ''),
                 }
@@ -94,7 +96,7 @@ class SpotifyAPIHelper:
                 SpotifyAPIHelper.fetch_and_add_songs(playlist, playlist_data['tracks']['href'])
 
             return playlist
-        except Exception as e:
+        except (KeyError, TypeError, ValueError) as e:
             print(f"Error importing playlist: {e}")
             return None
 
@@ -109,7 +111,7 @@ class SpotifyAPIHelper:
             }
 
             params = {'limit': limit}
-            response = requests.get(tracks_url, headers=headers, params=params)
+            response = requests.get(tracks_url, headers=headers, params=params, timeout=10)
 
             if response.status_code == 200:
                 tracks = response.json()['items']
@@ -125,7 +127,7 @@ class SpotifyAPIHelper:
                                 'artist': ', '.join([artist['name'] for artist in track['artists']])
                             }
                         )
-        except Exception as e:
+        except (requests.exceptions.RequestException, KeyError, TypeError) as e:
             print(f"Error fetching songs: {e}")
 
 
@@ -133,6 +135,7 @@ class ExplorerView(View):
     """Display playlists from database"""
 
     def get(self, request):
+        """Handle GET request to display all playlists sorted by likes."""
         playlists = sorted(SavedPlaylist.objects.all(), key=lambda p: p.like_count, reverse=True)
 
         context = {
@@ -146,6 +149,7 @@ class SearchView(View):
     """Search view for finding playlists"""
 
     def get(self, request):
+        """Handle GET request to search playlists by query."""
         query = request.GET.get('q', '')
         playlists = []
 
@@ -159,7 +163,9 @@ class SearchView(View):
             ).distinct())
             playlists = sorted(playlists, key=lambda p: p.like_count, reverse=True)
         else:
-            playlists = sorted(SavedPlaylist.objects.all(), key=lambda p: p.like_count, reverse=True)
+            playlists = sorted(
+                SavedPlaylist.objects.all(), key=lambda p: p.like_count, reverse=True
+            )
 
         context = {
             'playlists': playlists,
@@ -174,6 +180,7 @@ class ProfileView(View):
     """Display a user's profile and their playlists"""
 
     def get(self, request, user_id):
+        """Handle GET request to display user profile and their playlists."""
         # Filter playlists by Spotify user ID
         playlists_qs = SavedPlaylist.objects.filter(creator_user_id=user_id)
 
@@ -203,6 +210,7 @@ class LogoutView(View):
     """Handle user logout"""
 
     def get(self, request):
+        """Handle GET request to log out user and clear session."""
         # Clear session data
         request.session.flush()
         return redirect('home')

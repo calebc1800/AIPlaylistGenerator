@@ -1,8 +1,12 @@
+"""Models for the explorer app."""
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 class Playlist(models.Model):
+    """Model representing a playlist with songs and metadata."""
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     creator = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -20,6 +24,7 @@ class Playlist(models.Model):
 
 
 class Song(models.Model):
+    """Model representing a song in a playlist."""
     playlist = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name='sample_songs')
     name = models.CharField(max_length=255)
     artist = models.CharField(max_length=255, blank=True)

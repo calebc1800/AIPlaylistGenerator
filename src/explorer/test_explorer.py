@@ -1,10 +1,13 @@
+"""Tests for the explorer app views and models."""
+from unittest.mock import patch, Mock
 from django.test import TestCase, Client
 from django.urls import reverse
-from django.contrib.auth.models import User
-from unittest.mock import patch, Mock
-from recommender.models import SavedPlaylist
-from explorer.models import Playlist, Song  # Still needed for SpotifyAPIHelper tests
+from django.contrib.auth import get_user_model
+from recommender.models import SavedPlaylist, UniqueLike
+from explorer.models import Playlist
 from explorer.views import SpotifyAPIHelper
+
+User = get_user_model()
 
 
 class SavedPlaylistModelTests(TestCase):
@@ -15,8 +18,6 @@ class SavedPlaylistModelTests(TestCase):
 
     def test_create_saved_playlist(self):
         """Test creating a saved playlist with all fields"""
-        from recommender.models import UniqueLike
-
         playlist = SavedPlaylist.objects.create(
             playlist_name='Test Playlist',
             playlist_id='sp123',
@@ -256,7 +257,7 @@ class SpotifyAPIHelperTests(TestCase):
 
     @patch('explorer.views.requests.get')
     @patch('explorer.views.SpotifyAPIHelper.get_access_token', return_value='tok')
-    def test_fetch_playlists_success(self, mock_token, mock_get):
+    def test_fetch_playlists_success(self, _mock_token, mock_get):
         """Test successful playlist fetching from Spotify"""
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = {
@@ -274,7 +275,7 @@ class SpotifyAPIHelperTests(TestCase):
 
     @patch('explorer.views.requests.get')
     @patch('explorer.views.SpotifyAPIHelper.get_access_token', return_value='tok')
-    def test_fetch_playlists_error(self, mock_token, mock_get):
+    def test_fetch_playlists_error(self, _mock_token, mock_get):
         """Test playlist fetching handles errors gracefully"""
         mock_get.return_value.status_code = 400
 
@@ -284,7 +285,7 @@ class SpotifyAPIHelperTests(TestCase):
 
     @patch('explorer.views.requests.get')
     @patch('explorer.views.SpotifyAPIHelper.get_access_token', return_value='tok')
-    def test_fetch_playlists_with_limit(self, mock_token, mock_get):
+    def test_fetch_playlists_with_limit(self, _mock_token, mock_get):
         """Test fetch playlists respects limit parameter"""
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = {
@@ -326,7 +327,7 @@ class SpotifyAPIHelperTests(TestCase):
 
     @patch('explorer.views.requests.get')
     @patch('explorer.views.SpotifyAPIHelper.get_access_token', return_value='token')
-    def test_fetch_and_add_songs(self, mock_token, mock_get):
+    def test_fetch_and_add_songs(self, _mock_token, mock_get):
         """Test fetching and adding songs to a playlist"""
         user = User.objects.create_user(username='test', password='pass')
         playlist = Playlist.objects.create(
@@ -367,8 +368,6 @@ class PlaylistCardTemplateTests(TestCase):
     """Tests for the new playlist card template structure"""
 
     def setUp(self):
-        from recommender.models import UniqueLike
-
         self.client = Client()
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.playlist = SavedPlaylist.objects.create(
@@ -427,7 +426,8 @@ class PlaylistCardTemplateTests(TestCase):
         """Test that playlist card shows Spotify link when spotify_uri is set"""
         response = self.client.get(reverse('search') + '?q=Test')
         self.assertContains(response, 'View on Spotify')
-        self.assertContains(response, f'https://open.spotify.com/playlist/{self.playlist.playlist_id}')
+        expected_url = f'https://open.spotify.com/playlist/{self.playlist.playlist_id}'
+        self.assertContains(response, expected_url)
 
     def test_playlist_card_hides_spotify_link_when_not_available(self):
         """Test that playlist card hides Spotify link when spotify_uri is not set"""

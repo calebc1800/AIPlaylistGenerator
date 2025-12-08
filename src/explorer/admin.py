@@ -1,3 +1,2 @@
-from django.contrib import admin
-
+"""Django admin configuration for explorer app."""
 # Register your models here.
