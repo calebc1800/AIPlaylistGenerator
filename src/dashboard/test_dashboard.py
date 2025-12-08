@@ -3,14 +3,22 @@
 # pylint: disable=duplicate-code
 
 import json
-
-from django.contrib.auth.models import User
-from django.test import Client, TestCase, override_settings
-from django.urls import reverse
 from unittest.mock import Mock, patch
 
+from django.contrib.auth import get_user_model
+from django.test import Client, RequestFactory, TestCase, override_settings
+from django.urls import reverse
+from django.contrib.sessions.middleware import SessionMiddleware
+
 from recommender.models import SavedPlaylist
+from recommender.models import UniqueLike
 from recommender.services.session_utils import ensure_session_key
+from dashboard.views import (
+    _resolve_generation_identifier,
+    _fetch_spotify_highlights,
+)
+
+User = get_user_model()
 
 
 class DashboardViewTests(TestCase):
