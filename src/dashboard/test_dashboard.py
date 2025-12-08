@@ -1,6 +1,6 @@
 """Tests for dashboard views and Spotify integrations."""
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-lines,too-many-public-methods
 
 import json
 from unittest.mock import Mock, patch
@@ -9,9 +9,9 @@ from django.contrib.auth import get_user_model
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.contrib.sessions.middleware import SessionMiddleware
+from spotipy.exceptions import SpotifyException
 
-from recommender.models import SavedPlaylist
-from recommender.models import UniqueLike
+from recommender.models import SavedPlaylist, UniqueLike
 from recommender.services.session_utils import ensure_session_key
 from dashboard.views import (
     _resolve_generation_identifier,
@@ -100,7 +100,9 @@ class DashboardViewTests(TestCase):
     @patch('dashboard.views._cached_user_top_artists')
     @patch('dashboard.views.generate_ai_artist_cards')
     @patch('dashboard.views.spotipy.Spotify')
-    def test_dashboard_includes_ai_artist_context(self, mock_spotify, mock_ai_cards, mock_cached_artists):
+    def test_dashboard_includes_ai_artist_context(
+        self, mock_spotify, mock_ai_cards, mock_cached_artists
+    ):
         """Dashboard should expose favorite + AI artists for the tab."""
         session = self.client.session
         session['spotify_access_token'] = 'test_access_token'
@@ -119,7 +121,10 @@ class DashboardViewTests(TestCase):
             {'id': 'fav-1', 'name': 'Fav Artist'},
         ]
         mock_ai_cards.return_value = [
-            {'id': 'artist-1', 'name': 'Artist 1', 'genres': ['indie'], 'seed_artist_ids': ['seed-1']},
+            {
+                'id': 'artist-1', 'name': 'Artist 1',
+                'genres': ['indie'], 'seed_artist_ids': ['seed-1']
+            },
         ]
 
         response = self.client.get(self.dashboard_url)
@@ -310,7 +315,6 @@ class DashboardViewTests(TestCase):
         mock_spotify.return_value = mock_sp_instance
 
         # Create a SpotifyException with 401 status
-        from spotipy.exceptions import SpotifyException
         mock_sp_instance.current_user.side_effect = SpotifyException(
             http_status=401,
             code=-1,
@@ -334,7 +338,6 @@ class DashboardViewTests(TestCase):
         mock_sp_instance = Mock()
         mock_spotify.return_value = mock_sp_instance
 
-        from spotipy.exceptions import SpotifyException
         mock_sp_instance.current_user.side_effect = SpotifyException(
             http_status=500,
             code=-1,
@@ -633,7 +636,8 @@ class DashboardStatsAPITests(TestCase):
         self.url = reverse('dashboard:user-stats')
 
     @patch('dashboard.views.ensure_valid_spotify_session', return_value=False)
-    def test_requires_valid_session(self, mock_session_check):
+    def test_requires_valid_session(self, _mock_session_check):
+        """Test that endpoint requires valid session."""
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 401)
         self.assertIn('Authentication required', response.content.decode())
@@ -645,17 +649,20 @@ class DashboardStatsAPITests(TestCase):
     @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
     def test_returns_combined_payload(
         self,
-        mock_session_check,
+        _mock_session_check,
         mock_spotify_client,
         mock_summary,
         mock_breakdown,
         mock_highlights,
     ):
+        """Test that endpoint returns combined payload from all sources."""
         session = self.client.session
         session['spotify_access_token'] = 'test'
         session.save()
 
-        mock_summary.return_value = {'total_playlists': 5, 'total_tracks': 120, 'total_tokens': 4200}
+        mock_summary.return_value = {
+            'total_playlists': 5, 'total_tracks': 120, 'total_tokens': 4200
+        }
         mock_breakdown.return_value = [{'genre': 'Pop', 'percentage': 55.0}]
         mock_highlights.return_value = {'top_genres': [{'genre': 'Pop', 'count': 4}]}
         mock_spotify_client.return_value = Mock()
@@ -670,7 +677,7 @@ class DashboardStatsAPITests(TestCase):
         self.assertEqual(payload['spotify']['top_genres'][0]['genre'], 'Pop')
 
     @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
-    def test_requires_access_token(self, mock_session_check):
+    def test_requires_access_token(self, _mock_session_check):
         """Test that API requires access token even when session is valid"""
         # Session is valid but no access token
         session = self.client.session
@@ -686,14 +693,12 @@ class DashboardStatsAPITests(TestCase):
     @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
     def test_handles_spotify_exception_gracefully(
         self,
-        mock_session_check,
+        _mock_session_check,
         mock_spotify_client,
         mock_summary,
         mock_breakdown,
     ):
         """Test that API handles Spotify exceptions and returns empty highlights"""
-        from spotipy.exceptions import SpotifyException
-
         session = self.client.session
         session['spotify_access_token'] = 'test'
         session.save()
@@ -730,13 +735,15 @@ class ListeningSuggestionsAPITests(TestCase):
         self.url = reverse('dashboard:listening-suggestions')
 
     @patch('dashboard.views.ensure_valid_spotify_session', return_value=False)
-    def test_requires_valid_session(self, mock_session_check):
+    def test_requires_valid_session(self, _mock_session_check):
+        """Test that endpoint requires valid session."""
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 401)
         self.assertIn('Authentication required', response.content.decode())
 
     @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
-    def test_requires_access_token(self, mock_session_check):
+    def test_requires_access_token(self, _mock_session_check):
+        """Test that endpoint requires access token."""
         session = self.client.session
         session.save()
         response = self.client.get(self.url)
@@ -744,7 +751,8 @@ class ListeningSuggestionsAPITests(TestCase):
 
     @patch('dashboard.views.generate_listening_suggestions')
     @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
-    def test_returns_suggestions(self, mock_session_check, mock_generate):
+    def test_returns_suggestions(self, _mock_session_check, mock_generate):
+        """Test that endpoint returns listening suggestions."""
         session = self.client.session
         session['spotify_access_token'] = 'token'
         session['spotify_user_id'] = 'spotify-user'
@@ -766,7 +774,7 @@ class RecommendedArtistsAPITests(TestCase):
         self.client = Client()
 
     @patch('dashboard.views.ensure_valid_spotify_session', return_value=False)
-    def test_endpoint_requires_spotify_session(self, mock_session_check):
+    def test_endpoint_requires_spotify_session(self, _mock_session_check):
         """A user must have a valid Spotify session before requesting recommendations."""
         url = reverse('dashboard:recommended-artists')
         response = self.client.get(url)
@@ -775,7 +783,9 @@ class RecommendedArtistsAPITests(TestCase):
     @patch('dashboard.views.ensure_valid_spotify_session', return_value=True)
     @patch('dashboard.views._get_ai_artist_suggestions')
     @patch('dashboard.views.spotipy.Spotify')
-    def test_endpoint_returns_recommendations_payload(self, mock_spotify, mock_get_ai, mock_session_check):
+    def test_endpoint_returns_recommendations_payload(
+        self, mock_spotify, mock_get_ai, _mock_session_check
+    ):
         """The endpoint should proxy recommendations from the service as JSON."""
         session = self.client.session
         session['spotify_access_token'] = 'token'
@@ -809,10 +819,8 @@ class DashboardIntegrationTests(TestCase):
     @patch('dashboard.views.spotipy.Spotify')
     def test_full_dashboard_flow_with_playlists(self, mock_spotify):
         """Test complete dashboard flow with user data and playlists"""
-        from recommender.models import UniqueLike
-
         # Create playlists
-        p1 = SavedPlaylist.objects.create(
+        _p1 = SavedPlaylist.objects.create(
             playlist_name='Top Hits',
             playlist_id='hits',
             creator_user_id='user1',
@@ -824,7 +832,7 @@ class DashboardIntegrationTests(TestCase):
         for i in range(50):
             UniqueLike.objects.create(user_id=f'user{i}', playlist_id='hits')
 
-        p2 = SavedPlaylist.objects.create(
+        _p2 = SavedPlaylist.objects.create(
             playlist_name='Chill Vibes',
             playlist_id='chill',
             creator_user_id='user1',
@@ -972,7 +980,9 @@ class DashboardIntegrationTests(TestCase):
     @patch('dashboard.views.build_user_profile_seed_snapshot')
     @patch('dashboard.views.cache')
     @patch('dashboard.views.spotipy.Spotify')
-    def test_dashboard_builds_user_profile_snapshot(self, mock_spotify, mock_cache, mock_build_snapshot):
+    def test_dashboard_builds_user_profile_snapshot(
+        self, mock_spotify, mock_cache, mock_build_snapshot
+    ):
         """Test that dashboard builds user profile snapshot when not cached"""
         session = self.client.session
         session['spotify_access_token'] = 'test_access_token'
@@ -1057,8 +1067,6 @@ class HelperFunctionTests(TestCase):
 
     def test_resolve_generation_identifier_with_authenticated_user(self):
         """Test _resolve_generation_identifier with authenticated user"""
-        from dashboard.views import _resolve_generation_identifier
-
         # Log in the user
         self.client.login(username='testuser', password='testpass')
         request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
@@ -1070,8 +1078,6 @@ class HelperFunctionTests(TestCase):
 
     def test_resolve_generation_identifier_with_spotify_user_id_param(self):
         """Test _resolve_generation_identifier with spotify_user_id parameter"""
-        from dashboard.views import _resolve_generation_identifier
-
         request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
 
         identifier = _resolve_generation_identifier(request, spotify_user_id='spotify_123')
@@ -1081,8 +1087,6 @@ class HelperFunctionTests(TestCase):
 
     def test_resolve_generation_identifier_with_session_spotify_user_id(self):
         """Test _resolve_generation_identifier with spotify_user_id in session"""
-        from dashboard.views import _resolve_generation_identifier
-
         session = self.client.session
         session['spotify_user_id'] = 'session_spotify_456'
         session.save()
@@ -1096,8 +1100,6 @@ class HelperFunctionTests(TestCase):
 
     def test_resolve_generation_identifier_anonymous(self):
         """Test _resolve_generation_identifier with anonymous user and no spotify_user_id"""
-        from dashboard.views import _resolve_generation_identifier
-
         request = self.client.get(reverse('dashboard:dashboard')).wsgi_request
 
         identifier = _resolve_generation_identifier(request)
@@ -1121,9 +1123,6 @@ class HelperFunctionTests(TestCase):
 
     def test_ensure_session_key_creates_new_key(self):
         """Test ensure_session_key creates new session key if missing"""
-        from django.test import RequestFactory
-        from django.contrib.sessions.middleware import SessionMiddleware
-
         # Create a fresh request without a session key
         factory = RequestFactory()
         request = factory.get('/dashboard/')
@@ -1144,8 +1143,6 @@ class HelperFunctionTests(TestCase):
     @patch('dashboard.views.cache')
     def test_fetch_spotify_highlights_from_cache(self, mock_cache):
         """Test _fetch_spotify_highlights returns cached data"""
-        from dashboard.views import _fetch_spotify_highlights
-
         session = self.client.session
         session.save()
 
@@ -1170,9 +1167,6 @@ class HelperFunctionTests(TestCase):
     @patch('dashboard.views.cache')
     def test_fetch_spotify_highlights_with_spotify_exception(self, mock_cache):
         """Test _fetch_spotify_highlights handles Spotify exception"""
-        from dashboard.views import _fetch_spotify_highlights
-        from spotipy.exceptions import SpotifyException
-
         session = self.client.session
         session.save()
 
@@ -1197,8 +1191,6 @@ class HelperFunctionTests(TestCase):
     @patch('dashboard.views.cache')
     def test_fetch_spotify_highlights_builds_data(self, mock_cache):
         """Test _fetch_spotify_highlights builds highlights from Spotify API"""
-        from dashboard.views import _fetch_spotify_highlights
-
         session = self.client.session
         session.save()
 
@@ -1271,8 +1263,6 @@ class HelperFunctionTests(TestCase):
     @patch('dashboard.views.cache')
     def test_fetch_spotify_highlights_handles_empty_response(self, mock_cache):
         """Test _fetch_spotify_highlights handles empty API responses"""
-        from dashboard.views import _fetch_spotify_highlights
-
         session = self.client.session
         session.save()
 
