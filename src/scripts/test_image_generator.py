@@ -4,8 +4,10 @@ import os
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from openai import OpenAIError
 
 from scripts.image_generator import (
+    _get_openai_client,
     build_prompt_from_attributes,
     generate_cover_image,
     generate_cover_image_with_fallback,
@@ -260,8 +262,6 @@ class TestGenerateCoverImage:
     @patch('scripts.image_generator._get_openai_client')
     def test_openai_error_returns_none(self, mock_get_client):
         """Test that OpenAI API errors return None."""
-        from openai import OpenAIError
-
         mock_client = MagicMock()
         mock_client.images.generate.side_effect = OpenAIError("API error")
         mock_get_client.return_value = mock_client
@@ -341,8 +341,10 @@ class TestGenerateCoverImageWithFallback:
         assert result["success"] is True
         assert result["image_url"] == "https://example.com/image.png"
         assert result["error"] is None
+        # pylint: disable=unsupported-membership-test
         assert "happy mood" in result["prompt_used"]
         assert "jazz music" in result["prompt_used"]
+        # pylint: enable=unsupported-membership-test
 
     @patch('scripts.image_generator.generate_cover_image')
     def test_failed_generation_returns_error(self, mock_generate):
@@ -374,7 +376,7 @@ class TestGenerateCoverImageWithFallback:
 
         assert result["success"] is False
         assert result["image_url"] is None
-        assert "Invalid input" in result["error"]
+        assert "Invalid input" in result["error"]  # pylint: disable=unsupported-membership-test
 
     @patch('scripts.image_generator.generate_cover_image')
     def test_unexpected_error_captured_in_result(self, mock_generate):
@@ -385,7 +387,7 @@ class TestGenerateCoverImageWithFallback:
 
         assert result["success"] is False
         assert result["image_url"] is None
-        assert "Unexpected" in result["error"]
+        assert "Unexpected" in result["error"]  # pylint: disable=unsupported-membership-test
 
     @patch('scripts.image_generator.generate_cover_image')
     def test_whitespace_prompt_trimmed(self, mock_generate):
@@ -408,7 +410,7 @@ class TestGenerateCoverImageWithFallback:
         )
 
         assert result["prompt_used"] == "Explicit prompt"
-        assert "happy" not in result["prompt_used"]
+        assert "happy" not in result["prompt_used"]  # pylint: disable=unsupported-membership-test
 
 
 class TestGetOpenAIClient:
@@ -418,8 +420,6 @@ class TestGetOpenAIClient:
     @patch('scripts.image_generator.OpenAI')
     def test_missing_api_key_returns_none(self, mock_openai):
         """Test that missing API key returns None."""
-        from scripts.image_generator import _get_openai_client
-
         result = _get_openai_client()
 
         assert result is None
@@ -429,8 +429,6 @@ class TestGetOpenAIClient:
     @patch('scripts.image_generator.OpenAI')
     def test_valid_api_key_returns_client(self, mock_openai):
         """Test that valid API key returns client instance."""
-        from scripts.image_generator import _get_openai_client
-
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
 
@@ -443,8 +441,6 @@ class TestGetOpenAIClient:
     @patch('scripts.image_generator.OpenAI')
     def test_client_initialization_error_returns_none(self, mock_openai):
         """Test that client initialization errors return None."""
-        from scripts.image_generator import _get_openai_client
-
         mock_openai.side_effect = Exception("Initialization failed")
 
         result = _get_openai_client()

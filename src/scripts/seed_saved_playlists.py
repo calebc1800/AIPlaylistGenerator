@@ -13,6 +13,7 @@ from django.core.management.base import CommandError
 
 
 def main() -> int:
+    """Load saved playlist seed data from fixture file into database."""
     project_root = Path(__file__).resolve().parents[1]
     seeds_dir = project_root / "seeds"
     fixture_path = seeds_dir / "saved_playlists.json"

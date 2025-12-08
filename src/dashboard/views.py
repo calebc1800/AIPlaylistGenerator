@@ -1,23 +1,29 @@
+"""Dashboard views for the AI Playlist Generator application."""
 from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-import spotipy
 import json
+import spotipy
 from django.conf import settings
 from django.core.cache import cache
+from django.db import IntegrityError
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
-from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from dashboard.models import UserFollow
 from recommender.models import SavedPlaylist
 from recommender.services import artist_recommendation_service
 from recommender.services.artist_ai_service import generate_ai_artist_cards
+from recommender.services.artist_card_utils import basic_artist_payload
 from recommender.services.listening_suggestions import generate_listening_suggestions
 from recommender.services.session_utils import ensure_session_key
-from recommender.services.spotify_handler import build_user_profile_seed_snapshot
+from recommender.services.spotify_handler import (
+    _primary_image_url,
+    build_user_profile_seed_snapshot,
+)
 from recommender.services.stats_service import (
     get_genre_breakdown,
     summarize_generation_stats,
@@ -42,23 +48,9 @@ def _resolve_generation_identifier(request, spotify_user_id: str | None = None) 
     return str(request.session.get("spotify_user_id") or "anonymous")
 
 
-def _ensure_session_key(request) -> str:
-    """Checks for session key
-
-    Args:
-        request (django request): http session information request
-
-    Returns:
-        str: Session Key
-    """
-    session_key = request.session.session_key
-    if not session_key:
-        request.session.save()
-        session_key = request.session.session_key or ""
-    return session_key
-
-
-def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
+def _fetch_spotify_highlights(
+    request, sp: spotipy.Spotify
+) -> dict:  # pylint: disable=too-many-locals
     """Uses Spotify API to get the current user's top artists and songs
 
     Args:
@@ -68,7 +60,8 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     Returns:
         dict: Top genres, artists and tracks
     """
-    cache_key = f"dashboard:spotify-highlights:{_ensure_session_key(request)}"
+    # pylint: disable=too-many-locals
+    cache_key = f"dashboard:spotify-highlights:{ensure_session_key(request)}"
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -88,35 +81,45 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     top_artists = []
     genre_counter = {}
     for artist in top_artists_resp.get("items", []) or []:
+        if not isinstance(artist, dict):
+            continue
         genres = [genre.title() for genre in artist.get("genres", [])[:3]]
-        top_artists.append(
+        artist_payload = basic_artist_payload(
             {
+                "id": artist.get("id"),
                 "name": artist.get("name"),
+                "image": _primary_image_url(artist.get("images")),
                 "genres": genres,
-                "image": artist.get("images", [{}])[0].get("url") if artist.get("images") else "",
+                "popularity": artist.get("popularity"),
+                "followers": (artist.get("followers") or {}).get("total"),
+                "url": (artist.get("external_urls") or {}).get("spotify"),
             }
         )
+        artist_payload["play_count"] = int(artist.get("popularity") or 0)
+        top_artists.append(artist_payload)
         for genre in genres:
             genre_counter[genre] = genre_counter.get(genre, 0) + 1
 
     top_tracks = []
     for track in top_tracks_resp.get("items", []) or []:
+        if not isinstance(track, dict):
+            continue
         top_tracks.append(
             {
                 "name": track.get("name"),
                 "artists": ", ".join(artist.get("name") for artist in track.get("artists", [])),
                 "album": track.get("album", {}).get("name"),
-                "image": track.get("album", {}).get("images", [{}])[0].get("url")
-                if track.get("album", {}).get("images")
-                else "",
+                "image": _primary_image_url(track.get("album", {}).get("images")),
             }
         )
 
     top_genres = [
         {"genre": genre, "count": count}
-        for genre, count in sorted(genre_counter.items(),
-                                   key=lambda item: item[1], 
-                                   reverse=True)[:5]
+        for genre, count in sorted(
+            genre_counter.items(),
+            key=lambda item: item[1],
+            reverse=True
+        )[:5]
     ]
 
     highlights.update(
@@ -206,7 +209,61 @@ class DashboardView(View):
 
     default_tab = "explore"
 
-    def get(self, request):
+    def _build_context(self, request, data):  # pylint: disable=too-many-locals
+        """Build the context dictionary for the dashboard template."""
+        user_profile = data['user_profile']
+        playlists = data['playlists']
+        generated_stats = data['generated_stats']
+        genre_breakdown = data['genre_breakdown']
+        favorite_artists = data['favorite_artists']
+        ai_artist_suggestions = data['ai_artist_suggestions']
+        last_song = data['last_song']
+
+        debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
+        session_provider = "openai"
+        request.session["llm_provider"] = session_provider
+        default_provider = "openai"
+
+        allowed_tabs = {"explore", "create", "artists", "stats", "account"}
+        requested_tab = (request.GET.get('tab') or "").strip().lower()
+        default_tab = requested_tab if requested_tab in allowed_tabs else (
+            self.default_tab or "explore")
+        default_tab = (default_tab or "explore").lower()
+        if request.GET.get('prompt'):
+            default_tab = "create"
+        if default_tab not in allowed_tabs:
+            default_tab = "explore"
+
+        return {
+            'username': user_profile.get('display_name') or user_profile.get('id'),
+            'user_id': user_profile.get('id'),
+            'email': user_profile.get('email'),
+            'followers': user_profile.get('followers', {}).get('total', 0),
+            'last_song': last_song,
+            'profile_url': user_profile.get('external_urls', {}).get('spotify'),
+            'playlists': playlists,
+            'debug_enabled': debug_enabled,
+            'llm_toggle_visible': False,
+            'llm_provider': session_provider,
+            'llm_provider_default': default_provider,
+            'generated_stats': generated_stats,
+            'genre_breakdown': genre_breakdown,
+            'spotify_highlights': {},
+            'favorite_artists': favorite_artists,
+            'ai_artist_suggestions': ai_artist_suggestions,
+            'default_tab': default_tab,
+        }
+
+    def get(self, request):  # pylint: disable=too-many-locals
+        """
+        Render the dashboard page with user profile and playlist data.
+
+        Args:
+            request: The HTTP request object.
+
+        Returns:
+            HttpResponse: Rendered dashboard template.
+        """
         if not ensure_valid_spotify_session(request):
             return redirect('spotify_auth:login')
         access_token = request.session.get('spotify_access_token')
@@ -220,8 +277,6 @@ class DashboardView(View):
 
             username = user_profile.get('display_name') or user_profile.get('id')
             user_id = user_profile.get('id')
-            email = user_profile.get('email')
-            followers = user_profile.get('followers', {}).get('total', 0)
             if user_id:
                 request.session['spotify_user_id'] = user_id
                 request.session['spotify_display_name'] = username
@@ -245,27 +300,24 @@ class DashboardView(View):
                     'artist': ', '.join([artist['name'] for artist in track['artists']]),
                     'album': track['album']['name'],
                     'image': (
-                        track['album']['images'][0]['url'] 
-                        if track['album']['images'] 
+                        track['album']['images'][0]['url']
+                        if track['album']['images']
                         else None
                         ),
                     'played_at': recently_played['items'][0]['played_at']
                 }
 
             # Fetch saved playlists from database
-            playlists = sorted(SavedPlaylist.objects.all(), key=lambda p: p.like_count, reverse=True)
-
-            debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
-            session_provider = "openai"
-            request.session["llm_provider"] = session_provider
-            default_provider = "openai"
+            playlists = sorted(SavedPlaylist.objects.all(),
+                               key=lambda p: p.like_count, reverse=True)
 
             generation_identifier = _resolve_generation_identifier(request, user_id)
             generated_stats = summarize_generation_stats(generation_identifier)
             genre_breakdown = get_genre_breakdown(generation_identifier)
             favorite_artists = _cached_user_top_artists(sp, user_id, limit=10)
             if not favorite_artists and user_id:
-                favorite_artists = artist_recommendation_service.fetch_seed_artists(user_id, limit=10)
+                favorite_artists = artist_recommendation_service.fetch_seed_artists(user_id,
+                                                                                    limit=10)
             ai_artist_suggestions = _get_ai_artist_suggestions(
                 request,
                 user_id,
@@ -274,41 +326,26 @@ class DashboardView(View):
                 limit=8,
             )
 
-            allowed_tabs = {"explore", "create", "artists", "stats", "account"}
-            requested_tab = (request.GET.get('tab') or "").strip().lower()
-            default_tab = requested_tab if requested_tab in allowed_tabs else (self.default_tab or "explore")
-            default_tab = (default_tab or "explore").lower()
-            if request.GET.get('prompt'):
-                default_tab = "create"
-            if default_tab not in allowed_tabs:
-                default_tab = "explore"
-
-            context = {
-                'username': username,
-                'user_id': user_id,
-                'email': email,
-                'followers': followers,
-                'last_song': last_song,
-                'profile_url': user_profile.get('external_urls', {}).get('spotify'),
+            data = {
+                'user_profile': user_profile,
                 'playlists': playlists,
-                'debug_enabled': debug_enabled,
-                'llm_toggle_visible': False,
-                'llm_provider': session_provider,
-                'llm_provider_default': default_provider,
                 'generated_stats': generated_stats,
                 'genre_breakdown': genre_breakdown,
-                'spotify_highlights': {},
                 'favorite_artists': favorite_artists,
                 'ai_artist_suggestions': ai_artist_suggestions,
-                'default_tab': default_tab,
+                'last_song': last_song
             }
+            context = self._build_context(request, data)
             return render(request, 'dashboard/dashboard.html', context)
 
         except spotipy.exceptions.SpotifyException as e:
             if e.http_status == 401:
                 clear_spotify_session(request.session)
                 return redirect('spotify_auth:login')
-            return render(request, 'dashboard/dashboard.html', {'error': f'Error fetching Spotify data: {str(e)}'})
+            return render(
+                request, 'dashboard/dashboard.html',
+                {'error': f'Error fetching Spotify data: {str(e)}'}
+            )
 
 class CreateView(DashboardView):
     """Dedicated entry point that loads the create tab by default."""
@@ -320,6 +357,15 @@ class UserStatsAPIView(View):
     """Return combined generation + Spotify stats for the dashboard."""
 
     def get(self, request):
+        """
+        Get combined generation and Spotify stats for the dashboard.
+
+        Args:
+            request: The HTTP request object.
+
+        Returns:
+            JsonResponse: JSON response with stats data.
+        """
         if not ensure_valid_spotify_session(request):
             return JsonResponse({'error': 'Authentication required'}, status=401)
         access_token = request.session.get('spotify_access_token')
@@ -348,6 +394,15 @@ class ListeningSuggestionsAPIView(View):
     """Return listening-based prompt suggestions for the dashboard grid."""
 
     def get(self, request):
+        """
+        Get listening-based prompt suggestions for the dashboard.
+
+        Args:
+            request: The HTTP request object.
+
+        Returns:
+            JsonResponse: JSON response with suggestions data.
+        """
         if not ensure_valid_spotify_session(request):
             return JsonResponse({'error': 'Authentication required'}, status=401)
         access_token = request.session.get('spotify_access_token')
@@ -356,7 +411,11 @@ class ListeningSuggestionsAPIView(View):
 
         user_identifier = _resolve_generation_identifier(request)
         spotify_user_id = request.session.get('spotify_user_id')
-        profile_cache = cache.get(f"recommender:user-profile:{spotify_user_id}") if spotify_user_id else None
+        profile_cache = (
+            cache.get(f"recommender:user-profile:{spotify_user_id}")
+            if spotify_user_id
+            else None
+        )
         suggestions = generate_listening_suggestions(user_identifier, profile_cache=profile_cache)
 
         return JsonResponse({'suggestions': suggestions})
@@ -366,6 +425,15 @@ class RecommendedArtistsAPIView(View):
     """Serve recommended artists for the dashboard tab."""
 
     def get(self, request):
+        """
+        Get recommended artists for the dashboard.
+
+        Args:
+            request: The HTTP request object.
+
+        Returns:
+            JsonResponse: JSON response with recommended artists data.
+        """
         if not ensure_valid_spotify_session(request):
             return JsonResponse({'error': 'Authentication required'}, status=401)
         access_token = request.session.get('spotify_access_token')
@@ -388,7 +456,9 @@ class RecommendedArtistsAPIView(View):
             profile_cache,
             limit=limit,
         )
-        meta_seed_count = sum(len(entry.get('seed_artist_ids') or []) for entry in recommended_artists)
+        meta_seed_count = sum(
+            len(entry.get('seed_artist_ids') or []) for entry in recommended_artists
+        )
         payload = {
             'recommended_artists': recommended_artists,
             'meta': {
@@ -407,52 +477,60 @@ def toggle_follow(request):
         following_user_id = data.get('following_user_id')
         following_display_name = data.get('following_display_name')
     except (json.JSONDecodeError, KeyError):
-        return JsonResponse({'error': 'Invalid request'}, status=400)
-
-    # Validate required fields
-    if not following_user_id or not following_display_name:
-        return JsonResponse({'error': 'Missing required fields'}, status=400)
-
-    follower_user_id = request.session.get('spotify_user_id')
-    follower_display_name = request.session.get('spotify_display_name', follower_user_id)
-
-    if not follower_user_id:
-        return JsonResponse({'error': 'Authentication required'}, status=401)
-
-    if follower_user_id == following_user_id:
-        return JsonResponse({'error': 'Cannot follow yourself'}, status=400)
-
-    # Check if already following
-    try:
-        existing_follow = UserFollow.objects.filter(
-            follower_user_id=follower_user_id,
-            following_user_id=following_user_id
-        ).first()
-
-        if existing_follow:
-            # Unfollow
-            existing_follow.delete()
-            return JsonResponse({
-                'success': True,
-                'following': False,
-                'message': f'Unfollowed {following_display_name}'
-            })
+        response_data = {'error': 'Invalid request'}
+        status_code = 400
+    else:
+        # Validate required fields
+        if not following_user_id or not following_display_name:
+            response_data = {'error': 'Missing required fields'}
+            status_code = 400
         else:
-            # Follow
-            UserFollow.objects.create(
-                follower_user_id=follower_user_id,
-                follower_display_name=follower_display_name,
-                following_user_id=following_user_id,
-                following_display_name=following_display_name
-            )
-            return JsonResponse({
-                'success': True,
-                'following': True,
-                'message': f'Now following {following_display_name}'
-            })
-    except Exception as e:
-        # Handle potential database errors
-        return JsonResponse({'error': 'Database error occurred'}, status=500)
+            follower_user_id = request.session.get('spotify_user_id')
+            follower_display_name = request.session.get('spotify_display_name', follower_user_id)
+
+            if not follower_user_id:
+                response_data = {'error': 'Authentication required'}
+                status_code = 401
+            elif follower_user_id == following_user_id:
+                response_data = {'error': 'Cannot follow yourself'}
+                status_code = 400
+            else:
+                # Check if already following
+                try:
+                    existing_follow = UserFollow.objects.filter(
+                        follower_user_id=follower_user_id,
+                        following_user_id=following_user_id
+                    ).first()
+
+                    if existing_follow:
+                        # Unfollow
+                        existing_follow.delete()
+                        response_data = {
+                            'success': True,
+                            'following': False,
+                            'message': f'Unfollowed {following_display_name}'
+                        }
+                        status_code = 200
+                    else:
+                        # Follow
+                        UserFollow.objects.create(
+                            follower_user_id=follower_user_id,
+                            follower_display_name=follower_display_name,
+                            following_user_id=following_user_id,
+                            following_display_name=following_display_name
+                        )
+                        response_data = {
+                            'success': True,
+                            'following': True,
+                            'message': f'Now following {following_display_name}'
+                        }
+                        status_code = 200
+                except IntegrityError:
+                    # Handle potential database errors
+                    response_data = {'error': 'Database integrity error occurred'}
+                    status_code = 500
+
+    return JsonResponse(response_data, status=status_code)
 
 
 def get_following_list(request):

@@ -1,3 +1,7 @@
+'''
+Urls for explorer app
+'''
+
 from django.urls import path
 from .views import SearchView, ProfileView, LogoutView, like_playlist
 

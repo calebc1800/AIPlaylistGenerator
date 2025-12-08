@@ -11,19 +11,6 @@ class UniqueLike(models.Model):
     class Meta:
         unique_together = (("user_id", "playlist_id"),)
 
-"""class Likes(models.Model):
-    # Wrapper for array of unique likes 
-    unique_likes = []
-
-    def add(self, user_id, playlist_id):
-        self.unique_likes.append(UniqueLike.objects.create(user_id=user_id, playlist_id=playlist_id))
-
-    def remove(self, user_id, playlist_id):
-        self.unique_likes.remove(UniqueLike())
-
-    def __count__(self):
-        return len(self.unique_likes)"""
-
 class SavedPlaylist(models.Model):
     """Persist Spotify playlists saved through the application."""
 

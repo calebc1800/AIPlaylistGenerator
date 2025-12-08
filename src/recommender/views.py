@@ -16,6 +16,7 @@ from dataclasses import asdict
 from io import BytesIO
 from typing import Callable, Dict, List, Optional, Set
 
+import requests as requests_lib
 from PIL import Image
 import spotipy
 from django.conf import settings
@@ -1433,7 +1434,6 @@ def save_playlist(request):
         cover_image_url = payload.get("cover_image_url")
         if playlist_id and cover_image_url:
             try:
-                import requests as requests_lib
                 sp = spotipy.Spotify(auth=access_token)
 
                 # Download the image from the URL
@@ -1442,15 +1442,23 @@ def save_playlist(request):
                 image_response.raise_for_status()
 
                 # Compress image to meet Spotify's 256 KB limit
-                logger.info("Compressing image for Spotify (original size: %d bytes)", len(image_response.content))
+                logger.info(
+                    "Compressing image for Spotify (original size: %d bytes)",
+                    len(image_response.content),
+                )
                 compressed_image = _compress_image_for_spotify(image_response.content)
 
                 # Convert to base64
                 image_base64 = base64.b64encode(compressed_image).decode("utf-8")
 
                 # Upload to Spotify
-                logger.info("Uploading cover image to playlist %s (compressed size: %d bytes, base64: %d bytes)",
-                           playlist_id, len(compressed_image), len(image_base64))
+                logger.info(
+                    "Uploading cover image to playlist %s "
+                    "(compressed size: %d bytes, base64: %d bytes)",
+                    playlist_id,
+                    len(compressed_image),
+                    len(image_base64),
+                )
                 sp.playlist_upload_cover_image(playlist_id, image_base64)
                 logger.info("Successfully uploaded cover image to playlist %s", playlist_id)
                 messages.success(request, "Custom cover image applied to playlist.")
@@ -1790,7 +1798,7 @@ def generate_cover_image(request):
 
     # Import the image generator
     try:
-        from scripts.image_generator import generate_cover_image_with_fallback
+        from scripts.image_generator import generate_cover_image_with_fallback  # pylint: disable=import-outside-toplevel
     except ImportError:
         logger.error("Failed to import image_generator module")
         return JsonResponse(
