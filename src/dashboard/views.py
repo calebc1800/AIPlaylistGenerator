@@ -83,13 +83,10 @@ def _fetch_spotify_highlights(
     for artist in top_artists_resp.get("items", []) or []:
         if not isinstance(artist, dict):
             continue
-        artist_id = artist.get("id") if isinstance(artist, dict) else None
-        if not artist_id:
-            continue
         genres = [genre.title() for genre in artist.get("genres", [])[:3]]
         artist_payload = basic_artist_payload(
             {
-                "id": artist_id,
+                "id": artist.get("id"),
                 "name": artist.get("name"),
                 "image": _primary_image_url(artist.get("images")),
                 "genres": genres,
