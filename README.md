@@ -91,5 +91,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 This project is currently in active development. We're continuously working on new features and improvements. Star the repository to stay updated!
 
 ---
+AI use citations: OpenAI Codex was used and instructions files are available in /codex
 
 Made with ❤️ by the AI Playlist Generator Team
