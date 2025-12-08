@@ -253,6 +253,19 @@ class DashboardView(View):
             'default_tab': default_tab,
         }
 
+    def _get_default_tab(self, request):
+        """Determine the default tab for the dashboard."""
+        allowed_tabs = {"explore", "create", "artists", "stats", "account"}
+        requested_tab = (request.GET.get('tab') or "").strip().lower()
+        default_tab = requested_tab if requested_tab in allowed_tabs else (
+            self.default_tab or "explore")
+        default_tab = (default_tab or "explore").lower()
+        if request.GET.get('prompt'):
+            default_tab = "create"
+        if default_tab not in allowed_tabs:
+            default_tab = "explore"
+        return default_tab
+
     def get(self, request):
         """
         Render the dashboard page with user profile and playlist data.
@@ -271,41 +284,8 @@ class DashboardView(View):
 
         sp = spotipy.Spotify(auth=access_token)
         try:
-            user_profile = sp.current_user()
-            recently_played = sp.current_user_recently_played(limit=1)
-
-            username = user_profile.get('display_name') or user_profile.get('id')
-            user_id = user_profile.get('id')
-            if user_id:
-                request.session['spotify_user_id'] = user_id
-                request.session['spotify_display_name'] = username
-
-            profile_cache: Optional[Dict[str, object]] = None
-            if user_id:
-                cache_key = f"recommender:user-profile:{user_id}"
-                profile_cache = cache.get(cache_key)
-                if not profile_cache:
-                    snapshot = build_user_profile_seed_snapshot(sp)
-                    if snapshot:
-                        ttl = getattr(settings, "RECOMMENDER_USER_PROFILE_CACHE_TTL", 3600)
-                        cache.set(cache_key, snapshot, ttl)
-                        profile_cache = snapshot
-
-            last_song = None
-            if recently_played and recently_played.get('items'):
-                track = recently_played['items'][0]['track']
-                last_song = {
-                    'name': track['name'],
-                    'artist': ', '.join([artist['name'] for artist in track['artists']]),
-                    'album': track['album']['name'],
-                    'image': (
-                        track['album']['images'][0]['url']
-                        if track['album']['images']
-                        else None
-                        ),
-                    'played_at': recently_played['items'][0]['played_at']
-                }
-
+            user_profile, last_song, user_id = self._fetch_user_profile_and_last_song(request, sp)
+            profile_cache = self._fetch_profile_cache(user_id, sp)
             # Fetch saved playlists from database
             playlists = sorted(SavedPlaylist.objects.all(),
                                key=lambda p: p.like_count, reverse=True)
@@ -325,16 +305,7 @@ class DashboardView(View):
                 limit=8,
             )
 
-            data = {
-                'user_profile': user_profile,
-                'playlists': playlists,
-                'generated_stats': generated_stats,
-                'genre_breakdown': genre_breakdown,
-                'favorite_artists': favorite_artists,
-                'ai_artist_suggestions': ai_artist_suggestions,
-                'last_song': last_song
-            }
-            context = self._build_context(request, data)
+            context = self._build_context(request, user_profile, playlists, generated_stats, genre_breakdown, favorite_artists, ai_artist_suggestions, last_song)
             return render(request, 'dashboard/dashboard.html', context)
 
         except spotipy.exceptions.SpotifyException as e:
