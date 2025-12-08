@@ -207,6 +207,42 @@ class DashboardView(View):
 
     default_tab = "explore"
 
+    def _build_context(self, request, user_profile, playlists, generated_stats, genre_breakdown, favorite_artists, ai_artist_suggestions, last_song):
+        """Build the context dictionary for the dashboard template."""
+        debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
+        session_provider = "openai"
+        request.session["llm_provider"] = session_provider
+        default_provider = "openai"
+
+        allowed_tabs = {"explore", "create", "artists", "stats", "account"}
+        requested_tab = (request.GET.get('tab') or "").strip().lower()
+        default_tab = requested_tab if requested_tab in allowed_tabs else (self.default_tab or "explore")
+        default_tab = (default_tab or "explore").lower()
+        if request.GET.get('prompt'):
+            default_tab = "create"
+        if default_tab not in allowed_tabs:
+            default_tab = "explore"
+
+        return {
+            'username': user_profile.get('display_name') or user_profile.get('id'),
+            'user_id': user_profile.get('id'),
+            'email': user_profile.get('email'),
+            'followers': user_profile.get('followers', {}).get('total', 0),
+            'last_song': last_song,
+            'profile_url': user_profile.get('external_urls', {}).get('spotify'),
+            'playlists': playlists,
+            'debug_enabled': debug_enabled,
+            'llm_toggle_visible': False,
+            'llm_provider': session_provider,
+            'llm_provider_default': default_provider,
+            'generated_stats': generated_stats,
+            'genre_breakdown': genre_breakdown,
+            'spotify_highlights': {},
+            'favorite_artists': favorite_artists,
+            'ai_artist_suggestions': ai_artist_suggestions,
+            'default_tab': default_tab,
+        }
+
     def get(self, request):
         """
         Render the dashboard page with user profile and playlist data.
@@ -266,11 +302,6 @@ class DashboardView(View):
             playlists = sorted(SavedPlaylist.objects.all(),
                                key=lambda p: p.like_count, reverse=True)
 
-            debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
-            session_provider = "openai"
-            request.session["llm_provider"] = session_provider
-            default_provider = "openai"
-
             generation_identifier = _resolve_generation_identifier(request, user_id)
             generated_stats = summarize_generation_stats(generation_identifier)
             genre_breakdown = get_genre_breakdown(generation_identifier)
@@ -286,38 +317,10 @@ class DashboardView(View):
                 limit=8,
             )
 
-            allowed_tabs = {"explore", "create", "artists", "stats", "account"}
-            requested_tab = (request.GET.get('tab') or "").strip().lower()
-            default_tab = (
-                requested_tab
-                if requested_tab in allowed_tabs
-                else (self.default_tab or "explore")
+            context = self._build_context(
+                request, user_profile, playlists, generated_stats, genre_breakdown,
+                favorite_artists, ai_artist_suggestions, last_song
             )
-            default_tab = (default_tab or "explore").lower()
-            if request.GET.get('prompt'):
-                default_tab = "create"
-            if default_tab not in allowed_tabs:
-                default_tab = "explore"
-
-            context = {
-                'username': username,
-                'user_id': user_id,
-                'email': email,
-                'followers': followers,
-                'last_song': last_song,
-                'profile_url': user_profile.get('external_urls', {}).get('spotify'),
-                'playlists': playlists,
-                'debug_enabled': debug_enabled,
-                'llm_toggle_visible': False,
-                'llm_provider': session_provider,
-                'llm_provider_default': default_provider,
-                'generated_stats': generated_stats,
-                'genre_breakdown': genre_breakdown,
-                'spotify_highlights': {},
-                'favorite_artists': favorite_artists,
-                'ai_artist_suggestions': ai_artist_suggestions,
-                'default_tab': default_tab,
-            }
             return render(request, 'dashboard/dashboard.html', context)
 
         except spotipy.exceptions.SpotifyException as e:
