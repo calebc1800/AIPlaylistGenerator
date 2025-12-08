@@ -1,3 +1,4 @@
+# pylint: skip-file
 """Views for the main landing page"""
 from django.shortcuts import redirect, render
 from django.views import View

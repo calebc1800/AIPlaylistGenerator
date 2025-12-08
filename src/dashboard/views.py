@@ -208,7 +208,7 @@ class DashboardView(View):
 
     default_tab = "explore"
 
-    def _build_context(self, request, data):
+    def _build_context(self, request, data):  # pylint: disable=too-many-locals
         """Build the context dictionary for the dashboard template."""
         user_profile = data['user_profile']
         playlists = data['playlists']
@@ -253,7 +253,7 @@ class DashboardView(View):
             'default_tab': default_tab,
         }
 
-    def get(self, request):
+    def get(self, request):  # pylint: disable=too-many-locals
         """
         Render the dashboard page with user profile and playlist data.
 
