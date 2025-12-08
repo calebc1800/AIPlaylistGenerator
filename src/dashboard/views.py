@@ -7,6 +7,7 @@ import json
 import spotipy
 from django.conf import settings
 from django.core.cache import cache
+from django.db import IntegrityError
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views import View
@@ -207,8 +208,16 @@ class DashboardView(View):
 
     default_tab = "explore"
 
-    def _build_context(self, request, user_profile, playlists, generated_stats, genre_breakdown, favorite_artists, ai_artist_suggestions, last_song):
+    def _build_context(self, request, data):
         """Build the context dictionary for the dashboard template."""
+        user_profile = data['user_profile']
+        playlists = data['playlists']
+        generated_stats = data['generated_stats']
+        genre_breakdown = data['genre_breakdown']
+        favorite_artists = data['favorite_artists']
+        ai_artist_suggestions = data['ai_artist_suggestions']
+        last_song = data['last_song']
+
         debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
         session_provider = "openai"
         request.session["llm_provider"] = session_provider
@@ -216,7 +225,8 @@ class DashboardView(View):
 
         allowed_tabs = {"explore", "create", "artists", "stats", "account"}
         requested_tab = (request.GET.get('tab') or "").strip().lower()
-        default_tab = requested_tab if requested_tab in allowed_tabs else (self.default_tab or "explore")
+        default_tab = requested_tab if requested_tab in allowed_tabs else (
+            self.default_tab or "explore")
         default_tab = (default_tab or "explore").lower()
         if request.GET.get('prompt'):
             default_tab = "create"
@@ -266,8 +276,6 @@ class DashboardView(View):
 
             username = user_profile.get('display_name') or user_profile.get('id')
             user_id = user_profile.get('id')
-            email = user_profile.get('email')
-            followers = user_profile.get('followers', {}).get('total', 0)
             if user_id:
                 request.session['spotify_user_id'] = user_id
                 request.session['spotify_display_name'] = username
@@ -317,10 +325,16 @@ class DashboardView(View):
                 limit=8,
             )
 
-            context = self._build_context(
-                request, user_profile, playlists, generated_stats, genre_breakdown,
-                favorite_artists, ai_artist_suggestions, last_song
-            )
+            data = {
+                'user_profile': user_profile,
+                'playlists': playlists,
+                'generated_stats': generated_stats,
+                'genre_breakdown': genre_breakdown,
+                'favorite_artists': favorite_artists,
+                'ai_artist_suggestions': ai_artist_suggestions,
+                'last_song': last_song
+            }
+            context = self._build_context(request, data)
             return render(request, 'dashboard/dashboard.html', context)
 
         except spotipy.exceptions.SpotifyException as e:
@@ -462,51 +476,60 @@ def toggle_follow(request):
         following_user_id = data.get('following_user_id')
         following_display_name = data.get('following_display_name')
     except (json.JSONDecodeError, KeyError):
-        return JsonResponse({'error': 'Invalid request'}, status=400)
+        response_data = {'error': 'Invalid request'}
+        status_code = 400
+    else:
+        # Validate required fields
+        if not following_user_id or not following_display_name:
+            response_data = {'error': 'Missing required fields'}
+            status_code = 400
+        else:
+            follower_user_id = request.session.get('spotify_user_id')
+            follower_display_name = request.session.get('spotify_display_name', follower_user_id)
 
-    # Validate required fields
-    if not following_user_id or not following_display_name:
-        return JsonResponse({'error': 'Missing required fields'}, status=400)
+            if not follower_user_id:
+                response_data = {'error': 'Authentication required'}
+                status_code = 401
+            elif follower_user_id == following_user_id:
+                response_data = {'error': 'Cannot follow yourself'}
+                status_code = 400
+            else:
+                # Check if already following
+                try:
+                    existing_follow = UserFollow.objects.filter(
+                        follower_user_id=follower_user_id,
+                        following_user_id=following_user_id
+                    ).first()
 
-    follower_user_id = request.session.get('spotify_user_id')
-    follower_display_name = request.session.get('spotify_display_name', follower_user_id)
+                    if existing_follow:
+                        # Unfollow
+                        existing_follow.delete()
+                        response_data = {
+                            'success': True,
+                            'following': False,
+                            'message': f'Unfollowed {following_display_name}'
+                        }
+                        status_code = 200
+                    else:
+                        # Follow
+                        UserFollow.objects.create(
+                            follower_user_id=follower_user_id,
+                            follower_display_name=follower_display_name,
+                            following_user_id=following_user_id,
+                            following_display_name=following_display_name
+                        )
+                        response_data = {
+                            'success': True,
+                            'following': True,
+                            'message': f'Now following {following_display_name}'
+                        }
+                        status_code = 200
+                except IntegrityError:
+                    # Handle potential database errors
+                    response_data = {'error': 'Database integrity error occurred'}
+                    status_code = 500
 
-    if not follower_user_id:
-        return JsonResponse({'error': 'Authentication required'}, status=401)
-
-    if follower_user_id == following_user_id:
-        return JsonResponse({'error': 'Cannot follow yourself'}, status=400)
-
-    # Check if already following
-    try:
-        existing_follow = UserFollow.objects.filter(
-            follower_user_id=follower_user_id,
-            following_user_id=following_user_id
-        ).first()
-
-        if existing_follow:
-            # Unfollow
-            existing_follow.delete()
-            return JsonResponse({
-                'success': True,
-                'following': False,
-                'message': f'Unfollowed {following_display_name}'
-            })
-        # Follow
-        UserFollow.objects.create(
-            follower_user_id=follower_user_id,
-            follower_display_name=follower_display_name,
-            following_user_id=following_user_id,
-            following_display_name=following_display_name
-        )
-        return JsonResponse({
-            'success': True,
-            'following': True,
-            'message': f'Now following {following_display_name}'
-        })
-    except Exception:
-        # Handle potential database errors
-        return JsonResponse({'error': 'Database error occurred'}, status=500)
+    return JsonResponse(response_data, status=status_code)
 
 
 def get_following_list(request):
