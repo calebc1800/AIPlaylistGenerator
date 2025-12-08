@@ -107,8 +107,7 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
                 "artists": ", ".join(artist.get("name") for artist in track.get("artists", [])),
                 "album": track.get("album", {}).get("name"),
                 "image": track.get("album", {}).get("images", [{}])[0].get("url")
-                if track.get("album", {}).get("images")
-                else "",
+                if track.get("album", {}).get("images") else "",
             }
         )
 
@@ -494,7 +493,7 @@ def toggle_follow(request):
             'following': True,
             'message': f'Now following {following_display_name}'
         })
-    except:
+    except Exception:
         # Handle potential database errors
         return JsonResponse({'error': 'Database error occurred'}, status=500)
 
