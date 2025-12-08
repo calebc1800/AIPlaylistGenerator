@@ -288,7 +288,11 @@ class DashboardView(View):
 
             allowed_tabs = {"explore", "create", "artists", "stats", "account"}
             requested_tab = (request.GET.get('tab') or "").strip().lower()
-            default_tab = requested_tab if requested_tab in allowed_tabs else (self.default_tab or "explore")
+            default_tab = (
+                requested_tab
+                if requested_tab in allowed_tabs
+                else (self.default_tab or "explore")
+            )
             default_tab = (default_tab or "explore").lower()
             if request.GET.get('prompt'):
                 default_tab = "create"
@@ -389,7 +393,11 @@ class ListeningSuggestionsAPIView(View):
 
         user_identifier = _resolve_generation_identifier(request)
         spotify_user_id = request.session.get('spotify_user_id')
-        profile_cache = cache.get(f"recommender:user-profile:{spotify_user_id}") if spotify_user_id else None
+        profile_cache = (
+            cache.get(f"recommender:user-profile:{spotify_user_id}")
+            if spotify_user_id
+            else None
+        )
         suggestions = generate_listening_suggestions(user_identifier, profile_cache=profile_cache)
 
         return JsonResponse({'suggestions': suggestions})
