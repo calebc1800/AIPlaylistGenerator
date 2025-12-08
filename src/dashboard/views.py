@@ -115,7 +115,7 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
     top_genres = [
         {"genre": genre, "count": count}
         for genre, count in sorted(genre_counter.items(),
-                                   key=lambda item: item[1], 
+                                   key=lambda item: item[1],
                                    reverse=True)[:5]
     ]
 
@@ -245,15 +245,16 @@ class DashboardView(View):
                     'artist': ', '.join([artist['name'] for artist in track['artists']]),
                     'album': track['album']['name'],
                     'image': (
-                        track['album']['images'][0]['url'] 
-                        if track['album']['images'] 
+                        track['album']['images'][0]['url']
+                        if track['album']['images']
                         else None
                         ),
                     'played_at': recently_played['items'][0]['played_at']
                 }
 
             # Fetch saved playlists from database
-            playlists = sorted(SavedPlaylist.objects.all(), key=lambda p: p.like_count, reverse=True)
+            playlists = sorted(SavedPlaylist.objects.all(),
+                               key=lambda p: p.like_count, reverse=True)
 
             debug_enabled = getattr(settings, "RECOMMENDER_DEBUG_VIEW_ENABLED", False)
             session_provider = "openai"
@@ -265,7 +266,8 @@ class DashboardView(View):
             genre_breakdown = get_genre_breakdown(generation_identifier)
             favorite_artists = _cached_user_top_artists(sp, user_id, limit=10)
             if not favorite_artists and user_id:
-                favorite_artists = artist_recommendation_service.fetch_seed_artists(user_id, limit=10)
+                favorite_artists = artist_recommendation_service.fetch_seed_artists(user_id,
+                                                                                    limit=10)
             ai_artist_suggestions = _get_ai_artist_suggestions(
                 request,
                 user_id,
@@ -308,7 +310,8 @@ class DashboardView(View):
             if e.http_status == 401:
                 clear_spotify_session(request.session)
                 return redirect('spotify_auth:login')
-            return render(request, 'dashboard/dashboard.html', {'error': f'Error fetching Spotify data: {str(e)}'})
+            return render(request, 'dashboard/dashboard.html',
+                          {'error': f'Error fetching Spotify data: {str(e)}'})
 
 class CreateView(DashboardView):
     """Dedicated entry point that loads the create tab by default."""
