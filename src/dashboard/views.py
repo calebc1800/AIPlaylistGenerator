@@ -1,9 +1,10 @@
+"""Dashboard views for the AI Playlist Generator application."""
 from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-import spotipy
 import json
+import spotipy
 from django.conf import settings
 from django.core.cache import cache
 from django.http import JsonResponse
@@ -16,7 +17,6 @@ from recommender.models import SavedPlaylist
 from recommender.services import artist_recommendation_service
 from recommender.services.artist_ai_service import generate_ai_artist_cards
 from recommender.services.listening_suggestions import generate_listening_suggestions
-from recommender.services.session_utils import ensure_session_key
 from recommender.services.spotify_handler import build_user_profile_seed_snapshot
 from recommender.services.stats_service import (
     get_genre_breakdown,
@@ -114,9 +114,11 @@ def _fetch_spotify_highlights(request, sp: spotipy.Spotify) -> dict:
 
     top_genres = [
         {"genre": genre, "count": count}
-        for genre, count in sorted(genre_counter.items(),
-                                   key=lambda item: item[1],
-                                   reverse=True)[:5]
+        for genre, count in sorted(
+            genre_counter.items(),
+            key=lambda item: item[1],
+            reverse=True
+        )[:5]
     ]
 
     highlights.update(
@@ -207,6 +209,15 @@ class DashboardView(View):
     default_tab = "explore"
 
     def get(self, request):
+        """
+        Render the dashboard page with user profile and playlist data.
+
+        Args:
+            request: The HTTP request object.
+
+        Returns:
+            HttpResponse: Rendered dashboard template.
+        """
         if not ensure_valid_spotify_session(request):
             return redirect('spotify_auth:login')
         access_token = request.session.get('spotify_access_token')
@@ -310,8 +321,10 @@ class DashboardView(View):
             if e.http_status == 401:
                 clear_spotify_session(request.session)
                 return redirect('spotify_auth:login')
-            return render(request, 'dashboard/dashboard.html',
-                          {'error': f'Error fetching Spotify data: {str(e)}'})
+            return render(
+                request, 'dashboard/dashboard.html',
+                {'error': f'Error fetching Spotify data: {str(e)}'}
+            )
 
 class CreateView(DashboardView):
     """Dedicated entry point that loads the create tab by default."""
@@ -323,6 +336,15 @@ class UserStatsAPIView(View):
     """Return combined generation + Spotify stats for the dashboard."""
 
     def get(self, request):
+        """
+        Get combined generation and Spotify stats for the dashboard.
+
+        Args:
+            request: The HTTP request object.
+
+        Returns:
+            JsonResponse: JSON response with stats data.
+        """
         if not ensure_valid_spotify_session(request):
             return JsonResponse({'error': 'Authentication required'}, status=401)
         access_token = request.session.get('spotify_access_token')
@@ -351,6 +373,15 @@ class ListeningSuggestionsAPIView(View):
     """Return listening-based prompt suggestions for the dashboard grid."""
 
     def get(self, request):
+        """
+        Get listening-based prompt suggestions for the dashboard.
+
+        Args:
+            request: The HTTP request object.
+
+        Returns:
+            JsonResponse: JSON response with suggestions data.
+        """
         if not ensure_valid_spotify_session(request):
             return JsonResponse({'error': 'Authentication required'}, status=401)
         access_token = request.session.get('spotify_access_token')
@@ -369,6 +400,15 @@ class RecommendedArtistsAPIView(View):
     """Serve recommended artists for the dashboard tab."""
 
     def get(self, request):
+        """
+        Get recommended artists for the dashboard.
+
+        Args:
+            request: The HTTP request object.
+
+        Returns:
+            JsonResponse: JSON response with recommended artists data.
+        """
         if not ensure_valid_spotify_session(request):
             return JsonResponse({'error': 'Authentication required'}, status=401)
         access_token = request.session.get('spotify_access_token')
@@ -391,7 +431,9 @@ class RecommendedArtistsAPIView(View):
             profile_cache,
             limit=limit,
         )
-        meta_seed_count = sum(len(entry.get('seed_artist_ids') or []) for entry in recommended_artists)
+        meta_seed_count = sum(
+            len(entry.get('seed_artist_ids') or []) for entry in recommended_artists
+        )
         payload = {
             'recommended_artists': recommended_artists,
             'meta': {
@@ -440,20 +482,19 @@ def toggle_follow(request):
                 'following': False,
                 'message': f'Unfollowed {following_display_name}'
             })
-        else:
-            # Follow
-            UserFollow.objects.create(
-                follower_user_id=follower_user_id,
-                follower_display_name=follower_display_name,
-                following_user_id=following_user_id,
-                following_display_name=following_display_name
-            )
-            return JsonResponse({
-                'success': True,
-                'following': True,
-                'message': f'Now following {following_display_name}'
-            })
-    except Exception as e:
+        # Follow
+        UserFollow.objects.create(
+            follower_user_id=follower_user_id,
+            follower_display_name=follower_display_name,
+            following_user_id=following_user_id,
+            following_display_name=following_display_name
+        )
+        return JsonResponse({
+            'success': True,
+            'following': True,
+            'message': f'Now following {following_display_name}'
+        })
+    except:
         # Handle potential database errors
         return JsonResponse({'error': 'Database error occurred'}, status=500)
 
